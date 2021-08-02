@@ -1,0 +1,23 @@
+{
+  "name": "belljar",
+  "version": "1.0.0",
+  "description": "a tool for processing mouse coronal sections into ABA CCF and figure creation",
+  "main": "main.js",
+  "scripts": {
+    "test": "belljar",
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asoronow/belljar.git"
+  },
+  "author": "Alec Soronow",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/asoronow/belljar/issues"
+  },
+  "homepage": "https://github.com/asoronow/belljar#readme",
+  "devDependencies": {
+    "electron": "^13.1.7"
+  }
+}
