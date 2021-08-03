@@ -3,8 +3,9 @@ const { app, BrowserWindow } = require('electron')
 
 function createWindow () {
     const win = new BrowserWindow({
-      width: 800,
-      height: 600
+      width: 400,
+      height: 865,
+      resizable: false
     })
 
     win.loadFile('index.html')
@@ -13,6 +14,15 @@ function createWindow () {
 }
 
 app.on("ready", () => {
-  const win = createWindow()
-  win.setTitle("My App")
+  createWindow()
+})
+
+app.whenReady().then(() => {
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', function () {
+  if (process.platform !== 'darwin') app.quit()
 })

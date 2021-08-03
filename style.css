@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans&family=Roboto:wght@400;700&display=swap');
+.container {
+    background-color: #4F5D75;
+    width: 95%;
+    height: 150px;
+    position: relative;
+    padding: 5px 10px 5px;
+    margin: 5px 0px 5px;
+    border-radius: 8px;
+}
+.title {
+    font-family: 'Roboto', sans-serif;
+    font-size: medium;
+    font-weight: 700;
+}
+.subtext {
+    font-family: 'Open Sans', sans-serif;
+    font-weight: 400;
+    font-size: 12px;
+    margin: 0;
+}
+.info-message {
+    font-size: 12px;
+}
+.popover_title {
+    color: white;
+    font-size: 16px;
+}
+.popover__wrapper {
+    position: relative;
+    float: right;
+    margin-top: 18px;
+}
+.popover__content {
+    opacity: 0;
+    visibility: hidden;
+    position: absolute;
+    left: -150px;
+    transform: translate(0, 10px);
+    background-color: #4F5D75;
+    padding: 5px;
+    box-shadow: 0 2px 5px 0 rgba(0, 0, 0, 0.26);
+    width: auto;
+}
+.popover__content:before {
+    position: absolute;
+    z-index: -1;
+    content: "";
+    right: calc(50% - 10px);
+    top: -8px;
+    border-style: solid;
+    border-width: 0 10px 10px 10px;
+    border-color: transparent transparent #4F5D75 transparent;
+    transition-duration: 0.3s;
+    transition-property: transform;
+}
+.popover__wrapper:hover .popover__content {
+    z-index: 10;
+    opacity: 1;
+    visibility: visible;
+    transform: translate(0, -20px);
+    transition: all 0.5s cubic-bezier(0.75, -0.02, 0.2, 0.97);
+}
+.popover__message {
+    text-align: center;
+}
+body {
+    background-color: #2D3142;
+    color: white;
+}
+a {
+    text-decoration: none;
+    color: white;
+}
