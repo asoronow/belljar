@@ -2,17 +2,20 @@ from aicsimageio import *
 import napari
 import dask.array as da
 
+img = AICSImage( "Z:\Matt Jacobs\Images and Data\M Brains\M336\M336_slide2_3-Rotate 2D-02.czi", reconstruct_mosaic=False )
+img.set_scene(1)
+
+scene = img.mosaic_dask_data
+
+
 '''
-img = AICSImage( "/Volumes/T7/M286_slide3_4_rotated.czi", reconstruct_mosaic=False )
+for tile in range(0, img.dims.M):
+    scene.append(img.get_image_dask_data( "CZYX", T=0, M=tile ))
 
-data = []
-for tile in range(0,3):
-    data.append( img.get_image_dask_data("CYX", M=tile, T=0, Z=5) )
-
-stitched = da.block(data)
+stitched = da.block(scene)
 stitched.compute()
-'''
 
 viewer = napari.Viewer()
 layer = viewer.add_image(stitched)
 napari.run()
+'''
