@@ -1,21 +1,26 @@
 from aicsimageio import *
 import napari
 import dask.array as da
+import math
 
-img = AICSImage( "Z:\Matt Jacobs\Images and Data\M Brains\M336\M336_slide2_3-Rotate 2D-02.czi", reconstruct_mosaic=False )
+img = AICSImage( "/Volumes/T7/M286_slide3_4_rotated.czi", reconstruct_mosaic=False )
 img.set_scene(1)
+dims = img.dims
+rows = []
+for tile in range(0, round(dims.M/4)):
+    print(f"Processing {tile}/{round(dims.M/4)}...")
+    currIndex = -1
+    currY = 0
+    tileY, tileX = img.get_mosaic_tile_position(tile)
+    if currY != tileY:
+        currIndex += 1
+        rows.append([img.get_image_dask_data("CZYX", M=tile, T=0 )])
+    else:
+        rows[currIndex].append(img.get_image_dask_data("CZYX", M=tile, T=0 ))
 
-scene = img.mosaic_dask_data
-
-
-'''
-for tile in range(0, img.dims.M):
-    scene.append(img.get_image_dask_data( "CZYX", T=0, M=tile ))
-
-stitched = da.block(scene)
+stitched = da.block(rows)
 stitched.compute()
 
 viewer = napari.Viewer()
 layer = viewer.add_image(stitched)
 napari.run()
-'''
