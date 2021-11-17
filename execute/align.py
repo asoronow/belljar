@@ -29,6 +29,7 @@ for tile in range(0, dims.M):
 stitcher = cv2.Stitcher.create()
 results = []
 finalImage = []
+
 def cvtToStitch( img ):
     return cv2.cvtColor( np.max( np.asarray( img.compute() ), axis=0 ), cv2.COLOR_GRAY2BGR)
 
