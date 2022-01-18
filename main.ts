@@ -1,20 +1,20 @@
 const { app, BrowserWindow } = require('electron')
 
-
 function createWindow () {
     const win = new BrowserWindow({
-      width: 400,
-      height: 865,
-      resizable: false
+      width: 500,
+      height: 250,
+      resizable: false,
     })
 
-    win.loadFile('index.html')
+    win.loadFile('pages/index.html')
 
     return win
 }
 
+let win;
 app.on("ready", () => {
-  createWindow()
+  win = createWindow()
 })
 
 app.whenReady().then(() => {
