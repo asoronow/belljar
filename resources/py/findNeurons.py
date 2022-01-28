@@ -1,0 +1,3 @@
+# Should Implement Faster R-CNN and SAHI here to find small things in an image (neurons)
+# Considerations neurons small 50px by 50px in a big image 2000px by 2000px to 20000px by 20000px
+# Pre tiling or random cropping? Should test both...

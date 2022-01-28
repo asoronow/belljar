@@ -15,7 +15,7 @@ class PolygonSelectionTool:
 
     Created By: Alec Soronow
     '''
-    def __init__(self, filename):
+    def __init__(self, filepath):
         '''Initializes the selection tool with a given image'''
         # Are we recording the first point flag
         self.firstPoint=True
@@ -32,7 +32,7 @@ class PolygonSelectionTool:
         # A cached version of the image without any points plotted
         self.cache = None
         # The read image
-        self.image = cv2.imread( filename )
+        self.image = cv2.imread( filepath )
         # An array representing which pixels are within the selection
         self.mask = None
 
@@ -64,7 +64,7 @@ class PolygonSelectionTool:
     def startDrawing(self):
         '''Opens the window and starts the selection event loop'''
         # Window titling/creation
-        cv2.namedWindow("Select the ROI") 
+        cv2.namedWindow(f"Select the ROI") 
         # Hook event handler callback into window
         cv2.setMouseCallback('Select the ROI', self.drawPolygonSelection)
         # Start picking points
