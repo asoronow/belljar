@@ -79,29 +79,29 @@ class SectionHandler:
                         leave either dimension zero to check one only (i.e., (W,0), (0,H)))
         '''
         maxWidth, maxHeight = dimensions[0], dimensions[1]
-        newPaths = {}
-        for fName, fPath in self.imagePath.items():
+        newImages = {}
+        for fName, details in self.imagePath.items():
             if name != None:
                 if name not in fName:
                     continue
             elif fileSize != None:
-                if not os.path.getsize(fPath) <= fileSize:
+                if not os.path.getsize(details["path"]) <= fileSize:
                     continue
             elif dimensions != None:
                 checkFlags = sum([1 if dim > 0 else 0 for dim in dimensions])
                 currFlags = 0
                 
-                if width <= maxWidth:
+                if details["width"] <= maxWidth:
                     currFlags += 1
-                if height <= maxHeight:
+                if details["height"] <= maxHeight:
                     currFlags += 1
                 
                 if not currFlags >= checkFlags:
                     continue
             
-            newPaths[fName] = fPath 
+            newImages[fName] = details 
         
-        self.imagePaths = newPaths
+        self.images = newImages
 
     def preprocess(self):
         '''
