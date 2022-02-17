@@ -71,6 +71,7 @@ body {
     background-color: #FFFFFF;
     color: black;
     font-family: 'Roboto', sans-serif;
+    overflow: hidden;
     text-align: center;
     padding: 10px;
 }
