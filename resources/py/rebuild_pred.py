@@ -14,7 +14,7 @@ outputDirectory = filedialog.askdirectory(title="Select output directory")
 for file in os.listdir(inputDirectory):
     # No extension filename
     stripped = file.replace(file[file.find("."):len(file)], "")
-    # Write the raw results to a pkl for later review or reuse
+    # Read the raw results from pkl for reuse
     with open(os.path.join(outputDirectory, f"Predictions_{stripped}.pkl"), "rb") as f:
         # List of objects we found
         predictionList = pickle.load(f)
@@ -22,6 +22,7 @@ for file in os.listdir(inputDirectory):
         filePath = os.path.join(inputDirectory, file)
         # Read it in with cv2
         img = cv2.imread(filePath)
+        # TODO: Store dimensions at top of pkl list to prevent need to re-read
         height, width, channels = img.shape
         # Create a blank image for recording predictions
         predictionImage = np.zeros((height, width, 3))

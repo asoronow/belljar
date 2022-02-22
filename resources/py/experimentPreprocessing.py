@@ -1,3 +1,4 @@
+from turtle import width
 import cv2
 import os
 import numpy as np
@@ -18,12 +19,16 @@ class SectionHandler:
     Methods:
 
     '''
-    def __init__(self, directory, ext=False, allowHidden=False):
+    def __init__(self, directory, ext=False, allowHidden=False, padding=30):
         '''Initialize the handler and populate the base filepaths'''
         # Store the directory
         self.directory = directory
+        # Padding around contours
+        self.padding = padding
         # Dict of image names -> file paths
         self.images = {}
+        # Track the maximimum dimensions
+        self.maxWidth, self.maxHeight = 0, 0
         # Initial inclusion construction
         for f in os.listdir(directory):
             fPath = os.path.join(directory, f)
@@ -35,6 +40,10 @@ class SectionHandler:
                 if flag:
                     # If we pass then lets append this to our dict
                     self.images[f] = details
+                    # And check the dimensions, is this the biggest image?
+                    self.maxWidth = details["width"] if self.maxWidth < details["width"] else self.maxWidth
+                    self.maxHeight = details["height"] if self.maxHeight < details["height"] else self.maxHeight
+                
 
     def __vetFile(self, ext, f, fPath):
         '''Enforce file extension and image validity, returns a flag and dict entry for passing images'''
@@ -56,7 +65,7 @@ class SectionHandler:
             else:
                 return False, None
         else:
-            return False, None
+            return False, None   
     
     def __checkImage(self, path):
         '''Verify this is a valid image, grab dimensions, returns tuple (flag, w, h)'''
@@ -109,22 +118,13 @@ class SectionHandler:
         zero intensity. All images are padded to the largest image size
         to enable creation of the final tiff later.
         '''
-        maxH, maxW = 0, 0
-        for fName, details in sorted(self.images.items()):
-            print(f"Processing {fName}...")
-            # Check for max dimensions, need this for constructing tiff later
-            if (details['width']*details['height']) > (maxW*maxH):
-                    maxW, maxH = details['width'], details['height']
-            # Load the image
-            fPath = details['path']
-            img = cv2.imread(fPath)
-            # Ensure proper channels
-            img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        def getMaxContour(image):
+            '''Returns the largest contour in an image and its bounding points'''
             # Get the gaussian threshold, otsu method (best automatic results)
-            blur = cv2.GaussianBlur(img,(5,5),0)
+            blur = cv2.GaussianBlur(image, (5,5), 0)
             ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
             # Find the countours in the image, fast method
-            contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
             # Consider the contour arrays only, no hierarchy
             contours = contours[0]
             # Start with the first in the list compare subsequent
@@ -135,9 +135,47 @@ class SectionHandler:
                 if (w*h) > (wL*hL):
                     maxC = c
                     xL, yL, wL, hL = x, y, w, h
-            
+
+            return maxC, xL, yL, wL, hL
+        
+        def imageFromContour(image, contour):
+            '''Takes an image and a contour, returns iamge with only the pixels within contour + padding'''
+            final = np.zeros(image.shape[:2], dtype="uint8")
+            rows = {} # stores points per row in image contour
+            for point in contour:
+                y = point[0, 1]
+                x = point[0, 0]
+                # Construct a dict of points along each row
+                if not rows.get(y, False):
+                    rows[y] = [x]
+                else:
+                    rows[y].append(x)
+            # Now get the data stored along each defined line of the contour
+            for y, xList in rows.items():
+                if len(xList) > 1:
+                    minX = max(min(xList)-self.padding, 0)
+                    maxX = min(max(xList)+self.padding, final.shape[1])
+                    # Append the data to the final output
+                    final[y, minX:maxX] = image[y, minX:maxX]
+
+            return final
+
+        maxH, maxW = 0, 0
+        for fName, details in sorted(self.images.items()):
+            print(f"Processing {fName}...")
+            # Check for max dimensions, need this for constructing tiff later
+            if (details['width']*details['height']) > (maxW*maxH):
+                    maxW, maxH = details['width'], details['height']
+            # Load the image
+            fPath = details['path']
+            img = cv2.imread(fPath)
+            # Ensure proper channels
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # Get the largest contour
+            maxC, xL, yL, wL, hL = getMaxContour(img)
             # Draw bounding box for the largest contour (should be the tissue section)
-            result = img.copy()
+            # The user should ensure this tightly fits the tissue section before proceeding
+            result = img.copy()    
             cv2.rectangle(result, (xL, yL), (xL+wL, yL+hL), (255, 255, 255), 2)
             
             # Debug line, shows the contour being detected, can be useful
@@ -148,25 +186,48 @@ class SectionHandler:
             cv2.imshow(f"Suggested ROI ({fName})", result)
             cv2.moveWindow(f"Suggested ROI ({fName})", 0,0)
             # If we get a spacebar press we are done, c press draw new poly
-            # TODO: Add the logic to pad to max width after we are done with all masks
-            # TODO: Make it a tiff
             while True:
                 k = cv2.waitKey(1) & 0xFF
                 if k==32:
-                    mask = np.zeros(img.shape[:2], dtype="uint8")
-                    mask[yL:yL+hL,xL:xL+wL] = img[yL:yL+hL,xL:xL+wL]
-                    self.images[fName]['mask'] = mask
+                    final = imageFromContour(img, maxC)               
+                    self.images[fName]['masked'] = final
                     break
                 elif k==99:
+                    # Make a copy to draw the new bounding box
                     custom = img.copy()
+                    # Close remaining windows
                     cv2.destroyAllWindows()
+                    # Get the new image bounds
                     xL, yL, wL, hL = cv2.selectROI(f"Custom ROI ({fName})", custom, showCrosshair=False)
+                    # Write the data to a new image
                     mask = np.zeros(img.shape[:2], dtype="uint8")
                     mask[yL:yL+hL,xL:xL+wL] = img[yL:yL+hL,xL:xL+wL]
-                    self.images[fName]['mask'] = mask
+                    # Get the new contour of this image
+                    maxC, xL, yL, wL, hL = getMaxContour(mask)
+                    # Now we should have the isolated tissue section
+                    final = imageFromContour(mask, maxC)
+                    self.images[fName]['masked'] = final
                     break
         
             cv2.destroyAllWindows()
+    
+    def createExperimentTiff(self, filename):
+        '''Creates a tiff file of the processed experimental sections'''
+        # Empty array of max size
+        tiffArray = np.zeros((len(self.images), self.maxHeight, self.maxWidth), dtype="uint8")
+        # The index tracker
+        index = 0
+        for imageName, details in self.images.items():
+            final = details["masked"] # Get our noise free image
+            # Write it to our array
+            tiffArray[index, 0:final.shape[0], 0:final.shape[1]] = final[0:final.shape[0], 0:final.shape[1]]
+            index += 1
+        # Flip this since sections are ordered anterior to posterior
+        # TODO: Make this a flag dependent on how user ordered sections already
+        tiffArray = np.flip(tiffArray, axis=0)
+        # Write the tif          
+        tf.imwrite(filename, tiffArray,)
 
 handle = SectionHandler('Z:\Richard Dickson\R Brains\R13\Exports\DAPI', ext="png")
 handle.preprocess()
+handle.createExperimentTiff("temp.tif")
