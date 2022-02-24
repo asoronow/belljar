@@ -15,7 +15,7 @@ class SectionHandler:
     to single file extension (i.e. png, jpg). It also supports filtering.
 
     Attributes: directory; the directory this object was generated from
-                images; a dictionary of the valid images and their attribbutes
+`    images; a dictionary of the valid images and their attribbutes
     Methods:
 
     '''

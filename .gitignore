@@ -1,6 +1,9 @@
 # OSX
 .DS_Store
 
+# NRRD
+resources/nrrd/
+
 # Logs
 logs
 *.log
