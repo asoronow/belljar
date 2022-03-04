@@ -1,11 +1,12 @@
 import os
 import numpy as np
+from sklearn import neighbors
 import tensorflow as tf
 import cv2
 from pathlib import Path
+from sklearn.neighbors import NearestNeighbors
 from imutils import build_montages
 import matplotlib
-matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 # Links in case we should need to redownload these, will not be included
@@ -55,7 +56,7 @@ class AutoEncoder:
 
         return autoencoder
 
-def visualize_predictions(decoded, gt, samples=10):
+def visualize_predictions(decoded, gt, samples=20):
 	# initialize our list of output images
 	outputs = None
 	# loop over our number of output samples
@@ -79,6 +80,7 @@ def loadImages(paths):
     '''Loads images given file paths'''
     images = []
     for p in paths:
+        print(p)
         img = cv2.imread(p)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img = cv2.resize(img, (256,256))
@@ -91,6 +93,7 @@ def loadImages(paths):
 
 trainX, testX = train_test_split(absolutePaths, test_size=0.2)
 trainX, testX = loadImages(trainX), loadImages(testX)
+#allSlices = loadImages(absolutePaths)
 
 def train(trainX, testX):
     '''Trains the model'''
@@ -128,6 +131,8 @@ def train(trainX, testX):
     print("[INFO] saving autoencoder...")
     autoencoder.save("hemisphere_model.h5", save_format="h5")
 
+train(trainX, testX)
+
 def euclidean(a, b):
 	# compute and return the euclidean distance between two vectors
 	return np.linalg.norm(a - b)
@@ -149,8 +154,8 @@ def cosine_distance(a, b):
     
     return dist
 
-indexes = list(range(0, trainX.shape[0]))
-
+"""
+indexes = list(range(0, allSlices.shape[0]))
 
 print("[INFO] loading autoencoder model...")
 autoencoder = tf.keras.models.load_model("hemisphere_model.h5")
@@ -160,7 +165,7 @@ encoder = tf.keras.models.Model(inputs=autoencoder.input,
 	outputs=autoencoder.get_layer("encoded").output)
 # quantify the contents of our input images using the encoder
 print("[INFO] encoding images...")
-features = encoder.predict(trainX)
+features = encoder.predict(allSlices)
 
 data = {"indexes": indexes, "features": features}
 def perform_search(queryFeatures, index, maxResults=10):
@@ -180,9 +185,6 @@ def perform_search(queryFeatures, index, maxResults=10):
     return results
 
 
-features_test = encoder.predict(testX)
-
-'''
 # randomly sample a set of testing query image indexes
 queryIdxs = list(range(0, testX.shape[0]))
 queryIdxs = np.random.choice(queryIdxs, size=10,
@@ -209,21 +211,22 @@ for i in queryIdxs:
 	montage = build_montages(images, (256, 256), (2, 5))[0]
 	cv2.imshow("Results", montage)
 	cv2.waitKey(0)
-'''
+
 dapi = loadImages(["M107_s002.png"])
-dapi_features = encoder.predict(dapi)[0]
+dapi_features = features[21] #encoder.predict(dapi)[0]
 results = perform_search(dapi_features, data, maxResults=10)
 images = []
 for (d, j) in results:
     # grab the result image, convert it back to the range
     # [0, 255], and then update the images list
-    image = (trainX[j] * 255).astype("uint8")
+    image = (allSlices[j] * 255).astype("uint8")
     image = np.dstack([image] * 3)
     images.append(image)
 # display the query image
-query = (dapi[0] * 255).astype("uint8")
+query = (allSlices[21] * 255).astype("uint8")
 cv2.imshow("Query", query)
 # build a montage from the results and display it
 montage = build_montages(images, (256, 256), (2, 5))[0]
 cv2.imshow("Results", montage)
 cv2.waitKey(0)
+"""
