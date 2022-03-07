@@ -8,17 +8,14 @@ from tkinter import filedialog, simpledialog
 root = tk.Tk()
 root.withdraw()
 
-simpledialog.Dialog(root, title="Select the detection model")
-modelPath = filedialog.askopenfilename() # smnall batch tophat weights
+modelPath = filedialog.askopenfilename(title="Select the model file") # smnall batch tophat weights
 detectionModel = Yolov5DetectionModel(
     model_path=modelPath,
-    confidence_threshold=0.8,
+    confidence_threshold=0.5,
     device='cuda:0'
 )
 
-simpledialog.Dialog(root, title="Select the input directory")
 inputDirectory = filedialog.askdirectory(title="Select input directory")
-simpledialog.Dialog(root, title="Select the output directory")
 outputDirectory = filedialog.askdirectory(title="Select output directory")
 
 for file in os.listdir(inputDirectory):
@@ -27,7 +24,7 @@ for file in os.listdir(inputDirectory):
     # Read it in with cv2
     img = cv2.imread(filePath)
     height, width, channels = img.shape
-    # Create a blank image for recording predictions
+    # Create a blank image for recording predictionsY
     predictionImage = np.zeros((height, width, 3))
     predictionImage[:,:,:] = 255 # make it blank
     # Find cells with SAHI and Model
@@ -43,9 +40,10 @@ for file in os.listdir(inputDirectory):
     # Make a dot at each object
     for p in predictionList:
         x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
-        cv2.circle(predictionImage, ((mX - (mX - x)//2),(mY - (mY - y)//2)), 8, (0,0,255), -1)
+        cv2.circle(predictionImage, ((mX - (mX - x)//2),(mY - (mY - y)//2)), 4, (0,0,255), -1)
     # No extension filename
     stripped = file.replace(file[file.find("."):len(file)], "")
+    print(f"Counted {len(predictionList)} cells")
     # Write the prediction image
     cv2.imwrite(os.path.join(outputDirectory, f"Predictions_{stripped}.png"), predictionImage)
     # Write the raw results to a pkl for later review or reuse
