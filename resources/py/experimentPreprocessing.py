@@ -1,12 +1,9 @@
-from turtle import width
 import cv2
 import os
 import numpy as np
 import tifffile as tf
-from skimage.morphology import white_tophat, disk
 from PIL import Image
 from PIL import UnidentifiedImageError
-from selectiontools import PolygonSelectionTool
 
 class SectionHandler:
     '''
