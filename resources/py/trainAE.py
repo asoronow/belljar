@@ -11,9 +11,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import cv2
 import os
+from scipy import spatial
 
 class Encoder(nn.Module):
-    def __init__(self, encoded_space_dim,fc2_input_dim):
+    def __init__(self, encoded_space_dim):
         super().__init__()
         
         ### Convolutional section
@@ -31,9 +32,9 @@ class Encoder(nn.Module):
         self.flatten = nn.Flatten(start_dim=1)
         ### Linear section
         self.encoder_lin = nn.Sequential(
-            nn.Linear(30752 * 2, 128),
+            nn.Linear(30752 * 2, 256),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(128, encoded_space_dim)
+            nn.Linear(256, encoded_space_dim)
         )
         
     def forward(self, x):
@@ -43,12 +44,12 @@ class Encoder(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    def __init__(self, encoded_space_dim,fc2_input_dim):
+    def __init__(self, encoded_space_dim):
         super().__init__()
         self.decoder_lin = nn.Sequential(
-            nn.Linear(encoded_space_dim, 128),
+            nn.Linear(encoded_space_dim, 256),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(128, 30752 * 2 ),
+            nn.Linear(256, 30752 * 2 ),
             nn.LeakyReLU(inplace=True),
         )
 
@@ -89,7 +90,7 @@ class Nissl(Dataset):
 
 fileList = os.listdir("../nrrd/png") # path to flat pngs
 absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
-allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
+allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
 train_dataset, test_dataset = train_test_split(allSlices, test_size=0.2)
 train_dataset, test_dataset = Nissl(train_dataset, transform=transforms.ToTensor()), Nissl(test_dataset, transform=transforms.ToTensor())
 
@@ -98,9 +99,9 @@ m=len(train_dataset)
 train_data, val_data = random_split(train_dataset, [m-int(m*0.2), int(m*0.2)])
 batch_size=256
 
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
-valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, pin_memory=True)
+valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, pin_memory=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,shuffle=True, pin_memory=True)
 
 
 ### Define the loss function
@@ -113,14 +114,14 @@ lr= 0.0001
 d = 4
 
 #model = Autoencoder(encoded_space_dim=encoded_space_dim)
-encoder = Encoder(encoded_space_dim=d,fc2_input_dim=128)
-decoder = Decoder(encoded_space_dim=d,fc2_input_dim=128)
+encoder = Encoder(encoded_space_dim=d)
+decoder = Decoder(encoded_space_dim=d)
 params_to_optimize = [
     {'params': encoder.parameters()},
     {'params': decoder.parameters()}
 ]
 
-optim = torch.optim.Adam(params_to_optimize, lr=lr, weight_decay=1e-05)
+optim = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=1e-05)
 
 # Check if the GPU is available
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -150,7 +151,7 @@ def train_epoch(encoder, decoder, device, dataloader, loss_fn, optimizer):
         loss.backward()
         optimizer.step()
         # Print batch loss
-        print('\t partial train loss (single batch): %f' % (loss.data))
+        # print('\t partial train loss (single batch): %f' % (loss.data))
         train_loss.append(loss.detach().cpu().numpy())
 
     return np.mean(train_loss)
@@ -228,4 +229,20 @@ encoder.eval()
 
 decoder.load_state_dict(torch.load('decoder.pt'))
 decoder.eval()
-plot_ae_outputs(encoder,decoder,n=10)
+# plot_ae_outputs(encoder,decoder,n=10)
+
+# TODO: Fix this, need to use dataloader this causes errors
+atlasEncoding = encoder(allSlices)
+atlasEncoding = atlasEncoding.cpu()
+
+sampleImage = cv2.cvtColor(cv2.resize(cv2.imread('M457_s008.png'), (256,256)), cv2.COLOR_BGR2GRAY)
+sampleEncoding = encoder(sampleImage)
+sampleEncoding = sampleEncoding.cpu()
+
+allSimilarities = {}
+for i, embeding in enumerate(atlasEncoding):
+    allSimilarities[i] = (1-spatial.distance.cosine(sampleEncoding, embeding))
+
+for key in sorted(allSimilarities, key=allSimilarities.get, reverse=True)[:10]:
+    cv2.imshow(absolutePaths[key])
+    cv2.waitKey(0)
