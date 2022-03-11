@@ -20,7 +20,7 @@ def createTrainingSet():
     for r in range(-10,11,1):
       data, head = nrrd.read(f"../nrrd/r_nissl_{r}.nrrd")
       z, x, y = data.shape
-      for slice in range(z):
+      for slice in range(100,z-100, 1):
           image = data[slice, :, :]
           cv2.imwrite(f"../nrrd/png/r_nissil_{r}_{slice}.png", image.astype(np.uint16))
 

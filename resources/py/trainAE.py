@@ -1,3 +1,4 @@
+from random import randint
 import matplotlib.pyplot as plt 
 import numpy as np
 import pandas as pd 
@@ -17,12 +18,12 @@ class Encoder(nn.Module):
         
         ### Convolutional section
         self.encoder_cnn = nn.Sequential(
-            nn.Conv2d(1, 8, 3, stride=2, padding=1),
+            nn.Conv2d(1, 8 * 2, 3, stride=2, padding=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(8, 16, 3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
+            nn.Conv2d(8 * 2, 16 * 2, 3, stride=2, padding=1),
+            nn.BatchNorm2d(16 * 2),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(16, 32, 3, stride=2, padding=0),
+            nn.Conv2d(16 * 2 , 32 * 2, 3, stride=2, padding=0),
             nn.LeakyReLU(inplace=True),
         )
         
@@ -30,7 +31,7 @@ class Encoder(nn.Module):
         self.flatten = nn.Flatten(start_dim=1)
         ### Linear section
         self.encoder_lin = nn.Sequential(
-            nn.Linear(30752, 128),
+            nn.Linear(30752 * 2, 128),
             nn.LeakyReLU(inplace=True),
             nn.Linear(128, encoded_space_dim)
         )
@@ -47,28 +48,28 @@ class Decoder(nn.Module):
         self.decoder_lin = nn.Sequential(
             nn.Linear(encoded_space_dim, 128),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(128, 30752),
+            nn.Linear(128, 30752 * 2 ),
             nn.LeakyReLU(inplace=True),
         )
 
-        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(32, 31, 31))
+        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(32*2, 31 , 31))
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, 3, 
+            nn.ConvTranspose2d(32 * 2, 16 * 2, 3, 
             stride=2, output_padding=1),
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(16 * 2),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(8),
+            nn.ConvTranspose2d(16 * 2, 8 * 2, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(8 * 2),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(8 * 2, 1, 3, stride=2, padding=1, output_padding=1)
         )
         
     def forward(self, x):
         x = self.decoder_lin(x)
         x = self.unflatten(x)
         x = self.decoder_conv(x)
-        x = torch.relu(x)
+        x = torch.nn.functional.leaky_relu(x)
         return x
 
 class Nissl(Dataset):
@@ -88,7 +89,7 @@ class Nissl(Dataset):
 
 fileList = os.listdir("../nrrd/png") # path to flat pngs
 absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
-allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
+allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
 train_dataset, test_dataset = train_test_split(allSlices, test_size=0.2)
 train_dataset, test_dataset = Nissl(train_dataset, transform=transforms.ToTensor()), Nissl(test_dataset, transform=transforms.ToTensor())
 
@@ -106,7 +107,7 @@ test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,sh
 loss_fn = torch.nn.MSELoss()
 
 ### Define an optimizer (both for the encoder and the decoder!)
-lr= 0.001
+lr= 0.0001
 
 ### Initialize the two networks
 d = 4
@@ -184,7 +185,7 @@ def plot_ae_outputs(encoder,decoder,n=10):
     plt.figure(figsize=(16,4.5))
     for i in range(n):
       ax = plt.subplot(2,n,i+1)
-      img = test_dataset[n].unsqueeze(0).to(device)
+      img = test_dataset[randint(0,len(test_dataset))].unsqueeze(0).to(device)
       encoder.eval()
       decoder.eval()
       with torch.no_grad():
@@ -202,24 +203,29 @@ def plot_ae_outputs(encoder,decoder,n=10):
          ax.set_title('Reconstructed images')
     plt.show()
 
-num_epochs = 200
-diz_loss = {'train_loss':[],'val_loss':[]}
-for epoch in range(num_epochs):
-    train_loss = train_epoch(encoder,decoder,device, train_loader,loss_fn,optim)
-    val_loss = test_epoch(encoder,decoder,device,test_loader,loss_fn)
-    print('\n EPOCH {}/{} \t train loss {} \t val loss {}'.format(epoch + 1, num_epochs,train_loss,val_loss))
-    diz_loss['train_loss'].append(train_loss)
-    diz_loss['val_loss'].append(val_loss)
+# num_epochs = 200
+# diz_loss = {'train_loss':[],'val_loss':[]}
+# for epoch in range(num_epochs):
+#     train_loss = train_epoch(encoder,decoder,device, train_loader,loss_fn,optim)
+#     val_loss = test_epoch(encoder,decoder,device,test_loader,loss_fn)
+#     print('\n EPOCH {}/{} \t train loss {} \t val loss {}'.format(epoch + 1, num_epochs,train_loss,val_loss))
+#     diz_loss['train_loss'].append(train_loss)
+#     diz_loss['val_loss'].append(val_loss)
 
-    if (epoch+1) % 20 == 0:
-        #plot_ae_outputs(encoder,decoder,n=10)
-        torch.save(encoder.state_dict(), 'encoder.pt')
-        torch.save(decoder.state_dict(), 'decoder.pt')
+# torch.save(encoder.state_dict(), 'encoder.pt')
+# torch.save(decoder.state_dict(), 'decoder.pt')
 
-plt.figure(figsize=(10,8))
-plt.xlabel('Epoch')
-plt.ylabel('Average Loss')
-plt.legend()
-plt.semilogy(diz_loss['train_loss'], label='Train')
-plt.semilogy(diz_loss['val_loss'], label='Valid')
-plt.show()
+# plt.figure(figsize=(10,8))
+# plt.xlabel('Epoch')
+# plt.ylabel('Average Loss')
+# plt.legend()
+# plt.semilogy(diz_loss['train_loss'], label='Train')
+# plt.semilogy(diz_loss['val_loss'], label='Valid')
+# plt.show()
+
+encoder.load_state_dict(torch.load('encoder.pt'))
+encoder.eval()
+
+decoder.load_state_dict(torch.load('decoder.pt'))
+decoder.eval()
+plot_ae_outputs(encoder,decoder,n=10)
