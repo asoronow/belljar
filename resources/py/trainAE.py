@@ -1,3 +1,4 @@
+from msilib import sequence
 from random import randint
 import matplotlib.pyplot as plt 
 import numpy as np
@@ -10,8 +11,9 @@ from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
 import cv2
-import os
+import os, pickle
 from scipy import spatial
+from sklearn.neighbors import NearestNeighbors
 
 class Encoder(nn.Module):
     def __init__(self, encoded_space_dim):
@@ -74,10 +76,11 @@ class Decoder(nn.Module):
         return x
 
 class Nissl(Dataset):
-    def __init__(self, images, transform=None, target_transform=None):
+    def __init__(self, images, labels=None, transform=None, target_transform=None):
         self.images = images
         self.transform = transform
         self.target_transform = target_transform
+        self.labels = labels
 
     def __len__(self):
         return len(self.images)
@@ -88,48 +91,9 @@ class Nissl(Dataset):
             image = self.transform(image)
         return image
 
-fileList = os.listdir("../nrrd/png") # path to flat pngs
-absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
-allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
-train_dataset, test_dataset = train_test_split(allSlices, test_size=0.2)
-train_dataset, test_dataset = Nissl(train_dataset, transform=transforms.ToTensor()), Nissl(test_dataset, transform=transforms.ToTensor())
-
-m=len(train_dataset)
-
-train_data, val_data = random_split(train_dataset, [m-int(m*0.2), int(m*0.2)])
-batch_size=256
-
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, pin_memory=True)
-valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, pin_memory=True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,shuffle=True, pin_memory=True)
-
-
-### Define the loss function
-loss_fn = torch.nn.MSELoss()
-
-### Define an optimizer (both for the encoder and the decoder!)
-lr= 0.0001
-
-### Initialize the two networks
-d = 4
-
-#model = Autoencoder(encoded_space_dim=encoded_space_dim)
-encoder = Encoder(encoded_space_dim=d)
-decoder = Decoder(encoded_space_dim=d)
-params_to_optimize = [
-    {'params': encoder.parameters()},
-    {'params': decoder.parameters()}
-]
-
-optim = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=1e-05)
-
-# Check if the GPU is available
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-print(f'Selected device: {device}')
-
-# Move both the encoder and the decoder to the selected device
-encoder.to(device)
-decoder.to(device)
+    def getPath(self, idx):
+        label = self.labels[idx]
+        return label
 
 def train_epoch(encoder, decoder, device, dataloader, loss_fn, optimizer):
     # Set train mode for both the encoder and the decoder
@@ -182,10 +146,10 @@ def test_epoch(encoder, decoder, device, dataloader, loss_fn):
         val_loss = loss_fn(conc_out, conc_label)
     return val_loss.data
 
-def plot_ae_outputs(encoder,decoder,n=10):
-    plt.figure(figsize=(16,4.5))
+def plot_ae_outputs(encoder,decoder,n=4):
+    plt.figure(figsize=(5,10))
     for i in range(n):
-      ax = plt.subplot(2,n,i+1)
+      ax = plt.subplot(n,i+1,2)
       img = test_dataset[randint(0,len(test_dataset))].unsqueeze(0).to(device)
       encoder.eval()
       decoder.eval()
@@ -196,7 +160,7 @@ def plot_ae_outputs(encoder,decoder,n=10):
       ax.get_yaxis().set_visible(False)  
       if i == n//2:
         ax.set_title('Original images')
-      ax = plt.subplot(2, n, i + 1 + n)
+      ax = plt.subplot(n, i + 1 + n, 2)
       plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
       ax.get_xaxis().set_visible(False)
       ax.get_yaxis().set_visible(False)  
@@ -204,45 +168,125 @@ def plot_ae_outputs(encoder,decoder,n=10):
          ax.set_title('Reconstructed images')
     plt.show()
 
-# num_epochs = 200
-# diz_loss = {'train_loss':[],'val_loss':[]}
-# for epoch in range(num_epochs):
-#     train_loss = train_epoch(encoder,decoder,device, train_loader,loss_fn,optim)
-#     val_loss = test_epoch(encoder,decoder,device,test_loader,loss_fn)
-#     print('\n EPOCH {}/{} \t train loss {} \t val loss {}'.format(epoch + 1, num_epochs,train_loss,val_loss))
-#     diz_loss['train_loss'].append(train_loss)
-#     diz_loss['val_loss'].append(val_loss)
+def runTraining(num_epochs=300):
+    fileList = os.listdir("../nrrd/png") # path to flat pngs
+    absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
+    
+    allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
+   
+    train_dataset, test_dataset = train_test_split(allSlices, test_size=0.2)
+    train_dataset, test_dataset = Nissl(train_dataset, transform=transforms.ToTensor()), Nissl(test_dataset, transform=transforms.ToTensor())
 
-# torch.save(encoder.state_dict(), 'encoder.pt')
-# torch.save(decoder.state_dict(), 'decoder.pt')
+    m=len(train_dataset)
 
-# plt.figure(figsize=(10,8))
-# plt.xlabel('Epoch')
-# plt.ylabel('Average Loss')
-# plt.legend()
-# plt.semilogy(diz_loss['train_loss'], label='Train')
-# plt.semilogy(diz_loss['val_loss'], label='Valid')
-# plt.show()
+    train_data, val_data = random_split(train_dataset, [m-int(m*0.2), int(m*0.2)])
+    batch_size=256
 
-encoder.load_state_dict(torch.load('encoder.pt'))
-encoder.eval()
+    train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, pin_memory=True)
+    valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,shuffle=True, pin_memory=True)
 
-decoder.load_state_dict(torch.load('decoder.pt'))
-decoder.eval()
-# plot_ae_outputs(encoder,decoder,n=10)
+    loss_fn = torch.nn.MSELoss()
+    lr= 0.0001
+    d = 16
 
-# TODO: Fix this, need to use dataloader this causes errors
-atlasEncoding = encoder(allSlices)
-atlasEncoding = atlasEncoding.cpu()
+    encoder = Encoder(encoded_space_dim=d)
+    decoder = Decoder(encoded_space_dim=d)
+    params_to_optimize = [
+        {'params': encoder.parameters()},
+        {'params': decoder.parameters()}
+    ]
 
-sampleImage = cv2.cvtColor(cv2.resize(cv2.imread('M457_s008.png'), (256,256)), cv2.COLOR_BGR2GRAY)
-sampleEncoding = encoder(sampleImage)
-sampleEncoding = sampleEncoding.cpu()
+    optim = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=1e-05)
 
-allSimilarities = {}
-for i, embeding in enumerate(atlasEncoding):
-    allSimilarities[i] = (1-spatial.distance.cosine(sampleEncoding, embeding))
+    # Check if the GPU is available
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    print(f'Selected device: {device}')
 
-for key in sorted(allSimilarities, key=allSimilarities.get, reverse=True)[:10]:
-    cv2.imshow(absolutePaths[key])
-    cv2.waitKey(0)
+    # Move both the encoder and the decoder to the selected device
+    encoder.to(device)
+    decoder.to(device)
+
+    diz_loss = {'train_loss':[],'val_loss':[]}
+    for epoch in range(num_epochs):
+        train_loss = train_epoch(encoder,decoder,device, train_loader,loss_fn,optim)
+        val_loss = test_epoch(encoder,decoder,device,test_loader,loss_fn)
+        print('\n EPOCH {}/{} \t train loss {} \t val loss {}'.format(epoch + 1, num_epochs,train_loss,val_loss))
+        diz_loss['train_loss'].append(train_loss)
+        diz_loss['val_loss'].append(val_loss)
+
+    torch.save(encoder.state_dict(), 'encoder.pt')
+    torch.save(decoder.state_dict(), 'decoder.pt')
+
+    plt.figure(figsize=(10,8))
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Loss')
+    plt.legend()
+    plt.semilogy(diz_loss['train_loss'], label='Train')
+    plt.semilogy(diz_loss['val_loss'], label='Valid')
+    plt.show()
+
+
+def loadModels(d=16):
+    encoder = Encoder(encoded_space_dim=d)
+    decoder = Decoder(encoded_space_dim=d)
+    
+    # Check if the GPU is available
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    print(f'Selected device: {device}')
+
+    # Move both the encoder and the decoder to the selected device
+    encoder.to(device)
+    decoder.to(device)
+    
+    encoder.load_state_dict(torch.load('encoder.pt'))
+    encoder.eval()
+
+    decoder.load_state_dict(torch.load('decoder.pt'))
+    decoder.eval()
+
+    return encoder, decoder, device
+
+def embedAtlasDataset(images, labels):
+    fileList = os.listdir("../nrrd/png") # path to flat pngs
+    absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
+    
+    allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
+    
+    encoder, decoder, device = loadModels()
+    
+    atlasDataset = Nissl(allSlices, labels=labels, transform=transforms.ToTensor())
+    atlasLoader = torch.utils.data.DataLoader(atlasDataset, batch_size=1, pin_memory=True)
+    atlasEncoding = []
+    for batch in atlasLoader:
+        batch = batch.to(device)
+        encoded = encoder(batch)
+        atlasEncoding.append(encoded.detach().cpu().squeeze().numpy())
+    
+    return atlasEncoding
+
+def compareSampleImages(images):
+    encoder, decoder, device = loadModels()
+
+    atlasEncoding = {}
+    with open("wholebrain_embedings_paths.pkl", "rb") as f:
+        atlasEncoding = pickle.load(f)
+
+    sampleDataset = Nissl(images, transform=transforms.ToTensor())
+    sampleLoader = torch.utils.data.DataLoader(sampleDataset, batch_size=1, pin_memory=True)
+    sampleEncoding = []
+    for batch in sampleLoader:
+        batch = batch.to(device)
+        encoded = encoder(batch)
+        sampleEncoding.append(encoded.detach().cpu().squeeze().numpy())
+
+    knn = NearestNeighbors(metric="minkowski")
+    knn.fit(list(atlasEncoding.values()))
+    _, indicies = knn.kneighbors(sampleEncoding)
+    paths = list(atlasEncoding.keys())
+    for idx in indicies.flatten():
+        cv2.imshow('Match', cv2.imread(paths[idx]))
+        cv2.waitKey(0)
+
+if __name__ == '__main__':
+    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('305N.jpg'), (256,256)), cv2.COLOR_BGR2GRAY)])
