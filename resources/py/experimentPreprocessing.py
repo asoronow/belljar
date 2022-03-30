@@ -4,6 +4,8 @@ import numpy as np
 import tifffile as tf
 from PIL import Image
 from PIL import UnidentifiedImageError
+import tkinter as tk
+from tkinter import filedialog, simpledialog
 
 class SectionHandler:
     '''
@@ -225,6 +227,15 @@ class SectionHandler:
         # Write the tif          
         tf.imwrite(filename, tiffArray,)
 
-handle = SectionHandler('Z:\Richard Dickson\R Brains\R13\Exports\DAPI', ext="png")
-handle.preprocess()
-handle.createExperimentTiff("temp.tif")
+    def exportMaskedImages(self, outputDirectory):
+        '''Export the masked images as PNG files to the specified directory'''
+        for imageName, details in self.images.item():
+            final = details['masked']
+            cv2.imwrite(os.path.join(outputDirectory, imageName + "_masked.png"), final)
+
+if __name__ == '__main__':
+    inputDirectory = filedialog.askdirectory(title="Select input directory")
+    outputDirectory = filedialog.askdirectory(title="Select output directory")
+    handle = SectionHandler(inputDirectory, ext="png")
+    handle.preprocess()
+    handle.exportMaskedImages(outputDirectory)

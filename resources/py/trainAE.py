@@ -146,7 +146,7 @@ def test_epoch(encoder, decoder, device, dataloader, loss_fn):
         val_loss = loss_fn(conc_out, conc_label)
     return val_loss.data
 
-def plot_ae_outputs(encoder,decoder,n=4):
+def plot_ae_outputs(encoder,decoder, test_dataset, device,n=4):
     plt.figure(figsize=(5,10))
     for i in range(n):
       ax = plt.subplot(n,i+1,2)
@@ -169,8 +169,8 @@ def plot_ae_outputs(encoder,decoder,n=4):
     plt.show()
 
 def runTraining(num_epochs=300):
-    fileList = os.listdir("../nrrd/png") # path to flat pngs
-    absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
+    fileList = os.listdir("../nrrd/png_half") # path to flat pngs
+    absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
     
     allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
    
@@ -215,8 +215,8 @@ def runTraining(num_epochs=300):
         diz_loss['train_loss'].append(train_loss)
         diz_loss['val_loss'].append(val_loss)
 
-    torch.save(encoder.state_dict(), 'encoder.pt')
-    torch.save(decoder.state_dict(), 'decoder.pt')
+    torch.save(encoder.state_dict(), 'encoder_half.pt')
+    torch.save(decoder.state_dict(), 'decoder_half.pt')
 
     plt.figure(figsize=(10,8))
     plt.xlabel('Epoch')
@@ -239,23 +239,23 @@ def loadModels(d=16):
     encoder.to(device)
     decoder.to(device)
     
-    encoder.load_state_dict(torch.load('encoder.pt'))
+    encoder.load_state_dict(torch.load('encoder_half.pt'))
     encoder.eval()
 
-    decoder.load_state_dict(torch.load('decoder.pt'))
+    decoder.load_state_dict(torch.load('decoder_half.pt'))
     decoder.eval()
 
     return encoder, decoder, device
 
-def embedAtlasDataset(images, labels):
-    fileList = os.listdir("../nrrd/png") # path to flat pngs
-    absolutePaths = [os.path.join('../nrrd/png', p) for p in fileList]
+def embedAtlasDataset():
+    fileList = os.listdir("../nrrd/png_half") # path to flat pngs
+    absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
     
     allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
     
     encoder, decoder, device = loadModels()
     
-    atlasDataset = Nissl(allSlices, labels=labels, transform=transforms.ToTensor())
+    atlasDataset = Nissl(allSlices, labels=fileList, transform=transforms.ToTensor())
     atlasLoader = torch.utils.data.DataLoader(atlasDataset, batch_size=1, pin_memory=True)
     atlasEncoding = []
     for batch in atlasLoader:
@@ -263,14 +263,18 @@ def embedAtlasDataset(images, labels):
         encoded = encoder(batch)
         atlasEncoding.append(encoded.detach().cpu().squeeze().numpy())
     
-    return atlasEncoding
+    finalEncoding = {}
+    for idx, vector in enumerate(atlasEncoding):
+        finalEncoding[absolutePaths[idx]] = vector
 
-def compareSampleImages(images):
+    return finalEncoding
+
+def compareSampleImages(images, half=False):
     encoder, decoder, device = loadModels()
 
-    atlasEncoding = {}
-    with open("wholebrain_embedings_paths.pkl", "rb") as f:
-        atlasEncoding = pickle.load(f)
+    atlasEncoding = embedAtlasDataset()
+    # with open("wholebrain_embedings_paths.pkl", "rb") as f:
+    #     atlasEncoding = pickle.load(f)
 
     sampleDataset = Nissl(images, transform=transforms.ToTensor())
     sampleLoader = torch.utils.data.DataLoader(sampleDataset, batch_size=1, pin_memory=True)
@@ -280,13 +284,15 @@ def compareSampleImages(images):
         encoded = encoder(batch)
         sampleEncoding.append(encoded.detach().cpu().squeeze().numpy())
 
-    knn = NearestNeighbors(metric="minkowski")
+    knn = NearestNeighbors(metric="euclidean")
     knn.fit(list(atlasEncoding.values()))
     _, indicies = knn.kneighbors(sampleEncoding)
     paths = list(atlasEncoding.keys())
     for idx in indicies.flatten():
+        print(paths[idx])
         cv2.imshow('Match', cv2.imread(paths[idx]))
         cv2.waitKey(0)
 
 if __name__ == '__main__':
-    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('305N.jpg'), (256,256)), cv2.COLOR_BGR2GRAY)])
+    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('M466_s037.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
+    #runTraining()

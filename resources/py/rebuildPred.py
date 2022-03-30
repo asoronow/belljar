@@ -27,7 +27,6 @@ for file in os.listdir(inputDirectory):
         # Create a blank image for recording predictions
         predictionImage = np.zeros((height, width, 3))
         predictionImage[:,:,:] = 255 # make it blank
-        # Find cells with SAHI and Model
       
         # Make a dot at each object
         for p in predictionList:
