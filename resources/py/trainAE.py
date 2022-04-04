@@ -149,7 +149,7 @@ def test_epoch(encoder, decoder, device, dataloader, loss_fn):
 def plot_ae_outputs(encoder,decoder, test_dataset, device,n=4):
     plt.figure(figsize=(5,10))
     for i in range(n):
-      ax = plt.subplot(n,i+1,2)
+      ax = plt.subplot(n, 2, i)
       img = test_dataset[randint(0,len(test_dataset))].unsqueeze(0).to(device)
       encoder.eval()
       decoder.eval()
@@ -188,7 +188,7 @@ def runTraining(num_epochs=300):
 
     loss_fn = torch.nn.MSELoss()
     lr= 0.0001
-    d = 16
+    d = 1024
 
     encoder = Encoder(encoded_space_dim=d)
     decoder = Decoder(encoded_space_dim=d)

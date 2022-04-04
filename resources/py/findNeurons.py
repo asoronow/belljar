@@ -30,8 +30,8 @@ for file in os.listdir(inputDirectory):
     # Find cells with SAHI and Model
     result = get_sliced_prediction(img,
                                     detection_model=detectionModel,
-                                    slice_height=256,
-                                    slice_width=256,
+                                    slice_height=640,
+                                    slice_width=640,
                                     overlap_height_ratio = 0.2,
                                     overlap_width_ratio = 0.2,
                                 )
@@ -48,4 +48,6 @@ for file in os.listdir(inputDirectory):
     cv2.imwrite(os.path.join(outputDirectory, f"Predictions_{stripped}.png"), predictionImage)
     # Write the raw results to a pkl for later review or reuse
     with open(os.path.join(outputDirectory, f"Predictions_{stripped}.pkl"), "wb") as f:
+        # Add the image dimensions as a tuple at the end of the list for reconstruction
+        predictionList.append((height,width))
         pickle.dump(predictionList, f)
