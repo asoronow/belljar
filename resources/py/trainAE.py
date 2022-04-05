@@ -215,8 +215,8 @@ def runTraining(num_epochs=300):
         diz_loss['train_loss'].append(train_loss)
         diz_loss['val_loss'].append(val_loss)
 
-    torch.save(encoder.state_dict(), 'encoder_half.pt')
-    torch.save(decoder.state_dict(), 'decoder_half.pt')
+    torch.save(encoder.state_dict(), '../models/encoder_half.pt')
+    torch.save(decoder.state_dict(), '../models/decoder_half.pt')
 
     plt.figure(figsize=(10,8))
     plt.xlabel('Epoch')
@@ -239,10 +239,10 @@ def loadModels(d=16):
     encoder.to(device)
     decoder.to(device)
     
-    encoder.load_state_dict(torch.load('encoder_half.pt'))
+    encoder.load_state_dict(torch.load('../models/encoder_half.pt'))
     encoder.eval()
 
-    decoder.load_state_dict(torch.load('decoder_half.pt'))
+    decoder.load_state_dict(torch.load('../models/decoder_half.pt'))
     decoder.eval()
 
     return encoder, decoder, device
