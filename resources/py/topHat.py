@@ -27,5 +27,5 @@ for file in os.listdir('.'):
 	img8 = (img / 256).astype('uint8')
 	kernel = np.ones((filterSize,filterSize),np.uint8)
 	tophat = cv2.morphologyEx(img8, cv2.MORPH_TOPHAT, kernel)
-	final = adjust_gamma(tophat, 1.5)
+	final = adjust_gamma(tophat, 1.75)
 	tf.imwrite(f"{outputDirectory}/{file}",  final)

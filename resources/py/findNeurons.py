@@ -33,8 +33,8 @@ for file in os.listdir(inputDirectory):
                                         detection_model=detectionModel,
                                         slice_height=640,
                                         slice_width=640,
-                                        overlap_height_ratio = 0.2,
-                                        overlap_width_ratio = 0.2,
+                                        overlap_height_ratio = 0.5,
+                                        overlap_width_ratio = 0.5,
                                     )
         # List of objects we found
         predictionList = result.object_prediction_list

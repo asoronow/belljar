@@ -2,6 +2,8 @@ import os
 import numpy as np
 import cv2
 from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, simpledialog
 
 # Links in case we should need to redownload these, will not be included
 nisslDownloadLink = "http://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf/ara_nissl/ara_nissil_10.nrrd"
@@ -9,3 +11,9 @@ annotationDownloadLink = "http://download.alleninstitute.org/informatics-archive
 
 fileList = os.listdir("../nrrd/png") # path to flat pngs
 absolutePaths = [os.path.abspath(p) for p in fileList]
+
+root = tk.Tk()
+root.withdraw()
+
+simpledialog.Dialog(root, title="Select the input directory")
+inputDirectory = filedialog.askdirectory(title="Select input directory")
