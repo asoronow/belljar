@@ -1,20 +1,15 @@
-from msilib import sequence
 from random import randint
 import matplotlib.pyplot as plt 
 import numpy as np
-import pandas as pd 
 import torch
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset, random_split
 from sklearn.model_selection import train_test_split
 from torch import nn
-import torch.nn.functional as F
-import torch.optim as optim
 import cv2
 import os, pickle
-from scipy import spatial
 from sklearn.neighbors import NearestNeighbors
-
+from sklearn.metrics.pairwise import cosine_similarity
 class Encoder(nn.Module):
     def __init__(self, encoded_space_dim):
         super().__init__()
@@ -146,29 +141,26 @@ def test_epoch(encoder, decoder, device, dataloader, loss_fn):
         val_loss = loss_fn(conc_out, conc_label)
     return val_loss.data
 
-def plot_ae_outputs(encoder,decoder, test_dataset, device,n=4):
-    plt.figure(figsize=(5,10))
-    for i in range(n):
-      ax = plt.subplot(n, 2, i)
+def plot_ae_outputs(encoder, decoder, test_dataset, device,n=4):
+    fig, ax = plt.subplots(4, 2, sharex='col', sharey='row',figsize=(5, 10))
+    ax[0, 0].title.set_text('Real')
+    ax[0, 1].title.set_text('Prediksi')
+    for i in range(n):    
       img = test_dataset[randint(0,len(test_dataset))].unsqueeze(0).to(device)
       encoder.eval()
       decoder.eval()
       with torch.no_grad():
          rec_img  = decoder(encoder(img))
-      plt.imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
-      ax.get_xaxis().set_visible(False)
-      ax.get_yaxis().set_visible(False)  
-      if i == n//2:
-        ax.set_title('Original images')
-      ax = plt.subplot(n, i + 1 + n, 2)
-      plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
-      ax.get_xaxis().set_visible(False)
-      ax.get_yaxis().set_visible(False)  
-      if i == n//2:
-         ax.set_title('Reconstructed images')
+      ax[i, 0].imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
+      ax[i, 0].get_xaxis().set_visible(False)
+      ax[i, 0].get_yaxis().set_visible(False)  
+      ax[i, 1].imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
+      ax[i, 1].get_xaxis().set_visible(False)
+      ax[i, 1].get_yaxis().set_visible(False)  
+
     plt.show()
 
-def runTraining(num_epochs=300):
+def runTraining(num_epochs=600):
     fileList = os.listdir("../nrrd/png_half") # path to flat pngs
     absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
     
@@ -188,7 +180,7 @@ def runTraining(num_epochs=300):
 
     loss_fn = torch.nn.MSELoss()
     lr= 0.0001
-    d = 1024
+    d = 2056
 
     encoder = Encoder(encoded_space_dim=d)
     decoder = Decoder(encoded_space_dim=d)
@@ -227,7 +219,7 @@ def runTraining(num_epochs=300):
     plt.show()
 
 
-def loadModels(d=16):
+def loadModels(d=2056):
     encoder = Encoder(encoded_space_dim=d)
     decoder = Decoder(encoded_space_dim=d)
     
@@ -272,27 +264,35 @@ def embedAtlasDataset():
 def compareSampleImages(images, half=False):
     encoder, decoder, device = loadModels()
 
-    atlasEncoding = embedAtlasDataset()
-    # with open("wholebrain_embedings_paths.pkl", "rb") as f:
-    #     atlasEncoding = pickle.load(f)
+    atlasEncoding = {}
+    with open("half_embedings.pkl", "rb") as f:
+        atlasEncoding = pickle.load(f)
 
     sampleDataset = Nissl(images, transform=transforms.ToTensor())
     sampleLoader = torch.utils.data.DataLoader(sampleDataset, batch_size=1, pin_memory=True)
     sampleEncoding = []
     for batch in sampleLoader:
+        # cv2.imshow("image", batch.cpu().squeeze().numpy())
         batch = batch.to(device)
         encoded = encoder(batch)
         sampleEncoding.append(encoded.detach().cpu().squeeze().numpy())
 
-    knn = NearestNeighbors(metric="euclidean")
-    knn.fit(list(atlasEncoding.values()))
-    _, indicies = knn.kneighbors(sampleEncoding)
-    paths = list(atlasEncoding.keys())
-    for idx in indicies.flatten():
-        print(paths[idx])
-        cv2.imshow('Match', cv2.imread(paths[idx]))
+    scores = {}
+    for path, embedding in atlasEncoding.items():
+        scores[path] = cosine_similarity([embedding], [sampleEncoding[0]])
+    scores = {k: v for k, v in sorted(scores.items(), key=lambda item: item[1])}
+    for path, score in scores.items():
+        cv2.imshow("Match", cv2.imread(path))
         cv2.waitKey(0)
-
 if __name__ == '__main__':
-    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('M466_s037.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
-    #runTraining()
+    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('sample_dapi.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
+    # runTraining()
+    # encoder, decoder, device = loadModels()
+    # fileList = os.listdir("../nrrd/png_half") # path to flat pngs
+    # absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
+    # allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
+    # atlasDataset = Nissl(allSlices, labels=fileList, transform=transforms.ToTensor())
+    # plot_ae_outputs(encoder, decoder, atlasDataset, device)
+    # with open("half_embedings.pkl", 'wb') as file:
+    #     embeddings = embedAtlasDataset()
+    #     pickle.dump(embeddings, file)
