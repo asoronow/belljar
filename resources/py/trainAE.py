@@ -29,7 +29,7 @@ class Encoder(nn.Module):
         self.flatten = nn.Flatten(start_dim=1)
         ### Linear section
         self.encoder_lin = nn.Sequential(
-            nn.Linear(30752 * 2, 256),
+            nn.Linear(399424, 256),
             nn.LeakyReLU(inplace=True),
             nn.Linear(256, encoded_space_dim)
         )
@@ -46,11 +46,11 @@ class Decoder(nn.Module):
         self.decoder_lin = nn.Sequential(
             nn.Linear(encoded_space_dim, 256),
             nn.LeakyReLU(inplace=True),
-            nn.Linear(256, 30752 * 2 ),
+            nn.Linear(256, 399424),
             nn.LeakyReLU(inplace=True),
         )
 
-        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(32*2, 31 , 31))
+        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(64, 79 , 79))
 
         self.decoder_conv = nn.Sequential(
             nn.ConvTranspose2d(32 * 2, 16 * 2, 3, 
@@ -164,7 +164,7 @@ def runTraining(num_epochs=600):
     fileList = os.listdir("../nrrd/png_half") # path to flat pngs
     absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
     
-    allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
+    allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
    
     train_dataset, test_dataset = train_test_split(allSlices, test_size=0.2)
     train_dataset, test_dataset = Nissl(train_dataset, transform=transforms.ToTensor()), Nissl(test_dataset, transform=transforms.ToTensor())
@@ -184,12 +184,13 @@ def runTraining(num_epochs=600):
 
     encoder = Encoder(encoded_space_dim=d)
     decoder = Decoder(encoded_space_dim=d)
+
     params_to_optimize = [
         {'params': encoder.parameters()},
         {'params': decoder.parameters()}
     ]
 
-    optim = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=1e-05)
+    optim = torch.optim.SGD(params_to_optimize, lr=lr, weight_decay=1e-4)
 
     # Check if the GPU is available
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -243,7 +244,7 @@ def embedAtlasDataset():
     fileList = os.listdir("../nrrd/png_half") # path to flat pngs
     absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
     
-    allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
+    allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
     
     encoder, decoder, device = loadModels()
     
@@ -284,13 +285,14 @@ def compareSampleImages(images, half=False):
     for path, score in scores.items():
         cv2.imshow("Match", cv2.imread(path))
         cv2.waitKey(0)
+    
 if __name__ == '__main__':
-    compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('sample_dapi.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
-    # runTraining()
+    # compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('sample_dapi.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
+    runTraining()
     # encoder, decoder, device = loadModels()
     # fileList = os.listdir("../nrrd/png_half") # path to flat pngs
     # absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
-    # allSlices = [cv2.cvtColor(cv2.resize(cv2.imread(p), (256,256)), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
+    # allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
     # atlasDataset = Nissl(allSlices, labels=fileList, transform=transforms.ToTensor())
     # plot_ae_outputs(encoder, decoder, atlasDataset, device)
     # with open("half_embedings.pkl", 'wb') as file:

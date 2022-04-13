@@ -22,7 +22,9 @@ def createTrainingSet():
       z, x, y = data.shape
       for slice in range(100,z-100, 1):
           image = data[slice, :, :y//2]
-          cv2.imwrite(f"../nrrd/png_half/r_nissil_{r}_{slice}.png", image.astype(np.uint16))
+          image = cv2.resize(image, (640,640))
+          image8 = (image / 256).astype('uint8')
+          cv2.imwrite(f"../nrrd/png_half/r_nissil_{r}_{slice}.png", image8)
 
 if __name__ == '__main__':
     createTrainingSet()
