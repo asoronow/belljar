@@ -23,9 +23,10 @@ def adjust_gamma(image, gamma=1.0):
 
 os.chdir(inputDirectory)
 for file in os.listdir('.'):
+	print(f"Processing {file}")
 	img = tf.imread(file)
 	img8 = (img / 256).astype('uint8')
 	kernel = np.ones((filterSize,filterSize),np.uint8)
 	tophat = cv2.morphologyEx(img8, cv2.MORPH_TOPHAT, kernel)
-	final = adjust_gamma(tophat, 1.75)
+	final = adjust_gamma(tophat, 1.25)
 	tf.imwrite(f"{outputDirectory}/{file}",  final)
