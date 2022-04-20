@@ -13,24 +13,44 @@
     <div id="parent" class="container h-100">
       <div class="row align-items-center">
         <div class="col">
-          <h1>Bell Jar</h1>
-          <p id="version">0.0.1a</p>
+          <h1>Top Hat Filter</h1>
           <p>
             <br>
-            Bell Jar is a tool for neuroanatomical studies in the mouse brain.
+            The Top Hat filter ensures even illumination of all cells in the tissue section. It is best to select a kernel that removes the majority of the halo from the max projections. You may test filter sizes by using Fiji before batch processing your data here.
             <br>
           </p>
         </div>
       </div>
-      <div class="row align-items-center">
-        <div class="col d-grid">
-          <a role="button" class="btn btn-primary" href="./menu.html">Menu</a>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <h5>Input Path</h5>
         </div>
         <div class="col d-grid">
-          <a role="button" class="btn btn-info" href="./credits.html">Credits</a>
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid">
+          <input type="url" placeholder="Click me!" id="indir">
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <h5>Output Path</h5>
         </div>
         <div class="col d-grid">
-          <a role="button" class="btn btn-warning" href="./depend.html">Dependencies</a>
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid">
+          <input type="url" placeholder="Click me!" id="outdir">
+        </div>
+      </div>
+      <div class="row align-items-center m-4">
+        <div class="col d-grid gap-2">
+            <a role="button" class="btn btn-warning" href="./menu.html">Back</a>
+        </div>
+        <div class="col d-grid">
+            <a role="button" class="btn btn-primary" href="./depend.html">Run</a>
         </div>
       </div>
     </div>
