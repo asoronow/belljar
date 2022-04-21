@@ -1,4 +1,5 @@
 import cv2, pickle, os
+import torch
 from sahi.model import Yolov5DetectionModel
 from sahi.predict import get_sliced_prediction
 import numpy as np
@@ -12,7 +13,7 @@ modelPath = filedialog.askopenfilename(title="Select the model file") # smnall b
 detectionModel = Yolov5DetectionModel(
     model_path=modelPath,
     confidence_threshold=0.5,
-    device='cuda:0'
+    device='cuda:0' if torch.cuda.is_available()  else 'cpu'
 )
 
 inputDirectory = filedialog.askdirectory(title="Select input directory")
