@@ -1,6 +1,9 @@
 # OSX
 .DS_Store
 
+# VsCode
+.vscode
+
 # NRRD
 resources/nrrd/
 
