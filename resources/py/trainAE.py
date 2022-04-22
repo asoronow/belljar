@@ -288,13 +288,13 @@ def compareSampleImages(images, half=False):
     
 if __name__ == '__main__':
     # compareSampleImages([cv2.cvtColor(cv2.resize(cv2.imread('sample_dapi.png'), (256,256)), cv2.COLOR_BGR2GRAY)])
-    runTraining()
-    # encoder, decoder, device = loadModels()
-    # fileList = os.listdir("../nrrd/png_half") # path to flat pngs
-    # absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
-    # allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
-    # atlasDataset = Nissl(allSlices, labels=fileList, transform=transforms.ToTensor())
-    # plot_ae_outputs(encoder, decoder, atlasDataset, device)
+    # runTraining()
+    encoder, decoder, device = loadModels()
+    fileList = os.listdir("../nrrd/png_half") # path to flat pngs
+    absolutePaths = [os.path.join('../nrrd/png_half', p) for p in fileList]
+    allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.05)]] #[:int(len(absolutePaths)*0.05)]
+    atlasDataset = Nissl(allSlices, labels=fileList, transform=transforms.ToTensor())
+    plot_ae_outputs(encoder, decoder, atlasDataset, device)
     # with open("half_embedings.pkl", 'wb') as file:
     #     embeddings = embedAtlasDataset()
     #     pickle.dump(embeddings, file)
