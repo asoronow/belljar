@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const tar = require('tar');
 const mv = promisify(fs.rename);
-
+const exec = promisify(require('child_process').exec);
 
 function move(o, t){
   return new Promise((resolve, reject) => {
@@ -118,6 +118,32 @@ function setupPython(win, homeDir) {
 // Creates the venv and installs the dependencies
 function setupVenv(win, homeDir) {
   win.webContents.send('updateStatus', 'Setting up venv...');
+
+  var mod = (process.platform === 'win32') ? 'python/':'python/bin/'
+  var command = (process.platform === 'win32') ? 'python.exe':'python3'
+  const pythonPath = path.join(homeDir, mod);
+
+  installVenv().then(({stdout, stderr}) => {
+    console.log(stdout);
+    activateVenv().then(({stdout, stderr}) => {
+        console.log(stdout);
+    });
+  });
+
+  async function installVenv() {
+    const {stdout, stderr} = await exec(`${command} -m pip install --user virtualenv`, {cwd: pythonPath});
+    return {stdout, stderr};
+  }
+
+  async function activateVenv() {
+    const check = `${command} ${path.join(__dirname, 'resources/py/checkVenv.py')}`;
+    const activate = (process.platform === 'win32') ? 
+      String.raw`.\env\Scripts\activate && ${check}`:
+      'source env/bin/activate';
+    const {stdout, stderr} = await exec(activate, {cwd: pythonPath});
+    return {stdout, stderr};
+  }
+
 }
 
 // Makes the local user writable folder
@@ -136,7 +162,7 @@ app.on("ready", () => {
   // Uncomment if you want tools on launch
   win.webContents.toggleDevTools()
   
-  win.webContents.on('did-finish-load', () => {
+  win.webContents.once('did-finish-load', () => {
     // Make a directory to house enviornment, settings, etc.
     const homeDir = checkLocalDir();
     // Setup python for running the pipeline
