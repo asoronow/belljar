@@ -1,11 +1,19 @@
 # OSX
 .DS_Store
 
+# Windows
+*.ini
+
 # VsCode
 .vscode
 
 # NRRD
 resources/nrrd/
+
+# Python
+standalone/linux/python/
+standalone/win/python/
+standalone/osx/python/
 
 # Logs
 logs
