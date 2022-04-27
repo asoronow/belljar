@@ -51,41 +51,7 @@
             <a role="button" class="btn btn-warning" href="./menu.html">Back</a>
         </div>
         <div class="col d-grid">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#processing" id="run">Run</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Loading Modal -->
-    <div class="modal" id="processing" tabindex="-1" role="dialog" aria-labelledby="processing" data-bs-backdrop='static' aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered" role="document">
-        <div class="modal-content">
-          <div class="modal-header text-center">
-            <p class="modal-title fw-bold fs-5 w-100" id="processingTitle">Processing</p>
-          </div>
-          <div class="modal-body fa-3x">
-            <i class="fas fa-spinner fa-spin"></i>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-danger" data-bs-dismiss="modal" id="cancel">Cancel</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Done Modal -->
-    <div class="modal" id="done" tabindex="-1" role="dialog" aria-labelledby="processing" data-bs-backdrop='static' aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered" role="document">
-        <div class="modal-content">
-          <div class="modal-header text-center">
-            <p class="modal-title fw-bold fs-5 w-100" id="processingTitle">Finished</p>
-          </div>
-          <div class="modal-body fa-3x">
-            <i class="fas fa-check"></i>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-success" data-bs-dismiss="modal">Exit</button>
-          </div>
+            <button type="button" class="btn btn-primary" id="run">Run</button>
         </div>
       </div>
     </div>
@@ -106,9 +72,8 @@
         </div>
       </div>
     </div>
-
-    <script src="../resources/js/listeners.js"></script>
-    <script src="../resources/js/max.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+    <script src="../resources/js/listeners.js"></script>
+    <script type="module" src="../resources/js/max.js"></script>
     </body>
 </html>

@@ -11,15 +11,15 @@ parser.add_argument('-i', '--input', help="input directory, only use if graphica
 parser.add_argument('-g', '--graphical', help='provides prompts when true', default=True)
 args = parser.parse_args()
 
-if args.graphical:
+if args.graphical == True:
     root = tk.Tk()
     root.withdraw()
 
     inputDirectory = filedialog.askdirectory(title="Select input directory")
     outputDirectory = filedialog.askdirectory(title="Select output directory")
 else:
-    inputDirectory = args.input
-    outputDirectory = args.output
+    inputDirectory = args.input.strip()
+    outputDirectory = args.output.strip()
 
 os.chdir(inputDirectory)
 for file in os.listdir('.'):

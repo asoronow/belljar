@@ -1,3 +1,4 @@
+// Required modules and structures
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const {promisify} = require('util');
 const {PythonShell} = require('python-shell');
@@ -7,168 +8,206 @@ const tar = require('tar');
 const mv = promisify(fs.rename);
 const exec = promisify(require('child_process').exec);
 
+// Path variables for easy management of execution
+const homeDir = path.join(app.getPath('home'), '.belljar');
+// Mod is the proper path to the python/pip binary
+var mod = (process.platform === 'win32') ? 'python/':'python/bin/'
+var envMod = (process.platform === 'win32') ? 'Scripts/':'bin/'
+// Make a constant with the cwd for running python commands
+const envPath = path.join(homeDir, 'benv');
+const pythonPath = path.join(homeDir, mod);
+const envPythonPath = path.join(envPath, envMod);
+// Command choses wether to use the exe (windows) or alias (unix based)
+var pyCommand = (process.platform === 'win32') ? 'python.exe':'python3'
+// Path to our python files
+const pyScriptsPath = path.join(__dirname, '/resources/py');
+
+// Promise version of file moving
 function move(o, t){
   return new Promise((resolve, reject) => {
     // move o to t, wrapped as promise
     const original = o
     const target = t
     mv(original, target).then(_ => {
-      return resolve;
+      resolve(0);
     })
   })
 }
 
-function createWindow () {
-    const win = new BrowserWindow({
-      width: 1000,
-      height: 525,
-      resizable: true,
-      autoHideMenuBar: true,
-      webPreferences: {nodeIntegration: true, contextIsolation: false }
-    })
-
-    win.loadFile('pages/loading.html')
-
-    return win
-}
-
-
-
-function setupPython(win, homeDir) {
-  const pythonPath = path.join(homeDir, 'python');
-  if (!fs.existsSync(pythonPath)) {
-    win.webContents.send('updateStatus', 'Settting up python...');
-    switch (process.platform) {
-      case 'win32':
-        tar.x(
-          {
-            cwd: __dirname,
-            file: 'standalone/win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz'
-          }
-        ).then(_ => {
-          win.webContents.send('updateStatus', 'Extracted python...');
-          move(path.join(__dirname, 'python'), pythonPath).then(_ => {
-            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-              console.log('here')
-              if (error) {
-                console.log(error);
-              }
+function setupPython(win) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(pythonPath)) {
+      win.webContents.send('updateStatus', 'Settting up python...');
+      switch (process.platform) {
+        case 'win32':
+          tar.x(
+            {
+              cwd: __dirname,
+              file: 'standalone/win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz'
+            }
+          ).then(_ => {
+            win.webContents.send('updateStatus', 'Extracted python...');
+            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+              resolve(true);
+              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+                if (error) {
+                  console.log(error);
+                }
+              });
             });
           });
-        });
-        break;
-      case 'linux':
-        tar.x(
-          {
-            cwd: __dirname,
-            file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
-          }
-        ).then(_ => {
-          win.webContents.send('updateStatus', 'Extracted python...');
-          move(path.join(__dirname, 'python'), pythonPath).then(_ => {
-            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-              console.log('here')
-              if (error) {
-                console.log(error);
-              }
+          break;
+        case 'linux':
+          tar.x(
+            {
+              cwd: __dirname,
+              file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
+            }
+          ).then(_ => {
+            win.webContents.send('updateStatus', 'Extracted python...');
+            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+              resolve(true);
+              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+                if (error) {
+                  console.log(error);
+                }
+              });
             });
           });
-        });
-        break;
-      case 'darwin':
-        tar.x(
-          {
-            cwd: __dirname,
-            file: 'standalone/osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz'
-          }
-        ).then(_ => {
-          win.webContents.send('updateStatus', 'Extracted python...');
-          move(path.join(__dirname, 'python'), pythonPath).then(_ => {
-            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-              console.log('here')
-              if (error) {
-                console.log(error);
-              }
+          break;
+        case 'darwin':
+          tar.x(
+            {
+              cwd: __dirname,
+              file: 'standalone/osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz'
+            }
+          ).then(_ => {
+            win.webContents.send('updateStatus', 'Extracted python...');
+            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+              resolve(true);
+              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+                if (error) {
+                  console.log(error);
+                }
+              });
             });
           });
-        });
-        break;
-      default:
-        tar.x(
-          {
-            cwd: __dirname,
-            file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
-          }
-        ).then(_ => {
-          win.webContents.send('updateStatus', 'Extracted python...');
-          move(path.join(__dirname, 'python'), pythonPath).then(_ => {
-            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-              console.log('here')
-              if (error) {
-                console.log(error);
-              }
+          break;
+        default:
+          tar.x(
+            {
+              cwd: __dirname,
+              file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
+            }
+          ).then(_ => {
+            win.webContents.send('updateStatus', 'Extracted python...');
+            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+              resolve(true);
+              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+                if (error) {
+                  console.log(error);
+                }
+              });
             });
           });
-        });
-        break;
+          break;
+      }
+    } else {
+      resolve(false);
     }
-  }
+  });
 }
 
 // Creates the venv and installs the dependencies
-function setupVenv(win, homeDir) {
-  win.webContents.send('updateStatus', 'Setting up venv...');
-
-  var mod = (process.platform === 'win32') ? 'python/':'python/bin/'
-  var command = (process.platform === 'win32') ? 'python.exe':'python3'
-  const pythonPath = path.join(homeDir, mod);
-
-  installVenv().then(({stdout, stderr}) => {
-    console.log(stdout);
-    activateVenv().then(({stdout, stderr}) => {
+function setupVenv(win) {
+  win.webContents.send('updateStatus', 'Installing venv...');
+  // Check if the enviornment was already made
+  if (!fs.existsSync(envPath)) {
+    // Promise chain to setup the enviornment
+    installVenv().then(({stdout, stderr}) => {
+      console.log(stdout);
+      win.webContents.send('updateStatus', 'Creating venv...');
+      createVenv().then(({stdout, stderr}) => {
         console.log(stdout);
+        win.webContents.send('updateStatus', 'Installing packages...');
+        installDeps().then(({stdout, stderr}) => {
+          console.log(stdout);
+          win.webContents.send('updateStatus', 'Setup complete!');
+          win.loadFile('pages/index.html')
+        }).catch((error) => {
+          console.log(error);
+        });
+      }).catch((error) => {
+        console.log(error);
+      });
+    }).catch((error) => {
+      console.log(error);
     });
-  });
 
-  async function installVenv() {
-    const {stdout, stderr} = await exec(`${command} -m pip install --user virtualenv`, {cwd: pythonPath});
-    return {stdout, stderr};
-  }
+    // Install venv package
+    async function installVenv() {
+      const {stdout, stderr} = await exec(`${pyCommand} -m pip install --user virtualenv`, {cwd: pythonPath});
+      return {stdout, stderr};
+    }
 
-  async function activateVenv() {
-    const check = `${command} ${path.join(__dirname, 'resources/py/checkVenv.py')}`;
-    const activate = (process.platform === 'win32') ? 
-      String.raw`.\env\Scripts\activate && ${check}`:
-      'source env/bin/activate';
-    const {stdout, stderr} = await exec(activate, {cwd: pythonPath});
-    return {stdout, stderr};
-  }
+    // Create venv
+    async function createVenv() {
+      const {stdout, stderr} = await exec(`${pyCommand} -m venv ../benv`, {cwd: pythonPath});
+      return {stdout, stderr};
+    }
 
+    // Install pip packages
+    async function installDeps() {
+      const reqs = path.join(__dirname, 'resources/py/requirements.txt')
+      const {stdout, stderr} = await exec(`${pyCommand} -m pip install -r ${reqs}`, {cwd: envPythonPath});
+      return {stdout, stderr};
+    }
+  } 
 }
 
 // Makes the local user writable folder
 function checkLocalDir() {
-  const homeDir = path.join(app.getPath('home'), '.belljar');
   if (!fs.existsSync(homeDir)) {
     fs.mkdirSync(homeDir, {
       recursive: true
     });
   }
-  return homeDir;
+}
+
+function createWindow () {
+  const win = new BrowserWindow({
+    width: 1000,
+    height: 525,
+    resizable: true,
+    autoHideMenuBar: true,
+    webPreferences: {nodeIntegration: true, contextIsolation: false }
+  })
+
+  win.loadFile('pages/loading.html')
+
+  return win
 }
 
 app.on("ready", () => {
   let win = createWindow()
   // Uncomment if you want tools on launch
-  win.webContents.toggleDevTools()
+  // win.webContents.toggleDevTools()
   
   win.webContents.once('did-finish-load', () => {
     // Make a directory to house enviornment, settings, etc.
-    const homeDir = checkLocalDir();
+    checkLocalDir();
     // Setup python for running the pipeline
-    setupPython(win, homeDir);
-    // Prepare depedencies
-    setupVenv(win, homeDir);
+    setupPython(win).then((installed) => {
+      // Prepare depedencies
+      if (installed) {
+        setupVenv(win);
+      } else {
+        win.loadFile('pages/index.html');
+      }
+    }).catch((error) => {
+      // Python install failed
+      console.log(error);
+    });
   });
 })
 
@@ -199,12 +238,13 @@ ipcMain.on('openDialog', function(event, data){
     console.log(err)
   });
 });
+
 // Max Projection
 ipcMain.on('runMax', function(event, data){
   let options = {
     mode: 'text',
-    pythonPath: String.raw`C:\Users\Alec\anaconda3\envs\allen\python.exe`,
-    scriptPath: `${__dirname}/resources/py`,
+    pythonPath: path.join(envPythonPath, pyCommand),
+    scriptPath: pyScriptsPath,
     args: [`-o ${data[1]}`, `-i ${data[0]}`, '-g False']
   };
 

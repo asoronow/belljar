@@ -5,17 +5,16 @@ var outdir = document.getElementById('outdir');
 
 run.addEventListener('click', function(){
     ipc.once('maxResult', function(event, response){
-        $('#processing').modal('hide')
-        $('#done').modal('show')
+        run.innerHTML = "Run";
     });
 
     ipc.once('maxError', function(event, response){
-        $('#processing').modal('hide')
-        $('#error').modal('show')
+        run.innerHTML = "Run";
     });
 
-
     if (indir && outdir && indir.value && outdir.value) {
+        run.classList.add('disabled');
+        run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
         ipc.send('runMax', [indir.value, outdir.value]);
     }
 });
