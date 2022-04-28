@@ -22,7 +22,14 @@ else:
     outputDirectory = args.output.strip()
 
 os.chdir(inputDirectory)
-for file in os.listdir('.'):
+files = os.listdir('.')
+# Pass number of files to electron
+print(len(files), flush=True)
+for file in files:
+    # Update current file
+    print(f'Processing {file}', flush=True)
     img = tf.imread(file)
     img = img.max(axis=0)
     tf.imwrite(f"{outputDirectory}/{file}",  img)
+
+print('Done!')

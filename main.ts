@@ -23,18 +23,18 @@ var pyCommand = (process.platform === 'win32') ? 'python.exe':'./python3'
 const pyScriptsPath = path.join(__dirname, '/resources/py');
 
 // Promise version of file moving
-function move(o, t){
+function move(o: string, t: string){
   return new Promise((resolve, reject) => {
     // move o to t, wrapped as promise
     const original = o
     const target = t
-    mv(original, target).then(_ => {
+    mv(original, target).then(() => {
       resolve(0);
     })
   })
 }
 
-function setupPython(win) {
+function setupPython(win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(path.join(homeDir, 'python'))) {
       win.webContents.send('updateStatus', 'Settting up python...');
@@ -45,11 +45,11 @@ function setupPython(win) {
               cwd: __dirname,
               file: 'standalone/win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz'
             }
-          ).then(_ => {
+          ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
             move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+              fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
                 if (error) {
                   console.log(error);
                 }
@@ -63,11 +63,11 @@ function setupPython(win) {
               cwd: __dirname,
               file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
             }
-          ).then(_ => {
+          ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
             move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+              fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
                 if (error) {
                   console.log(error);
                 }
@@ -81,11 +81,11 @@ function setupPython(win) {
               cwd: __dirname,
               file: 'standalone/osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz'
             }
-          ).then(_ => {
+          ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
             move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+              fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
                 if (error) {
                   console.log(error);
                 }
@@ -99,11 +99,11 @@ function setupPython(win) {
               cwd: __dirname,
               file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
             }
-          ).then(_ => {
+          ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
             move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              fs.rmdir(path.join(__dirname, 'python'), (error) => {
+              fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
                 if (error) {
                   console.log(error);
                 }
@@ -119,7 +119,7 @@ function setupPython(win) {
 }
 
 // Creates the venv and installs the dependencies
-function setupVenv(win) {
+function setupVenv(win: typeof BrowserWindow) {
   win.webContents.send('updateStatus', 'Installing venv...');
   // Check if the enviornment was already made
   if (!fs.existsSync(envPath)) {
@@ -189,11 +189,25 @@ function createWindow () {
   return win
 }
 
+let win: typeof BrowserWindow = null;
+
 app.on("ready", () => {
   let win = createWindow()
   // Uncomment if you want tools on launch
   // win.webContents.toggleDevTools()
-  
+  win.on('close', function(e: any) {
+    const choice = dialog.showMessageBoxSync(win,
+      {
+        type: 'question',
+        buttons: ['Yes', 'Cancel'],
+        title: 'Confrim Quit',
+        message: 'Are you sure you want to quit? Quitting will kill all running processes.'
+      });
+    if (choice === 1) {
+      e.preventDefault();
+    }
+  });
+
   win.webContents.once('did-finish-load', () => {
     // Make a directory to house enviornment, settings, etc.
     checkLocalDir();
@@ -219,44 +233,57 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit()
+  app.quit()
 })
 
 // Handlers
 // Directories
-ipcMain.on('openDialog', function(event, data){
+ipcMain.on('openDialog', function(event: any, data: any){
   let window = BrowserWindow.getFocusedWindow()
   dialog.showOpenDialog(window, {
     properties: ['openDirectory']
-  }).then(result => {
+  }).then((result: { canceled: boolean; filePaths: any[]; }) => {
     // Check for a valid result
     if (!result.canceled) {
       // console.log(result.filePaths)
       // Send back the dir and whether this is input or output
       event.sender.send('returnPath', [result.filePaths[0], data])
     }
-  }).catch(err => {
+  }).catch((err: Error) => {
     console.log(err)
   });
 });
 
 // Max Projection
-ipcMain.on('runMax', function(event, data){
+ipcMain.on('runMax', function(event: any, data: any[]){
   let options = {
     mode: 'text',
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
     args: [`-o ${data[1]}`, `-i ${data[0]}`, '-g False']
   };
+  
+  let pyshell = new PythonShell('batchMaxProjection.py', options);
+  var total: number = 0;
+  var current: number = 0;
+  pyshell.on('message', (message: string) => {
+    if (total === 0) {
+      total = Number(message);
+    } else if (message == 'Done!') {
+      pyshell.end((err: string, code: any, signal: string) => {
+        if (err) throw err;
+        console.log('The exit code was: ' + code);
+        console.log('The exit signal was: ' + signal);
+        event.sender.send('maxResult')
+      });
+    } else {
+      current++;
+      event.sender.send('updateLoad', [Math.round((current/total)*100), message]);
+    }
+  });
 
-  PythonShell.run('batchMaxProjection.py', options, function (err, results) {
-    if (err){
-      console.log(err);
-      event.sender.send('maxError');
-    };
-    // results is an array consisting of messages collected during execution
-    console.log('results: %j', results);
-    event.sender.send('maxResult');
+  ipcMain.once('killMax', function(event: any, data: any[]) {
+    pyshell.kill();
   });
 });
 
