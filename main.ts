@@ -18,7 +18,7 @@ const envPath = path.join(homeDir, 'benv');
 const pythonPath = path.join(homeDir, mod);
 const envPythonPath = path.join(envPath, envMod);
 // Command choses wether to use the exe (windows) or alias (unix based)
-var pyCommand = (process.platform === 'win32') ? 'python.exe':'python3'
+var pyCommand = (process.platform === 'win32') ? 'python.exe':'./python3'
 // Path to our python files
 const pyScriptsPath = path.join(__dirname, '/resources/py');
 
@@ -36,7 +36,7 @@ function move(o, t){
 
 function setupPython(win) {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(pythonPath)) {
+    if (!fs.existsSync(path.join(homeDir, 'python'))) {
       win.webContents.send('updateStatus', 'Settting up python...');
       switch (process.platform) {
         case 'win32':
@@ -47,7 +47,7 @@ function setupPython(win) {
             }
           ).then(_ => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
               fs.rmdir(path.join(__dirname, 'python'), (error) => {
                 if (error) {
@@ -65,7 +65,7 @@ function setupPython(win) {
             }
           ).then(_ => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
               fs.rmdir(path.join(__dirname, 'python'), (error) => {
                 if (error) {
@@ -83,7 +83,7 @@ function setupPython(win) {
             }
           ).then(_ => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
               fs.rmdir(path.join(__dirname, 'python'), (error) => {
                 if (error) {
@@ -101,7 +101,7 @@ function setupPython(win) {
             }
           ).then(_ => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), pythonPath).then(_ => {
+            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
               fs.rmdir(path.join(__dirname, 'python'), (error) => {
                 if (error) {
@@ -152,7 +152,8 @@ function setupVenv(win) {
 
     // Create venv
     async function createVenv() {
-      const {stdout, stderr} = await exec(`${pyCommand} -m venv ../benv`, {cwd: pythonPath});
+      const envDir = (process.platform === 'win32') ? '../benv':'../../benv'
+      const {stdout, stderr} = await exec(`${pyCommand} -m venv ${envDir}`, {cwd: pythonPath});
       return {stdout, stderr};
     }
 
