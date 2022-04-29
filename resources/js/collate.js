@@ -5,6 +5,16 @@ var outdir = document.getElementById('outdir');
 var loadbar = document.getElementById('loadbar');
 var loadmessage = document.getElementById('loadmessage');
 var back = document.getElementById('back');
+var regions = document.getElementById('regions');
+
+function checkNumber(value, message) {
+    var str = value.toString();
+    if(!str.match(/^-?\d*\.?\d*$/)) {
+        alert(`${message}`);
+        return false;
+    }
+    return true;
+}
 
 run.addEventListener('click', function(){
     if (indir && outdir && indir.value && outdir.value) {
@@ -13,14 +23,15 @@ run.addEventListener('click', function(){
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runMax', [indir.value, outdir.value]);
+        ipc.send('runCollate', [indir.value, outdir.value, regions.innerText]);
+        loadmessage.innerHTML = "Intializing...";
     }
 });
 
 back.addEventListener('click', function (event){
     if (back.classList.contains('btn-danger')){
         event.preventDefault();
-        ipc.send('killMax', []);
+        ipc.send('killDetect', []);
         back.classList.add('btn-warning');
         back.classList.remove('btn-danger')
         back.innerHTML = "Back";
@@ -31,9 +42,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('maxResult', function(event, response){
-    run.innerHTML = "Run";
-    run.classList.remove('disabled');
+ipc.once('collateResult', function(event, response){
     back.classList.add('btn-warning');
     back.classList.remove('btn-danger')
     back.innerHTML = "Back";
@@ -43,7 +52,7 @@ ipc.once('maxResult', function(event, response){
     loadbar.style.width = "0";
 });
 
-ipc.once('maxError', function(event, response){
+ipc.once('detectError', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
 });
@@ -59,7 +68,7 @@ indir.addEventListener('click', function(){
             indir.value = response[0];
         }
     })
-    ipc.send('openDialog', 'indir');
+    ipc.send('openFileDialog', 'indir');
 });
 
 outdir.addEventListener('click', function(){

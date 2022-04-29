@@ -11,7 +11,7 @@
     "start": "yarn run compile && electron ."
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "^5.15.3",
+    "@fortawesome/fontawesome-free": "^6.1.1",
     "python-shell": "^3.0.1",
     "tar": "^6.1.11"
   },
@@ -22,5 +22,9 @@
     "electron-builder": "^23.0.3",
     "eslint": "^7.32.0",
     "typescript": "^4.6.3"
+  },
+  "build": {
+    "appId": "com.belljar.app",
+    "productName": "Bell Jar"
   }
 }

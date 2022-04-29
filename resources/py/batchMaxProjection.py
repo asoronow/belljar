@@ -2,7 +2,7 @@ from tkinter import filedialog, simpledialog
 import tifffile as tf
 import os
 import tkinter as tk
-import cv2
+import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Process z-stack images')
@@ -26,10 +26,13 @@ files = os.listdir('.')
 # Pass number of files to electron
 print(len(files), flush=True)
 for file in files:
-    # Update current file
-    print(f'Processing {file}', flush=True)
-    img = tf.imread(file)
-    img = img.max(axis=0)
-    tf.imwrite(f"{outputDirectory}/{file}",  img)
-
+    try:
+        # Update current file
+        print(f'Processing {file}', flush=True)
+        img = tf.imread(file)
+        img = img.max(axis=0)
+        tf.imwrite(f"{outputDirectory}/{file}",  img)
+    except:
+        print("Invalid image!", flush=True)
+        
 print('Done!')

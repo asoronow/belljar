@@ -6,6 +6,24 @@
     justify-content: center;
 
 }
+a, a:hover, a:focus, a:active {
+   text-decoration: none;
+   color: #000;
+}
+
+.rotate {
+    -moz-transition: all .25s linear;
+    -webkit-transition: all .25s linear;
+    transition: all .25s linear;
+}
+
+.rotate.down{
+    -ms-transform: rotate(180deg);
+    -moz-transform: rotate(180deg);
+    -webkit-transform: rotate(180deg);
+    transform: rotate(180deg);
+}
+
 .loadmessage {
     position: fixed;
     font-family: 'Open Sans', sans-serif;

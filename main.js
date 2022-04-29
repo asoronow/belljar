@@ -54,11 +54,11 @@ function setupPython(win) {
                         win.webContents.send('updateStatus', 'Extracted python...');
                         move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
                             resolve(true);
-                            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-                                if (error) {
-                                    console.log(error);
-                                }
-                            });
+                            // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+                            //   if (error) {
+                            //     console.log(error);
+                            //   }
+                            // });
                         });
                     });
                     break;
@@ -70,11 +70,11 @@ function setupPython(win) {
                         win.webContents.send('updateStatus', 'Extracted python...');
                         move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
                             resolve(true);
-                            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-                                if (error) {
-                                    console.log(error);
-                                }
-                            });
+                            // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+                            //   if (error) {
+                            //     console.log(error);
+                            //   }
+                            // });
                         });
                     });
                     break;
@@ -86,11 +86,11 @@ function setupPython(win) {
                         win.webContents.send('updateStatus', 'Extracted python...');
                         move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
                             resolve(true);
-                            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-                                if (error) {
-                                    console.log(error);
-                                }
-                            });
+                            // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+                            //   if (error) {
+                            //     console.log(error);
+                            //   }
+                            // });
                         });
                     });
                     break;
@@ -102,11 +102,11 @@ function setupPython(win) {
                         win.webContents.send('updateStatus', 'Extracted python...');
                         move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
                             resolve(true);
-                            fs.rmdir(path.join(__dirname, 'python'), (error) => {
-                                if (error) {
-                                    console.log(error);
-                                }
-                            });
+                            // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+                            //   if (error) {
+                            //     console.log(error);
+                            //   }
+                            // });
                         });
                     });
                     break;
@@ -177,8 +177,8 @@ function checkLocalDir() {
 }
 function createWindow() {
     const win = new BrowserWindow({
-        width: 1000,
-        height: 525,
+        width: 1250,
+        height: 750,
         resizable: true,
         autoHideMenuBar: true,
         webPreferences: { nodeIntegration: true, contextIsolation: false }
@@ -246,13 +246,33 @@ ipcMain.on('openDialog', function (event, data) {
         console.log(err);
     });
 });
+// Files
+ipcMain.on('openFileDialog', function (event, data) {
+    let window = BrowserWindow.getFocusedWindow();
+    dialog.showOpenDialog(window, {
+        properties: ['openFile']
+    }).then((result) => {
+        // Check for a valid result
+        if (!result.canceled) {
+            // console.log(result.filePaths)
+            // Send back the dir and whether this is input or output
+            event.sender.send('returnPath', [result.filePaths[0], data]);
+        }
+    }).catch((err) => {
+        console.log(err);
+    });
+});
 // Max Projection
 ipcMain.on('runMax', function (event, data) {
     let options = {
         mode: 'text',
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-o ${data[1]}`, `-i ${data[0]}`, '-g False']
+        args: [
+            `-o ${data[1]}`,
+            `-i ${data[0]}`,
+            '-g False'
+        ]
     };
     let pyshell = new PythonShell('batchMaxProjection.py', options);
     var total = 0;
@@ -276,6 +296,117 @@ ipcMain.on('runMax', function (event, data) {
         }
     });
     ipcMain.once('killMax', function (event, data) {
+        pyshell.kill();
+    });
+});
+// Top Hat
+ipcMain.on('runTopHat', function (event, data) {
+    let options = {
+        mode: 'text',
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            `-o ${data[1]}`,
+            `-i ${data[0]}`,
+            `-f ${data[2]}`,
+            `-c ${data[3]}`,
+            '-g False'
+        ]
+    };
+    let pyshell = new PythonShell('topHat.py', options);
+    var total = 0;
+    var current = 0;
+    pyshell.on('message', (message) => {
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == 'Done!') {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log('The exit code was: ' + code);
+                console.log('The exit signal was: ' + signal);
+                event.sender.send('topHatResult');
+            });
+        }
+        else {
+            current++;
+            event.sender.send('updateLoad', [Math.round((current / total) * 100), message]);
+        }
+    });
+    ipcMain.once('killTopHat', function (event, data) {
+        pyshell.kill();
+    });
+});
+// Collate
+ipcMain.on('runCollate', function (event, data) {
+    let options = {
+        mode: 'text',
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            String.raw `-o ${path.join(data[1], 'collate_result.csv')}`,
+            String.raw `-i ${data[0]}`,
+            `-r ${data[2]}`,
+            String.raw `-s ${path.join(__dirname, 'resources/csv/structure_tree_safe_2017.csv')}`,
+            '-g False'
+        ]
+    };
+    console.log(data[0]);
+    let pyshell = new PythonShell('collateCounts.py', options);
+    pyshell.end((err, code, signal) => {
+        if (err)
+            throw err;
+        console.log('The exit code was: ' + code);
+        console.log('The exit signal was: ' + signal);
+        event.sender.send('collateResult');
+    });
+    ipcMain.once('killCollate', function (event, data) {
+        pyshell.kill();
+    });
+});
+// Cell Detection
+ipcMain.on('runDetection', function (event, data) {
+    // Set model path
+    var modelPath = path.join(__dirname, 'resources/models/ancientwizard.pt');
+    if (data[4].length > 0) {
+        modelPath = data[4];
+    }
+    let options = {
+        mode: 'text',
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            `-i ${data[0]}`,
+            `-o ${data[1]}`,
+            `-c ${data[2]}`,
+            `-t ${data[3]}`,
+            `-m ${modelPath}`,
+            '-g False'
+        ]
+    };
+    let pyshell = new PythonShell('findNeurons.py', options);
+    var total = 0;
+    var current = 0;
+    pyshell.on('message', (message) => {
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == 'Done!') {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log('The exit code was: ' + code);
+                console.log('The exit signal was: ' + signal);
+                event.sender.send('detectResult');
+            });
+        }
+        else if (message.includes("Processing")) {
+            current++;
+            event.sender.send('updateLoad', [Math.round((current / total) * 100), message]);
+        }
+    });
+    ipcMain.once('killDetect', function (event, data) {
         pyshell.kill();
     });
 });
