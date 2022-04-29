@@ -17,7 +17,6 @@ const fs = require('fs');
 const tar = require('tar');
 const mv = promisify(fs.rename);
 const exec = promisify(require('child_process').exec);
-const myConsole = new console.Console(fs.createWriteStream('./output.txt'));
 var appDir = app.getAppPath();
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath('home'), '.belljar');
@@ -44,6 +43,7 @@ function move(o, t) {
     });
 }
 function setupPython(win) {
+    var standalone = path.join(appDir, 'standalone');
     return new Promise((resolve, reject) => {
         if (!fs.existsSync(path.join(homeDir, 'python'))) {
             win.webContents.send('updateStatus', 'Settting up python...');
@@ -51,65 +51,37 @@ function setupPython(win) {
                 case 'win32':
                     tar.x({
                         cwd: homeDir,
-                        file: 'standalone/win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz'
+                        file: path.join(standalone, 'win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
-                        // move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
-                        //   resolve(true);
-                        //   // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
-                        //   //   if (error) {
-                        //   //     console.log(error);
-                        //   //   }
-                        //   // });
-                        // });
+                        resolve(true);
                     });
                     break;
                 case 'linux':
                     tar.x({
-                        cwd: appDir,
-                        file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
+                        cwd: homeDir,
+                        file: path.join(standalone, 'linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
-                        move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
-                            resolve(true);
-                            // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
-                            //   if (error) {
-                            //     console.log(error);
-                            //   }
-                            // });
-                        });
+                        resolve(true);
                     });
                     break;
                 case 'darwin':
                     tar.x({
-                        cwd: appDir,
-                        file: 'standalone/osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz'
+                        cwd: homeDir,
+                        file: path.join(standalone, 'osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
-                        move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
-                            resolve(true);
-                            // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
-                            //   if (error) {
-                            //     console.log(error);
-                            //   }
-                            // });
-                        });
+                        resolve(true);
                     });
                     break;
                 default:
                     tar.x({
-                        cwd: appDir,
-                        file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
+                        cwd: homeDir,
+                        file: path.join(standalone, 'linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
-                        move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
-                            resolve(true);
-                            // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
-                            //   if (error) {
-                            //     console.log(error);
-                            //   }
-                            // });
-                        });
+                        resolve(true);
                     });
                     break;
             }
