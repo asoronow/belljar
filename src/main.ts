@@ -1,5 +1,5 @@
 // Required modules and structures
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog} = require('electron');
 const {promisify} = require('util');
 const {PythonShell} = require('python-shell');
 const path = require('path');
@@ -7,6 +7,9 @@ const fs = require('fs');
 const tar = require('tar');
 const mv = promisify(fs.rename);
 const exec = promisify(require('child_process').exec);
+
+const myConsole = new console.Console(fs.createWriteStream('./output.txt'));
+var appDir = app.getAppPath()
 
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath('home'), '.belljar');
@@ -20,7 +23,7 @@ const envPythonPath = path.join(envPath, envMod);
 // Command choses wether to use the exe (windows) or alias (unix based)
 var pyCommand = (process.platform === 'win32') ? 'python.exe':'./python3'
 // Path to our python files
-const pyScriptsPath = path.join(__dirname, '/resources/py');
+const pyScriptsPath = path.join(appDir, '/resources/py');
 
 // Promise version of file moving
 function move(o: string, t: string){
@@ -42,32 +45,32 @@ function setupPython(win: typeof BrowserWindow) {
         case 'win32':
           tar.x(
             {
-              cwd: __dirname,
+              cwd: homeDir,
               file: 'standalone/win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz'
             }
           ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
-              resolve(true);
-              // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
-              //   if (error) {
-              //     console.log(error);
-              //   }
-              // });
-            });
+            // move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
+            //   resolve(true);
+            //   // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
+            //   //   if (error) {
+            //   //     console.log(error);
+            //   //   }
+            //   // });
+            // });
           });
           break;
         case 'linux':
           tar.x(
             {
-              cwd: __dirname,
+              cwd: appDir,
               file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
             }
           ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
+            move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+              // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
               //   if (error) {
               //     console.log(error);
               //   }
@@ -78,14 +81,14 @@ function setupPython(win: typeof BrowserWindow) {
         case 'darwin':
           tar.x(
             {
-              cwd: __dirname,
+              cwd: appDir,
               file: 'standalone/osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz'
             }
           ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
+            move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+              // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
               //   if (error) {
               //     console.log(error);
               //   }
@@ -96,14 +99,14 @@ function setupPython(win: typeof BrowserWindow) {
         default:
           tar.x(
             {
-              cwd: __dirname,
+              cwd: appDir,
               file: 'standalone/linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz'
             }
           ).then(() => {
             win.webContents.send('updateStatus', 'Extracted python...');
-            move(path.join(__dirname, 'python'), path.join(homeDir, 'python')).then(_ => {
+            move(path.join(appDir, 'python'), path.join(homeDir, 'python')).then(_ => {
               resolve(true);
-              // fs.rmdir(path.join(__dirname, 'python'), (error: Error) => {
+              // fs.rmdir(path.join(appDir, 'python'), (error: Error) => {
               //   if (error) {
               //     console.log(error);
               //   }
@@ -159,7 +162,7 @@ function setupVenv(win: typeof BrowserWindow) {
 
     // Install pip packages
     async function installDeps() {
-      const reqs = path.join(__dirname, 'resources/py/requirements.txt')
+      const reqs = path.join(appDir, 'resources/py/requirements.txt')
       const {stdout, stderr} = await exec(`${pyCommand} -m pip install -r ${reqs}`, {cwd: envPythonPath});
       return {stdout, stderr};
     }
@@ -356,7 +359,7 @@ ipcMain.on('runCollate', function(event: any, data: any[]){
             String.raw`-o ${path.join(data[1], 'collate_result.csv')}`, 
             String.raw`-i ${data[0]}`, 
             `-r ${data[2]}`, 
-            String.raw`-s ${path.join(__dirname, 'resources/csv/structure_tree_safe_2017.csv')}`, 
+            String.raw`-s ${path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')}`, 
             '-g False'
           ]
   };
@@ -378,7 +381,7 @@ ipcMain.on('runCollate', function(event: any, data: any[]){
 // Cell Detection
 ipcMain.on('runDetection', function(event: any, data: any[]){
   // Set model path
-  var modelPath = path.join(__dirname, 'resources/models/ancientwizard.pt')
+  var modelPath = path.join(appDir, 'resources/models/ancientwizard.pt')
   if (data[4].length > 0) {
     modelPath = data[4]
   }

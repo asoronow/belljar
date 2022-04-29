@@ -4,6 +4,9 @@
 # Windows
 *.ini
 
+# Makes
+out/
+
 # VsCode
 .vscode
 
