@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.ndimage import interpolation
-
+from os import path
+# Path to nrrd
+nrrdPath = "C:/Users/imageprocessing/.belljar/nrrd"
 def buildRotatedAtlases():
     '''Constructions the rotated (z-x) atlases for the most common cutting angles'''
     nData, nHead = nrrd.read('../nrrd/ara_nissl_10.nrrd')
@@ -18,13 +20,16 @@ def buildRotatedAtlases():
 def createTrainingSet():
     '''Make the set of all pngs to train the autoencoder'''
     for r in range(-10,11,1):
-      data, head = nrrd.read(f"../nrrd/r_nissl_{r}.nrrd")
-      z, x, y = data.shape
-      for slice in range(100,z-100, 1):
-          image = data[slice, :, :y//2]
-          image = cv2.resize(image, (512,512))
-          image8 = (image / 256).astype('uint8')
-          cv2.imwrite(f"../nrrd/png_half/r_nissil_{r}_{slice}.png", image8)
+        print(f'Processing angle {r}')
+        data, head = nrrd.read(nrrdPath + f"/r_nissl_{r}.nrrd")
+        z, x, y = data.shape
+        for slice in range(100,z-100, 1):
+            writePath = nrrdPath + "/png_half" + f"/r_nissil_{r}_{slice}.png"
+            print(f"Writing slice {slice} to {writePath}")
+            image = data[slice, :, :y//2]
+            image = cv2.resize(image, (512,512))
+            image8 = (image / 256).astype('uint8')
+            cv2.imwrite(writePath, image8)
 
 if __name__ == '__main__':
     createTrainingSet()
