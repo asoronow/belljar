@@ -6,6 +6,8 @@
 
 # Makes
 out/
+# Pytorch runs
+resources/py/runs
 
 # VsCode
 .vscode

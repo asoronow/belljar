@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from scipy.ndimage import interpolation
 from os import path
 # Path to nrrd
-nrrdPath = "C:/Users/imageprocessing/.belljar/nrrd"
+nrrdPath = "C:/Users/Alec/.belljar/nrrd"
 def buildRotatedAtlases():
     '''Constructions the rotated (z-x) atlases for the most common cutting angles'''
     nData, nHead = nrrd.read('../nrrd/ara_nissl_10.nrrd')

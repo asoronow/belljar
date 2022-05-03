@@ -79,10 +79,8 @@ class Encoder(nn.Module):
         return x, [indicesOne, indicesTwo, indicesThree, indicesFour]
 
 class Decoder(nn.Module):
-    def __init__(self, batch_size):
+    def __init__(self):
         super().__init__()
-
-        self.batch_size = batch_size
 
         self.linearMap = nn.Sequential(
             nn.Linear(2048, 512 * 20 * 20),
@@ -135,9 +133,9 @@ class Decoder(nn.Module):
             nn.LeakyReLU(),
         )
 
-    def forward(self, x, indices):
+    def forward(self, x, indices, batch):
         x = self.linearMap(x)
-        x = x.reshape(self.batch_size, 512, 20, 20)
+        x = x.reshape(batch, 512, 20, 20)
         x = self.unpool(x, indices[3])
         x = self.stageFourDeconv(x)
         x = self.unpool(x, indices[2])
@@ -147,7 +145,6 @@ class Decoder(nn.Module):
         x = self.stageTwoDeconv(x)
         x = self.unpool(x, indices[0])
         x = self.stageOneDeconv(x)
-
         return x
 
 class Nissl(Dataset):
@@ -175,7 +172,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load models
 encoder = Encoder().to(device)
-decoder = Decoder(2).to(device)
+decoder = Decoder().to(device)
 
 # Setup params
 paramsToOptimize = [
@@ -186,28 +183,24 @@ paramsToOptimize = [
 # summary(model, input_size=(1, 512, 512))\
 # Optimizer and Loss
 optimizer = torch.optim.SGD(paramsToOptimize, lr=0.001, momentum=0.9)
-loss_fn = torch.nn.CrossEntropyLoss()
+loss_fn = torch.nn.MSELoss()
 
 def trainEpoch(epoch_index, tb_writer):
     running_loss = 0.
     last_loss = 0.
-
     # Here, we use enumerate(training_loader) instead of
     # iter(training_loader) so that we can track the batch
     # index and do some intra-epoch reporting
     for i, data in enumerate(trainingLoader):
         # Every data instance is an input + label pair
         inputs = data.to(device)
-
         # Zero your gradients for every batch!
         optimizer.zero_grad()
 
         # Make predictions for this batch
         encoded, indices = encoder(inputs)
-        print([i.shape for i in indices])
-        decoded = decoder(encoded, indices)
+        decoded = decoder(encoded, indices, len(inputs))
         # Compute the loss and its gradients
-        
         loss = loss_fn(decoded, inputs)
         loss.backward()
 
@@ -216,8 +209,8 @@ def trainEpoch(epoch_index, tb_writer):
 
         # Gather data and report
         running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
+        if i % 50 == 49:
+            last_loss = running_loss / 50 # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(trainingLoader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
@@ -229,7 +222,7 @@ if __name__ == '__main__':
     # Transformations on images
     transforms = transforms.Compose([transforms.ToTensor()])
     # Read the png locations
-    nrrdPath = "C:/Users/imageprocessing/.belljar/nrrd/png_half/"
+    nrrdPath = "C:/Users/Alec/.belljar/nrrd/png_half/"
     fileList = os.listdir(nrrdPath) # path to flat pngs
     absolutePaths = [nrrdPath + p for p in fileList]
     # Load all the images into memory
@@ -263,9 +256,9 @@ if __name__ == '__main__':
 
         running_vloss = 0.0
         for i, vdata in enumerate(validationLoader):
-            vinputs = vdata
-            encoded = encoder(vinputs)
-            decoded = decoder(encoded)
+            vinputs = vdata.to(device)
+            encoded, indices = encoder(vinputs)
+            decoded = decoder(encoded, indices, len(vinputs))
             vloss = loss_fn(decoded, vinputs)
             running_vloss += vloss
 
@@ -280,9 +273,35 @@ if __name__ == '__main__':
         writer.flush()
 
         # Track best performance, and save the model's state
-        # if avg_vloss < best_vloss:
-        #     best_vloss = avg_vloss
-        #     model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-        #     torch.save(model.state_dict(), model_path)
+        if avg_vloss < best_vloss:
+            best_vloss = avg_vloss
+            model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+            torch.save(encoder.state_dict(), model_path)
+            torch.save(decoder.state_dict(), model_path)
 
         epoch_number += 1
+
+
+def plot_ae_outputs(encoder,decoder,n=10):
+    plt.figure(figsize=(16,4.5))
+    targets = validationDataset.targets.numpy()
+    t_idx = {i:np.where(targets==i)[0][0] for i in range(n)}
+    for i in range(n):
+      ax = plt.subplot(2,n,i+1)
+      img = validationDataset[t_idx[i]][0].unsqueeze(0).to(device)
+      encoder.eval()
+      decoder.eval()
+      with torch.no_grad():
+         rec_img  = decoder(encoder(img))
+      plt.imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
+      ax.get_xaxis().set_visible(False)
+      ax.get_yaxis().set_visible(False)  
+      if i == n//2:
+        ax.set_title('Original images')
+      ax = plt.subplot(2, n, i + 1 + n)
+      plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
+      ax.get_xaxis().set_visible(False)
+      ax.get_yaxis().set_visible(False)  
+      if i == n//2:
+         ax.set_title('Reconstructed images')
+    plt.show()   
