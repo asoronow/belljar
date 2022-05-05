@@ -17,134 +17,107 @@ class Encoder(nn.Module):
         
         # Initial cnn w/ batch norm
         self.stageOneCNN = nn.Sequential(
-            nn.Conv2d(1,64, (5,5), 1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(1,32, (3,3), 2, 1),
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(),
-            nn.Conv2d(64,64, (5,5), 1),
+            nn.Conv2d(32,32,(3,3)),
             nn.LeakyReLU(),
-            nn.Conv2d(64,64,(5,5), 1),
-            nn.LeakyReLU(),
-            nn.Conv2d(64,64, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.Conv2d(64,64,(5,5), 1),
-            nn.LeakyReLU(),
-            nn.MaxPool2d(2,2, return_indices=True)
         )
 
         self.stageTwoCNN = nn.Sequential(
-            nn.Conv2d(64, 128, (5,5), 1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(32, 64, (3,3), 2, 1),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(),
-            nn.Conv2d(128, 128, (5,5), 1),
+            nn.Conv2d(64, 64, (3,3)),
             nn.LeakyReLU(),
-            nn.Conv2d(128, 128, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.MaxPool2d(2,2, return_indices=True)
         )
 
         self.stageThreeCNN = nn.Sequential(
-            nn.Conv2d(128, 256, (5,5), 1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(64, 128, (3,3), 2, 1),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(),
-            nn.Conv2d(256, 256, (5,5), 1),
+            nn.Conv2d(128, 128, (3,3)),
             nn.LeakyReLU(),
-            nn.Conv2d(256, 256, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.MaxPool2d(2,2, return_indices=True)
         )
 
         self.stageFourCNN = nn.Sequential(
-            nn.Conv2d(256, 512, (5,5), 1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(128, 256, (3,3), 2),
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(),
-            nn.Conv2d(512, 512, (5,5), 1),
+            nn.Conv2d(256, 256, (3,3)),
             nn.LeakyReLU(),
-            nn.Conv2d(512, 512, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.MaxPool2d(2,2, return_indices=True)
         )
 
+        self.flatten = nn.Flatten(start_dim=1)
+
         self.linearMap = nn.Sequential(
-            nn.Linear(512 * 20 * 20, 2048),
+            nn.Linear(256 * 28 * 28, 2048),
             nn.LeakyReLU()
         )
         
     def forward(self, x):
-        x, indicesOne = self.stageOneCNN(x)
-        x, indicesTwo = self.stageTwoCNN(x)
-        x, indicesThree = self.stageThreeCNN(x)
-        x, indicesFour = self.stageFourCNN(x)
-        x = x.reshape(-1, 512 * 20 * 20)
+        x = self.stageOneCNN(x)
+        x = self.stageTwoCNN(x)
+        x = self.stageThreeCNN(x)
+        x = self.stageFourCNN(x)
+        x = self.flatten(x)
         x = self.linearMap(x)
-        return x, [indicesOne, indicesTwo, indicesThree, indicesFour]
+        return x
 
 class Decoder(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.linearMap = nn.Sequential(
-            nn.Linear(2048, 512 * 20 * 20),
+            nn.Linear(2048, 256 * 28 * 28),
             nn.LeakyReLU()
         )
 
-        self.unpool = nn.MaxUnpool2d(2,2)
+        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(256,28,28))
 
         self.stageFourDeconv = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, (5,5), 1),
-            nn.BatchNorm2d(512),
+            nn.ConvTranspose2d(256, 256, (3,3)),
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(512, 512, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(512, 256, (5,5), 1),
+            nn.ConvTranspose2d(256, 128, (3,3), 2),
             nn.LeakyReLU(),
         )
 
         self.stageThreeDeconv = nn.Sequential(
-            nn.ConvTranspose2d(256, 256, (5,5), 1),
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(128, 128, (3,3)),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(256, 256, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(256, 128, (5,5), 1),
+            nn.ConvTranspose2d(128, 64, (3,3), 2, 1),
             nn.LeakyReLU()
         )
 
         self.stageTwoDeconv = nn.Sequential(
-            nn.ConvTranspose2d(128, 128, (5,5), 1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(128, 128, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(128, 64, (5,5), 1),
+            nn.ConvTranspose2d(64, 64, (3,3)),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU()
         )
 
+        self.stageTwoOutput = nn.ConvTranspose2d(64, 32, (3,3), 2, 1)
+
         self.stageOneDeconv = nn.Sequential(
-            nn.ConvTranspose2d(64,64, (5,5), 1),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(64,64, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(64,64,(5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(64,64, (5,5), 1),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(64,1,(5,5), 1),
-            nn.LeakyReLU(),
+            nn.ConvTranspose2d(32,32, (3,3)),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU()
         )
 
-    def forward(self, x, indices, batch):
+        self.stageOneOutput = nn.ConvTranspose2d(32,1,(3,3), 2, 1)
+
+    def forward(self, x):
         x = self.linearMap(x)
-        x = x.reshape(batch, 512, 20, 20)
-        x = self.unpool(x, indices[3])
+        x = self.unflatten(x)
         x = self.stageFourDeconv(x)
-        x = self.unpool(x, indices[2])
         x = self.stageThreeDeconv(x)
-        x = torch.nn.functional.pad(input=x, pad=(0,1,1,0), mode='constant', value=0.0)
-        x = self.unpool(x, indices[1])
         x = self.stageTwoDeconv(x)
-        x = self.unpool(x, indices[0])
+        x = self.stageTwoOutput(x, output_size=(254,254))
+        x = torch.nn.functional.leaky_relu(x)
         x = self.stageOneDeconv(x)
+        x = self.stageOneOutput(x, output_size=(512,512))
+        x = torch.nn.functional.leaky_relu(x)
         return x
 
 class Nissl(Dataset):
@@ -169,10 +142,15 @@ class Nissl(Dataset):
 
 # Get device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 # Load models
-encoder = Encoder().to(device)
-decoder = Decoder().to(device)
+encoder = Encoder()
+decoder = Decoder()
+
+encoder = nn.DataParallel(encoder)
+decoder = nn.DataParallel(decoder)
+
+encoder.to(device)
+decoder.to(device)
 
 # Setup params
 paramsToOptimize = [
@@ -180,11 +158,9 @@ paramsToOptimize = [
     {'params': decoder.parameters()}
 ]
 
-# summary(model, input_size=(1, 512, 512))\
 # Optimizer and Loss
-optimizer = torch.optim.SGD(paramsToOptimize, lr=0.001, momentum=0.9)
+optimizer = torch.optim.Adam(paramsToOptimize, lr=1e-3)
 loss_fn = torch.nn.MSELoss()
-
 def trainEpoch(epoch_index, tb_writer):
     running_loss = 0.
     last_loss = 0.
@@ -198,15 +174,14 @@ def trainEpoch(epoch_index, tb_writer):
         optimizer.zero_grad()
 
         # Make predictions for this batch
-        encoded, indices = encoder(inputs)
-        decoded = decoder(encoded, indices, len(inputs))
+        encoded = encoder(inputs)
+        decoded = decoder(encoded)
         # Compute the loss and its gradients
         loss = loss_fn(decoded, inputs)
         loss.backward()
 
         # Adjust learning weights
         optimizer.step()
-
         # Gather data and report
         running_loss += loss.item()
         if i % 50 == 49:
@@ -217,6 +192,30 @@ def trainEpoch(epoch_index, tb_writer):
             running_loss = 0.
 
     return last_loss
+
+def plot_ae_outputs(encoder,decoder,n=10):
+    plt.figure(figsize=(16,4.5))
+    for i in range(n):
+      ax = plt.subplot(2,n,i+1)
+      img = validationDataset[i].to(device)
+      img = img[None, :]
+      encoder.eval()
+      decoder.eval()
+      with torch.no_grad():
+        out = encoder(img)
+        rec_img  = decoder(out)
+      plt.imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
+      ax.get_xaxis().set_visible(False)
+      ax.get_yaxis().set_visible(False)  
+      if i == n//2:
+        ax.set_title('Original images')
+      ax = plt.subplot(2, n, i + 1 + n)
+      plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
+      ax.get_xaxis().set_visible(False)
+      ax.get_yaxis().set_visible(False)  
+      if i == n//2:
+         ax.set_title('Reconstructed images')
+    plt.show()   
 
 if __name__ == '__main__':
     # Transformations on images
@@ -231,36 +230,35 @@ if __name__ == '__main__':
     trainingImages, validationImages = train_test_split(allSlices, test_size=0.2)
     trainingDataset, validationDataset = Nissl(trainingImages, transform=transforms), Nissl(validationImages, transform=transforms)
     # Now construct data loaders for batch training
-    trainingLoader, validationLoader = DataLoader(trainingDataset, batch_size=2, shuffle=True), DataLoader(validationDataset, batch_size=2, shuffle=True)
+    trainingLoader, validationLoader = DataLoader(trainingDataset, batch_size=4, shuffle=True), DataLoader(validationDataset, batch_size=4, shuffle=True)
 
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
     epoch_number = 0
 
-    EPOCHS = 5
+    EPOCHS = 30
 
-    best_vloss = 1_000_000.
+    best_vloss = float('inf')
 
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch_number + 1))
 
         # Make sure gradient tracking is on, and do a pass over the data
-        encoder.train(True)
-        decoder.train(True)
+        encoder.train()
+        decoder.train()
         avg_loss = trainEpoch(epoch_number, writer)
-
         # We don't need gradients on to do reporting
-        encoder.train(False)
-        decoder.train(False)
-
+        encoder.eval()
+        decoder.eval()
         running_vloss = 0.0
-        for i, vdata in enumerate(validationLoader):
-            vinputs = vdata.to(device)
-            encoded, indices = encoder(vinputs)
-            decoded = decoder(encoded, indices, len(vinputs))
-            vloss = loss_fn(decoded, vinputs)
-            running_vloss += vloss
+        with torch.no_grad():
+            for i, vdata in enumerate(validationLoader):
+                vinputs = vdata.to(device)
+                encoded = encoder(vinputs)
+                decoded = decoder(encoded)
+                vloss = loss_fn(decoded, vinputs)
+                running_vloss += vloss
 
         avg_vloss = running_vloss / (i + 1)
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
@@ -274,34 +272,11 @@ if __name__ == '__main__':
 
         # Track best performance, and save the model's state
         if avg_vloss < best_vloss:
+            plot_ae_outputs(encoder, decoder)
             best_vloss = avg_vloss
-            model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-            torch.save(encoder.state_dict(), model_path)
-            torch.save(decoder.state_dict(), model_path)
+            model_path = '../models/predictor'.format(timestamp, epoch_number)
+            torch.save(encoder.state_dict(), model_path+"_encoder.pt")
+            torch.save(decoder.state_dict(), model_path+"_decoder.pt")
 
         epoch_number += 1
 
-
-def plot_ae_outputs(encoder,decoder,n=10):
-    plt.figure(figsize=(16,4.5))
-    targets = validationDataset.targets.numpy()
-    t_idx = {i:np.where(targets==i)[0][0] for i in range(n)}
-    for i in range(n):
-      ax = plt.subplot(2,n,i+1)
-      img = validationDataset[t_idx[i]][0].unsqueeze(0).to(device)
-      encoder.eval()
-      decoder.eval()
-      with torch.no_grad():
-         rec_img  = decoder(encoder(img))
-      plt.imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
-      ax.get_xaxis().set_visible(False)
-      ax.get_yaxis().set_visible(False)  
-      if i == n//2:
-        ax.set_title('Original images')
-      ax = plt.subplot(2, n, i + 1 + n)
-      plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')  
-      ax.get_xaxis().set_visible(False)
-      ax.get_yaxis().set_visible(False)  
-      if i == n//2:
-         ax.set_title('Reconstructed images')
-    plt.show()   
