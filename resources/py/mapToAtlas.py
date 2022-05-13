@@ -22,12 +22,20 @@ def downloadFile(url, outpath):
                 f.write(chunk)
     return local_filename
 
+# Warp atlas image roughly onto the DAPI section
+def warpToDAPI(atlasImage, dapiImage, annotation):
+    '''Takes in a DAPI image and its atlas prediction and warps the atlas to match the section'''
+    # TODO: Get height/width of contours, warp to atlas to match height/width of dapi contour
+    # TODO: Move atlas contour center to dapi contour center
+    pass
+
 # Check if we have the nrrd files
 nrrdPath = Path.home() / ".belljar/nrrd"
 if nrrdPath.exists():
     fileList = os.listdir(Path.home() / ".belljar/nrrd/png_half/") # path to flat pngs
     absolutePaths = [os.path.abspath(p) for p in fileList]
 else:
+    # If we don't have what we need, we should grab it from Allen
     os.mkdir(nrrdPath)
     nissl = downloadFile(nisslDownloadLink, nrrdPath)
     annotation = downloadFile(annotationDownloadLink, nrrdPath)
