@@ -3,19 +3,18 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.ndimage import interpolation
-from os import path
 # Path to nrrd
 nrrdPath = "C:/Users/Alec/.belljar/nrrd"
-def buildRotatedAtlases():
+def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
     '''Constructions the rotated (z-x) atlases for the most common cutting angles'''
-    nData, nHead = nrrd.read('../nrrd/ara_nissl_10.nrrd')
-    aData, aHead = nrrd.read('../nrrd/annotation_10.nrrd')
+    nData, nHead = nrrd.read(nisslPath)
+    aData, aHead = nrrd.read(annotationPath)
 
     for r in range(-10,11,1):
         nissl_rotatedX = interpolation.rotate(nData[:, :, :], angle=r, axes=(0,2), order=1)
         annotation_rotatedX = interpolation.rotate(aData[:, :, :], angle=r, axes=(0,2), order=1)
-        nrrd.write(f'../nrrd/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
-        nrrd.write(f'../nrrd/r_annotation_{r}.nrrd', annotation_rotatedX, aHead)
+        nrrd.write(str(outputPath) + f'/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
+        nrrd.write(str(outputPath) + f'/r_annotation_{r}.nrrd', annotation_rotatedX, aHead)
 
 def createTrainingSet():
     '''Make the set of all pngs to train the autoencoder'''

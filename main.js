@@ -51,6 +51,7 @@ function setupPython(win) {
                 case 'win32':
                     tar.x({
                         cwd: homeDir,
+                        preservePaths: true,
                         file: path.join(standalone, 'win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
@@ -60,6 +61,7 @@ function setupPython(win) {
                 case 'linux':
                     tar.x({
                         cwd: homeDir,
+                        preservePaths: true,
                         file: path.join(standalone, 'linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
@@ -69,6 +71,7 @@ function setupPython(win) {
                 case 'darwin':
                     tar.x({
                         cwd: homeDir,
+                        preservePaths: true,
                         file: path.join(standalone, 'osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
@@ -78,6 +81,7 @@ function setupPython(win) {
                 default:
                     tar.x({
                         cwd: homeDir,
+                        preservePaths: true,
                         file: path.join(standalone, 'linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz')
                     }).then(() => {
                         win.webContents.send('updateStatus', 'Extracted python...');
