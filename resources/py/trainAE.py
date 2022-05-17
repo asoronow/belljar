@@ -212,8 +212,12 @@ def makePredictions(dapiImages, dapiLabels):
     embeddings = {}
     with open("atlasEmbeddings.pkl","rb") as f:
         embeddings = pickle.load(f)
+        for name, e in embeddings.items():
+            e = ((e - np.min(e))/np.ptp(e))
+            embeddings[name] = e
     
     t = transforms.Compose([transforms.ToTensor()])
+    
     dataset = Nissl(dapiImages, transform=t, labels=dapiLabels)
     similarity = {}
     for i in range(len(dataset)):
@@ -227,33 +231,45 @@ def makePredictions(dapiImages, dapiLabels):
             out = encoder(img).cpu().numpy()
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
-                similarity[dataset.getPath(i)][name] = 1 - spatial.distance.cosine(out, e)
+                similarity[dataset.getPath(i)][name] = spatial.distance.cosine(out, e)
     
     # find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
     for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get, reverse=True)
+        ordered = sorted(scores, key=scores.get)
         angles = []
         for result in ordered[:3]:
-            print(name, result, scores[result])
+            # print(name, result, scores[result])
             v = result.split("_")
             angles.append(int(v[2]))
         consensus[stats.mode(angles)[0][0]] += 1
     
     # select the best sections along that angle
-    best = []
+    best = {}
     idealAngle = max(consensus, key=consensus.get)
     for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get, reverse=True)
-        for result in ordered:
+        ordered = sorted(scores, key=scores.get)
+        section = None
+        for result in ordered[:5]:
             v = result.split("_")
             s = int(v[3].split(".")[0])
             if int(v[2]) == idealAngle:
-                best.append(result)
+                section = result
                 break
+        
+        if section == None:
+            sectionEmbedding = embeddings[ordered[0]]
+            matches = {}
+            for atlasName, e in embeddings.items():
+                v = atlasName.split("_")
+                if int(v[2]) == idealAngle:
+                    matches[atlasName] = spatial.distance.cosine(sectionEmbedding, e)
+            best[name] = min(matches, key=matches.get)
+        else:
+            best[name] = section
 
-    for i, name in enumerate(best):
-        print(dataset.getPath(i), name)
+    for s, r in best.items():
+        print(s, r)
 
 
 def runTraining(nrrdPath, dapiPath):

@@ -37,7 +37,7 @@ if __name__ == "__main__":
     if nrrdPath.exists():
         fileList = os.listdir(Path.home() / ".belljar/dapi/")[:54]
         absolutePaths = [str(Path.home() / ".belljar/dapi/" / p) for p in fileList]
-        images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
+        images = [cv2.resize(cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY), (512,512)) for p in absolutePaths]
         makePredictions(images, fileList)
     else:
         # If we don't have what we need, we should grab it from Allen
