@@ -3,6 +3,8 @@ import numpy as np
 import cv2
 from pathlib import Path
 from sliceAtlas import buildRotatedAtlases
+from trainAE import makePredictions
+from torchvision import transforms
 
 # Links in case we should need to redownload these, will not be included
 nisslDownloadLink = "http://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf/ara_nissl/ara_nissl_10.nrrd"
@@ -29,15 +31,18 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     # TODO: Move atlas contour center to dapi contour center
     pass
 
-# Check if we have the nrrd files
-nrrdPath = Path.home() / ".belljar/nrrd"
-if nrrdPath.exists():
-    fileList = os.listdir(Path.home() / ".belljar/nrrd/png_half/") # path to flat pngs
-    absolutePaths = [os.path.abspath(p) for p in fileList]
-else:
-    # If we don't have what we need, we should grab it from Allen
-    os.mkdir(nrrdPath)
-    nissl = downloadFile(nisslDownloadLink, nrrdPath)
-    annotation = downloadFile(annotationDownloadLink, nrrdPath)
-    buildRotatedAtlases(nrrdPath / nissl, nrrdPath / annotation, nrrdPath)
+if __name__ == "__main__":
+    # Check if we have the nrrd files
+    nrrdPath = Path.home() / ".belljar/nrrd"
+    if nrrdPath.exists():
+        fileList = os.listdir(Path.home() / ".belljar/dapi/")[:54]
+        absolutePaths = [str(Path.home() / ".belljar/dapi/" / p) for p in fileList]
+        images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
+        makePredictions(images, fileList)
+    else:
+        # If we don't have what we need, we should grab it from Allen
+        os.mkdir(nrrdPath)
+        nissl = downloadFile(nisslDownloadLink, nrrdPath)
+        annotation = downloadFile(annotationDownloadLink, nrrdPath)
+        buildRotatedAtlases(nrrdPath / nissl, nrrdPath / annotation, nrrdPath)
 

@@ -6,7 +6,7 @@ from torchsummary import summary
 from torch.utils.data import DataLoader, Dataset, random_split
 from torch.utils import tensorboard
 from sklearn.model_selection import train_test_split
-from torch import embedding, nn
+from torch import nn
 import cv2
 import os, pickle
 from scipy import spatial
@@ -141,7 +141,7 @@ class Nissl(Dataset):
         label = self.labels[idx]
         return label
 
-def trainEpoch(epoch_index, tb_writer):
+def trainEpoch(epoch_index, tb_writer, trainingLoader, optimizer, device, encoder, decoder, loss_fn):
     running_loss = 0.
     last_loss = 0.
     # Here, we use enumerate(training_loader) instead of
@@ -173,11 +173,12 @@ def trainEpoch(epoch_index, tb_writer):
 
     return last_loss
 
-def plot_ae_outputs(encoder,decoder,n=10):
+def plot_ae_outputs(encoder,decoder, images, n=10 ):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     plt.figure(figsize=(16,4.5))
     for i in range(n):
       ax = plt.subplot(2,n,i+1)
-      validationDataset = Nissl(validationAtlasImages, transform=transforms)
+      validationDataset = Nissl(images, transform=t)
       img = validationDataset[i].to(device)
       img = img[None, :]
       encoder.eval()
@@ -199,21 +200,25 @@ def plot_ae_outputs(encoder,decoder,n=10):
     plt.show()   
 
 def makePredictions(dapiImages, dapiLabels):
+    '''Use the encoded sections and atlas embeddings to register brain regions'''
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Load models
-    encoder = Encoder()
+    encoder = nn.DataParallel(Encoder())
+    encoder.load_state_dict(torch.load("../models/predictor_encoder.pt"))
+    encoder.eval()
+    encoder.to(device)
     # load the atlas embeddings
     embeddings = {}
     with open("atlasEmbeddings.pkl","rb") as f:
         embeddings = pickle.load(f)
     
-    dataset = Nissl(dapiImages, transform=transforms, labels=dapiLabels)
+    t = transforms.Compose([transforms.ToTensor()])
+    dataset = Nissl(dapiImages, transform=t, labels=dapiLabels)
     similarity = {}
     for i in range(len(dataset)):
         img = dataset[i].to(device)
         img = img[None, :]
-        encoder.eval()
         # Debug for verifying paths match the image we are processing
         # cv2.imshow("image from dataset", dataset[i].numpy().transpose(1, 2, 0))
         # cv2.imshow("image from filepaths", cv2.imread(nrrdPath + dataset.getPath(i)))
@@ -222,14 +227,15 @@ def makePredictions(dapiImages, dapiLabels):
             out = encoder(img).cpu().numpy()
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
-                similarity[dataset.getPath(i)][name] = spatial.distance.correlation(out, e)
+                similarity[dataset.getPath(i)][name] = 1 - spatial.distance.cosine(out, e)
     
     # find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
     for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get)
+        ordered = sorted(scores, key=scores.get, reverse=True)
         angles = []
         for result in ordered[:3]:
+            print(name, result, scores[result])
             v = result.split("_")
             angles.append(int(v[2]))
         consensus[stats.mode(angles)[0][0]] += 1
@@ -238,7 +244,7 @@ def makePredictions(dapiImages, dapiLabels):
     best = []
     idealAngle = max(consensus, key=consensus.get)
     for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get)
+        ordered = sorted(scores, key=scores.get, reverse=True)
         for result in ordered:
             v = result.split("_")
             s = int(v[3].split(".")[0])
@@ -273,7 +279,7 @@ def runTraining(nrrdPath, dapiPath):
     optimizer = torch.optim.Adam(paramsToOptimize, lr=1e-3)
     loss_fn = torch.nn.MSELoss()
     # Transformations on images
-    transforms = transforms.Compose([transforms.ToTensor()])
+    t = transforms.Compose([transforms.ToTensor()])
 
     fileList = os.listdir(nrrdPath) # path to flat pngs
     dapiList = os.listdir(dapiPath)
@@ -286,7 +292,7 @@ def runTraining(nrrdPath, dapiPath):
     trainingAtlasImages, validationAtlasImages = train_test_split(allSlices, test_size=0.2)
     trainingDAPIImages, validationDAPIImages = train_test_split(allDAPI, test_size=0.2)
 
-    trainingDataset, validationDataset = Nissl(trainingDAPIImages + trainingAtlasImages, transform=transforms), Nissl(validationAtlasImages + validationDAPIImages, transform=transforms)
+    trainingDataset, validationDataset = Nissl(trainingDAPIImages + trainingAtlasImages, transform=t), Nissl(validationAtlasImages + validationDAPIImages, transform=t)
     # Now construct data loaders for batch training
     trainingLoader, validationLoader = DataLoader(trainingDataset, batch_size=4, shuffle=True), DataLoader(validationDataset, batch_size=4, shuffle=True)
 
@@ -305,7 +311,15 @@ def runTraining(nrrdPath, dapiPath):
         # Make sure gradient tracking is on, and do a pass over the data
         encoder.train()
         decoder.train()
-        avg_loss = trainEpoch(epoch_number, writer)
+        avg_loss = trainEpoch(epoch_number, 
+                              writer, 
+                              trainingLoader, 
+                              optimizer, 
+                              device, 
+                              encoder, 
+                              decoder, 
+                              loss_fn
+                            )
         # We don't need gradients on to do reporting
         encoder.eval()
         decoder.eval()
