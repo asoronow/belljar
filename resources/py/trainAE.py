@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torchvision import transforms
-from torchsummary import summary
 from torch.utils.data import DataLoader, Dataset, random_split
 from torch.utils import tensorboard
 from sklearn.model_selection import train_test_split
@@ -267,9 +266,8 @@ def makePredictions(dapiImages, dapiLabels):
             best[name] = min(matches, key=matches.get)
         else:
             best[name] = section
-
-    for s, r in best.items():
-        print(s, r)
+    
+    return best, idealAngle
 
 
 def runTraining(nrrdPath, dapiPath):
