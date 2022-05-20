@@ -204,7 +204,7 @@ def makePredictions(dapiImages, dapiLabels):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Load models
     encoder = nn.DataParallel(Encoder())
-    encoder.load_state_dict(torch.load("../models/predictor_encoder.pt"))
+    encoder.load_state_dict(torch.load("../models/predictor_encoder.pt", map_location=device))
     encoder.eval()
     encoder.to(device)
     # load the atlas embeddings
@@ -266,7 +266,11 @@ def makePredictions(dapiImages, dapiLabels):
             best[name] = min(matches, key=matches.get)
         else:
             best[name] = section
-    
+
+    # Prep for alignment by converting to integer slices
+    for sectionName, matchName in best.items():
+        best[sectionName] = int(matchName.split("_")[3].split(".")[0])
+
     return best, idealAngle
 
 
