@@ -1,3 +1,4 @@
+from dataclasses import replace
 import os, requests
 import numpy as np
 import cv2
@@ -12,7 +13,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='c:/Users/Alec/.belljar/dapi/')
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='/Users/alec/Projects/microscopy/m107_DAPI/')
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -38,30 +39,70 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     '''Takes in a DAPI image and its atlas prediction and warps the atlas to match the section'''
     # TODO: Get height/width of contours, warp to atlas to match height/width of dapi contour
     # TODO: Move atlas contour center to dapi contour center
-    detector = cv2.SIFT_create()
-    dapiKeyPoints, dapiDesc = detector.detectAndCompute(dapiImage, None)
-    atlasKeyPoints, atlasDesc = detector.detectAndCompute(atlasImage, None)
-    # Find matches
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    search_params = dict(checks = 50)
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
-    matches = flann.knnMatch(dapiDesc,atlasDesc,k=2)
-    # store all the good matches as per Lowe's ratio test.
-    # good = []
-    # for m,n in matches:
-    #     if m.distance < 0.7*n.distance:
-    #         good.append(m)
+    # Open the image files.    
+    atlasImage = cv2.resize(atlasImage, dapiImage.shape)
+    
+    def getMaxContour(image):
+        '''Returns the largest contour in an image and its bounding points'''
+        # Get the gaussian threshold, otsu method (best automatic results)
+        blur = cv2.GaussianBlur(image, (5,5), 0)
+        ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        # Find the countours in the image, fast method
+        contours = cv2.findContours(thresh.astype('int32'), cv2.RETR_FLOODFILL, cv2.CHAIN_APPROX_NONE)
+        # Consider the contour arrays only, no hierarchy
+        contours = contours[0]
+        # Start with the first in the list compare subsequent
+        xL, yL, wL, hL = cv2.boundingRect(contours[0])
+        maxC = None
+        for c in contours[1:]:
+            x, y, w, h  = cv2.boundingRect(c)
+            if (w*h) > (wL*hL):
+                maxC = c
+                xL, yL, wL, hL = x, y, w, h
 
-    # Find the homography of these two images
+        return maxC, xL, yL, wL, hL
+    
+    def triangles(points):
+        points = np.where(points, points, 1)
+        subdiv = cv2.Subdiv2D((*points.min(0), *points.max(0)))
+        for pt in points:
+            subdiv.insert(tuple(map(int, pt)))
+        for pts in subdiv.getTriangleList().reshape(-1, 3, 2):
+            yield [np.where(np.all(points == pt, 1))[0][0] for pt in pts]
 
-    dapi_pts = np.float32([ dapiKeyPoints[m[0].queryIdx].pt for m in matches ])
-    atlas_pts = np.float32([ atlasKeyPoints[m[0].trainIdx].pt for m in matches ])
-    hom, mask = cv2.findHomography(dapi_pts, atlas_pts, cv2.RANSAC, 5.0)
+    def crop(img, pts):
+        x, y, w, h = cv2.boundingRect(pts)
+        img_cropped = img[y: y + h, x: x + w]
+        pts[:, 0] -= x
+        pts[:, 1] -= y
+        return img_cropped, pts
 
-    # Now actually do the alignment step
-    alignedImage = cv2.warpPerspective(atlasImage, hom, (atlasImage.shape[1],atlasImage.shape[0]), flags=cv2.INTER_CUBIC)
-    return alignedImage
+    def warp(img1, img2, pts1, pts2):
+        img2 = img2.copy()
+        for indices in triangles(pts1):
+            img1_cropped, triangle1 = crop(img1, pts1[indices])
+            img2_cropped, triangle2 = crop(img2, pts2[indices])
+            transform = cv2.getAffineTransform(np.float32(triangle1), np.float32(triangle2))
+            img2_warped = cv2.warpAffine(img1_cropped, transform, img2_cropped.shape[:2][::-1], None, cv2.INTER_LINEAR, cv2.BORDER_REFLECT_101)
+            mask = np.zeros_like(img2_cropped)
+            cv2.fillConvexPoly(mask, np.int32(triangle2), (1, 1, 1), 16, 0)
+            img2_cropped *= 1 - mask
+            img2_cropped += img2_warped * mask
+        return img2
+    
+    dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage)
+
+    atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
+    
+    dapiContour = np.squeeze(dapiContour)
+    atlasContour = np.squeeze(atlasContour)
+
+    atlasRect = np.array([[atlasX, atlasY], [atlasX + atlasW, atlasY], [atlasX + atlasW, atlasY + atlasH], [atlasX, atlasY + atlasH]])
+    dapiRect = np.array([[dapiX, dapiY], [dapiX + dapiW, dapiY], [dapiX + dapiW, dapiY + dapiH], [dapiX, dapiY + dapiH]])
+    atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+    annotationResult = warp(annotation, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+    
+    return atlasResult, annotationResult
 
 if __name__ == "__main__":
     # Check if we have the nrrd files
@@ -77,11 +118,12 @@ if __name__ == "__main__":
 
     # Get the file paths
     fileList = os.listdir(args.input)
-    absolutePaths = [args.input + p for p in fileList[:1]]
+    absolutePaths = [args.input + p for p in fileList[:2]]
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (512,512)) for im in images]
     # Calculate and get the predictions
+    # Predictions dict holds the section numbers for atlas
     predictions, angle = makePredictions(resizedImages, fileList)
     # Load the appropriate atlas
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
@@ -99,6 +141,7 @@ if __name__ == "__main__":
     # Setup  the napari contorls
     # Button callbacks
     def nextSection():
+        '''Move one section forward by crawling file paths'''
         global currentSection, progressBar
         if not currentSection == len(absolutePaths) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
@@ -107,7 +150,9 @@ if __name__ == "__main__":
             progressBar.setValue(currentSection + 1)
             sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//2,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
+    
     def prevSection():
+        '''Move one section backward by crawling file paths'''
         global currentSection, progressBar
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
@@ -119,15 +164,18 @@ if __name__ == "__main__":
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def finishAlignment():
+        '''Save our final updated prediction, perform warps, close'''
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
-        cv2.imshow("text", (atlas[viewer.dims.current_step[0], : , :atlas.shape[2]//2]/256).astype('uint8'))
-        cv2.waitKey(0)
-        result = warpToDAPI((atlas[viewer.dims.current_step[0], : , :atlas.shape[2]//2]/256).astype('uint8'), images[currentSection], None)
-        cv2.imshow("window", result)
-        cv2.waitKey(0)
-        viewer.close()
+        for i in range(len(fileList)):
+            atlasWarp, annoWarp = warpToDAPI((atlas[predictions[fileList[i]], : , :atlas.shape[2]//2]/256).astype('uint8'), 
+                                              images[i], 
+                                             (annotation[predictions[fileList[i]], : , :atlas.shape[2]//2]).astype('uint8')
+                                            )
+            cv2.imwrite(f"Atlas_s{i+1}", atlasWarp)
+            cv2.imwrite(f"Annotation_s{i+1}", annoWarp)
 
+        viewer.close()
    
     # Button objects
     nextButton = QPushButton('Next Section')
