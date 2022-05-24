@@ -45,10 +45,18 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     def getMaxContour(image):
         '''Returns the largest contour in an image and its bounding points'''
         # Get the gaussian threshold, otsu method (best automatic results)
+        kernel = np.ones((5,5),np.uint8)
         blur = cv2.GaussianBlur(image, (5,5), 0)
         ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        closing = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        cv2.imshow("closing", closing)
+        cv2.waitKey(0)
         # Find the countours in the image, fast method
-        contours = cv2.findContours(thresh.astype('int32'), cv2.RETR_FLOODFILL, cv2.CHAIN_APPROX_NONE)
+        contours = cv2.findContours(closing, cv2.RETR_EXTERN, cv2.CHAIN_APPROX_NONE)
+        closing = cv2.cvtColor(closing, cv2.COLOR_GRAY2RGB)
+        cv2.drawContours(closing, contours, -1, (255,0,0), 3)
+        cv2.imshow("closing", closing)
+        cv2.waitKey(0)
         # Consider the contour arrays only, no hierarchy
         contours = contours[0]
         # Start with the first in the list compare subsequent
