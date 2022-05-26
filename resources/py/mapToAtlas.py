@@ -13,7 +13,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='/Users/alec/Projects/microscopy/m107_DAPI/')
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='/Users/alec/Projects/microscopy/m107_DAPI/subset/')
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -49,15 +49,9 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         blur = cv2.GaussianBlur(image, (5,5), 0)
         ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         closing = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-        cv2.imshow("closing", closing)
-        cv2.waitKey(0)
         # Find the countours in the image, fast method
-        contours = cv2.findContours(closing, cv2.RETR_EXTERN, cv2.CHAIN_APPROX_NONE)
-        closing = cv2.cvtColor(closing, cv2.COLOR_GRAY2RGB)
-        cv2.drawContours(closing, contours, -1, (255,0,0), 3)
-        cv2.imshow("closing", closing)
-        cv2.waitKey(0)
-        # Consider the contour arrays only, no hierarchy
+        contours = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        # Contours alone
         contours = contours[0]
         # Start with the first in the list compare subsequent
         xL, yL, wL, hL = cv2.boundingRect(contours[0])
@@ -67,7 +61,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
             if (w*h) > (wL*hL):
                 maxC = c
                 xL, yL, wL, hL = x, y, w, h
-
+        
         return maxC, xL, yL, wL, hL
     
     def triangles(points):
@@ -107,8 +101,20 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
 
     atlasRect = np.array([[atlasX, atlasY], [atlasX + atlasW, atlasY], [atlasX + atlasW, atlasY + atlasH], [atlasX, atlasY + atlasH]])
     dapiRect = np.array([[dapiX, dapiY], [dapiX + dapiW, dapiY], [dapiX + dapiW, dapiY + dapiH], [dapiX, dapiY + dapiH]])
-    atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiRect)
-    annotationResult = warp(annotation, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+    
+    atlasResult, annotationResult = np.empty(atlasImage.shape), np.empty(atlasImage.shape)
+    try:
+        atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+    except Exception as e:
+        print("\n Could not warp atlas image!")
+        print(e)
+    
+    try:
+        annotationResult = warp(annotation, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+    except Exception as e:
+        print("\n Could not warp annotations!")
+        print(e)
+
     
     return atlasResult, annotationResult
 
@@ -126,7 +132,7 @@ if __name__ == "__main__":
 
     # Get the file paths
     fileList = os.listdir(args.input)
-    absolutePaths = [args.input + p for p in fileList[:2]]
+    absolutePaths = [args.input + p for p in fileList if not p.startswith('.')]
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (512,512)) for im in images]
@@ -175,13 +181,13 @@ if __name__ == "__main__":
         '''Save our final updated prediction, perform warps, close'''
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
-        for i in range(len(fileList)):
+        for i in range(len(absolutePaths)):
             atlasWarp, annoWarp = warpToDAPI((atlas[predictions[fileList[i]], : , :atlas.shape[2]//2]/256).astype('uint8'), 
                                               images[i], 
-                                             (annotation[predictions[fileList[i]], : , :atlas.shape[2]//2]).astype('uint8')
+                                             (annotation[predictions[fileList[i]], : , :atlas.shape[2]//2]).astype('float32')
                                             )
-            cv2.imwrite(f"Atlas_s{i+1}", atlasWarp)
-            cv2.imwrite(f"Annotation_s{i+1}", annoWarp)
+            cv2.imwrite(f"Atlas_s{i+1}.png", atlasWarp)
+            cv2.imwrite(f"Annotation_s{i+1}.tiff", annoWarp)
 
         viewer.close()
    
