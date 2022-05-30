@@ -85,7 +85,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
             img1_cropped, triangle1 = crop(img1, pts1[indices])
             img2_cropped, triangle2 = crop(img2, pts2[indices])
             transform = cv2.getAffineTransform(np.float32(triangle1), np.float32(triangle2))
-            img2_warped = cv2.warpAffine(img1_cropped, transform, img2_cropped.shape[:2][::-1], None, cv2.INTER_LINEAR, cv2.BORDER_REFLECT_101)
+            img2_warped = cv2.warpAffine(img1_cropped, transform, img2_cropped.shape[:2][::-1], None, cv2.INTER_NEAREST, cv2.BORDER_REFLECT_101)
             mask = np.zeros_like(img2_cropped)
             cv2.fillConvexPoly(mask, np.int32(triangle2), (1, 1, 1), 16, 0)
             img2_cropped *= 1 - mask
