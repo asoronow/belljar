@@ -1,6 +1,5 @@
 # Imports
 import csv
-from os import close
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import *

@@ -1,4 +1,3 @@
-from dataclasses import replace
 import os, requests
 import numpy as np
 import cv2
@@ -13,7 +12,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='/Users/alec/Projects/microscopy/m107_DAPI/subset/')
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default="C:/Users/Alec/.belljar/dapi/subset/")
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -41,7 +40,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     # TODO: Move atlas contour center to dapi contour center
     # Open the image files.    
     atlasImage = cv2.resize(atlasImage, dapiImage.shape)
-    
+    annotation = cv2.resize(annotation, dapiImage.shape, interpolation=cv2.INTER_NEAREST)
     def getMaxContour(image):
         '''Returns the largest contour in an image and its bounding points'''
         # Get the gaussian threshold, otsu method (best automatic results)
@@ -85,7 +84,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
             img1_cropped, triangle1 = crop(img1, pts1[indices])
             img2_cropped, triangle2 = crop(img2, pts2[indices])
             transform = cv2.getAffineTransform(np.float32(triangle1), np.float32(triangle2))
-            img2_warped = cv2.warpAffine(img1_cropped, transform, img2_cropped.shape[:2][::-1], None, cv2.INTER_NEAREST, cv2.BORDER_REFLECT_101)
+            img2_warped = cv2.warpAffine(img1_cropped, transform, img2_cropped.shape[:2][::-1], None, cv2.INTER_NEAREST, cv2.BORDER_TRANSPARENT)
             mask = np.zeros_like(img2_cropped)
             cv2.fillConvexPoly(mask, np.int32(triangle2), (1, 1, 1), 16, 0)
             img2_cropped *= 1 - mask
@@ -110,7 +109,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         print(e)
     
     try:
-        annotationResult = warp(annotation, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="float32"), atlasRect, dapiRect)
     except Exception as e:
         print("\n Could not warp annotations!")
         print(e)
@@ -182,12 +181,13 @@ if __name__ == "__main__":
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         for i in range(len(absolutePaths)):
-            atlasWarp, annoWarp = warpToDAPI((atlas[predictions[fileList[i]], : , :atlas.shape[2]//2]/256).astype('uint8'), 
+            imageName = fileList[i]
+            atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//2]/256).astype('uint8'), 
                                               images[i], 
-                                             (annotation[predictions[fileList[i]], : , :atlas.shape[2]//2]).astype('float32')
+                                             (annotation[predictions[imageName], : , :annotation.shape[2]//2]).astype('float32')
                                             )
-            cv2.imwrite(f"Atlas_s{i+1}.png", atlasWarp)
-            cv2.imwrite(f"Annotation_s{i+1}.tiff", annoWarp)
+            cv2.imwrite(f"Atlas_{imageName.split('.')[0]}.png", atlasWarp)
+            cv2.imwrite(f"Annotation_{imageName.split('.')[0]}.tiff", annoWarp)
 
         viewer.close()
    
