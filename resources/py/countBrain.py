@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="Integrate cell positions with alig
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
 parser.add_argument('-p', '--predictions', help="input directory, only use if graphical false", default="C:/Users/Alec/Downloads/Predictions/")
 parser.add_argument('-a', '--annotations', help="input directory, only use if graphical false", default="C:/Users/Alec/.belljar/dapi/subset/annotation/")
-parser.add_argument('-s', '--structures', help="structures file", default='')
+parser.add_argument('-s', '--structures', help="structures file", default='C:/Users/Alec/Desktop/belljar/resources/csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
 
@@ -24,11 +24,20 @@ if __name__ == '__main__':
     regions = {}
     with open(args.structures) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
-        next(structureReader) # Skip Line 1
-        for row in structureReader:
-            regions[row[0]] = row[3]
+        
+        header = next(structureReader) # skip header
+        root = next(structureReader) # skip atlas root region
 
+        # store all other atlas regions and their linkages
+        for row in structureReader:
+            regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
+
+
+    sums = {}
     for i, pName in enumerate(predictionFiles):
+        # divide up the results file by section as well
+        sums[annotationFiles[i][11:]] = {}
+        currentSection = sums[annotationFiles[i][11:]]
         with open(args.predictions + pName, 'rb') as predictionPkl:
             prediction = pickle.load(predictionPkl)
             predictedSize = prediction.pop()
@@ -36,5 +45,17 @@ if __name__ == '__main__':
             height, width = annotation.shape
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
-                xPos = (mX - (mX - x)//2)*(width/predictedSize[1])
-                yPos = (mY - (mY - y)//2)*(height/predictedSize[0])
+                xPos = int((mX - (mX - x)//2)*(width/predictedSize[1]))
+                yPos = int((mY - (mY - y)//2)*(height/predictedSize[0]))
+                atlasId = int(annotation[yPos, xPos])
+                name = regions[atlasId]["name"]
+                if "layer" in name.lower():
+                    parent = regions[atlasId]["parent"]
+                    name = regions[parent]["name"]
+                    if currentSection.get(name, False):
+                        currentSection[name] += 1
+                    else:
+                        currentSection[name] = 1
+    
+    print(sums.items())
+        

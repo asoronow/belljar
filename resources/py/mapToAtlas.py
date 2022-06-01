@@ -12,7 +12,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default="C:/Users/Alec/.belljar/dapi/subset/")
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
