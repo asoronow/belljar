@@ -42,6 +42,7 @@ if __name__ == '__main__':
             prediction = pickle.load(predictionPkl)
             predictedSize = prediction.pop()
             annotation = cv2.imread(args.annotations + annotationFiles[i], -1)
+            annotation = annotation.astype('uint32')
             height, width = annotation.shape
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
