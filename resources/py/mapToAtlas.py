@@ -1,6 +1,7 @@
-import os, requests
+import os, requests, math
 import numpy as np
 import cv2
+import pickle
 from pathlib import Path
 from sliceAtlas import buildRotatedAtlases
 from trainAE import makePredictions
@@ -12,7 +13,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='C:/Users/Alec/.belljar/dapi/subset/')
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -35,9 +36,10 @@ def downloadFile(url, outpath):
 
 # Warp atlas image roughly onto the DAPI section
 def warpToDAPI(atlasImage, dapiImage, annotation):
-    '''Takes in a DAPI image and its atlas prediction and warps the atlas to match the section'''
-    # TODO: Get height/width of contours, warp to atlas to match height/width of dapi contour
-    # TODO: Move atlas contour center to dapi contour center
+    '''
+    Takes in a DAPI image and its atlas prediction and warps the atlas to match the section
+    Basis for warp protocol from Ann Zen on Stackoverflow.
+    '''
     # Open the image files.    
     atlasImage = cv2.resize(atlasImage, dapiImage.shape)
     annotation = cv2.resize(annotation, dapiImage.shape, interpolation=cv2.INTER_NEAREST)
@@ -63,7 +65,19 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         
         return maxC, xL, yL, wL, hL
     
+    def resampleHull(dapi, atlas):
+        '''
+        Take a contour and return a smooth hull of n points
+        '''
+        roughDAPIHull = np.squeeze(cv2.convexHull(dapi))
+        roughAtlasHull = np.squeeze(cv2.convexHull(atlas))
+
+        print(len(roughDAPIHull), len(roughAtlasHull))
+
+        return None, None
+
     def triangles(points):
+        '''Subdivide a given set of points into triangles'''
         points = np.where(points, points, 1)
         subdiv = cv2.Subdiv2D((*points.min(0), *points.max(0)))
         for pt in points:
@@ -72,6 +86,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
             yield [np.where(np.all(points == pt, 1))[0][0] for pt in pts]
 
     def crop(img, pts):
+        '''Take just the region of intrest for warping'''
         x, y, w, h = cv2.boundingRect(pts)
         img_cropped = img[y: y + h, x: x + w]
         pts[:, 0] -= x
@@ -79,6 +94,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         return img_cropped, pts
 
     def warp(img1, img2, pts1, pts2):
+        '''Preform the actual warp by iterating the polygon and warping each triangle'''
         img2 = img2.copy()
         for indices in triangles(pts1):
             img1_cropped, triangle1 = crop(img1, pts1[indices])
@@ -92,11 +108,9 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         return img2
     
     dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage)
-
     atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
-    
-    dapiContour = np.squeeze(dapiContour)
-    atlasContour = np.squeeze(atlasContour)
+
+    dapiHull, atlasHull = resampleHull(dapiContour,  atlasContour)
 
     atlasRect = np.array([[atlasX, atlasY], [atlasX + atlasW, atlasY], [atlasX + atlasW, atlasY + atlasH], [atlasX, atlasY + atlasH]])
     dapiRect = np.array([[dapiX, dapiY], [dapiX + dapiW, dapiY], [dapiX + dapiW, dapiY + dapiH], [dapiX, dapiY + dapiH]])
@@ -109,7 +123,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         print(e)
     
     try:
-        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="float32"), atlasRect, dapiRect)
+        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasRect, dapiRect)
     except Exception as e:
         print("\n Could not warp annotations!")
         print(e)
@@ -130,8 +144,8 @@ if __name__ == "__main__":
         buildRotatedAtlases(nrrdPath / nissl, nrrdPath / annotation, nrrdPath)
 
     # Get the file paths
-    fileList = os.listdir(args.input)
-    absolutePaths = [args.input + p for p in fileList if not p.startswith('.')]
+    fileList = [name for name in os.listdir(args.input) if os.path.isfile(args.input + name) and not name.startswith('.')]
+    absolutePaths = [args.input + p for p in fileList] 
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (512,512)) for im in images]
@@ -156,10 +170,10 @@ if __name__ == "__main__":
     def nextSection():
         '''Move one section forward by crawling file paths'''
         global currentSection, progressBar
-        if not currentSection == len(absolutePaths) - 1:
+        if not currentSection == len(images) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             currentSection += 1
-            progressBar.setFormat(f"{currentSection + 1}/{len(absolutePaths)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//2,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
@@ -170,7 +184,7 @@ if __name__ == "__main__":
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             currentSection -= 1
-            progressBar.setFormat(f"{currentSection + 1}/{len(absolutePaths)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
             sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//2,atlas.shape[1]))
@@ -180,14 +194,15 @@ if __name__ == "__main__":
         '''Save our final updated prediction, perform warps, close'''
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
-        for i in range(len(absolutePaths)):
+        for i in range(len(images)):
             imageName = fileList[i]
             atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//2]/256).astype('uint8'), 
                                               images[i], 
-                                             (annotation[predictions[imageName], : , :annotation.shape[2]//2]).astype('float32')
+                                             (annotation[predictions[imageName], : , :annotation.shape[2]//2]).astype('int32')
                                             )
-            cv2.imwrite(f"Atlas_{imageName.split('.')[0]}.png", atlasWarp)
-            cv2.imwrite(f"Annotation_{imageName.split('.')[0]}.tiff", annoWarp)
+            cv2.imwrite(args.output + f"Atlas_{imageName.split('.')[0]}.png", atlasWarp)
+            with open(args.output + f"Annotation_{imageName.split('.')[0]}.pkl", "wb") as annoOut:
+                pickle.dump(annoWarp, annoOut)
 
         viewer.close()
    
@@ -195,8 +210,8 @@ if __name__ == "__main__":
     nextButton = QPushButton('Next Section')
     backButton = QPushButton('Previous Section')
     doneButton = QPushButton('Done')
-    progressBar = QProgressBar(minimum=1, maximum=len(absolutePaths))
-    progressBar.setFormat(f"1/{len(absolutePaths)}")
+    progressBar = QProgressBar(minimum=1, maximum=len(images))
+    progressBar.setFormat(f"1/{len(images)}")
     progressBar.setValue(1)
     progressBar.setAlignment(Qt.AlignCenter)
     # Link callback and objects

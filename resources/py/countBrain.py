@@ -19,30 +19,32 @@ def countSlice(annotationFile, predictionFile):
 
 if __name__ == '__main__':
     annotationFiles = os.listdir(args.annotations)
-    predictionFiles = os.listdir(args.predictions)
+    predictionFiles = [name for name  in os.listdir(args.predictions) if name.endswith("pkl")]
     # Reading in regions
     regions = {}
+    nameToRegion = {}
     with open(args.structures) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
         
         header = next(structureReader) # skip header
         root = next(structureReader) # skip atlas root region
-
+        # manually set root, due to weird values
+        regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
+        regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A"}
         # store all other atlas regions and their linkages
         for row in structureReader:
             regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
-
+            nameToRegion[row[2]] = int(row[0])
 
     sums = {}
     for i, pName in enumerate(predictionFiles):
         # divide up the results file by section as well
         sums[annotationFiles[i][11:]] = {}
         currentSection = sums[annotationFiles[i][11:]]
-        with open(args.predictions + pName, 'rb') as predictionPkl:
+        with open(args.predictions + pName, 'rb') as predictionPkl, open(args.annotations + annotationFiles[i], 'rb') as annotationPkl:
             prediction = pickle.load(predictionPkl)
             predictedSize = prediction.pop()
-            annotation = cv2.imread(args.annotations + annotationFiles[i], -1)
-            annotation = annotation.astype('uint32')
+            annotation = pickle.load(annotationPkl)
             height, width = annotation.shape
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
@@ -58,5 +60,25 @@ if __name__ == '__main__':
                     else:
                         currentSection[name] = 1
     
-    print(sums.items())
+    with open(args.output + "count_results.csv", "w", newline="") as resultFile:
+        lines = []
+        runningTotals = {}
+        for section, counts in sums.items():
+            lines.append([section])
+            for r, count in counts.items():
+                if runningTotals.get(r, False):
+                    runningTotals[r] += count
+                else:
+                    runningTotals[r] = count
+
+                lines.append([r, regions[nameToRegion[r]]["acronym"], count])
+            lines.append([])
+        
+        lines.append(["Totals"])
+        for r, count in runningTotals.items():
+            lines.append([r, regions[nameToRegion[r]]["acronym"], count])
+        # Write out the rows
+        resultWriter = csv.writer(resultFile)
+        resultWriter.writerows(lines)
+        
         
