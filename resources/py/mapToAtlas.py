@@ -13,7 +13,7 @@ from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='C:/Users/Alec/.belljar/dapi/subset/')
+parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='C:/Users/imageprocessing/Desktop/r71/')
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -34,6 +34,13 @@ def downloadFile(url, outpath):
                 f.write(chunk)
     return local_filename
 
+def sortClockwise(hull):
+    '''Sort the points of a hull clockwise'''
+    def key(x):
+        atan = math.atan2(x[1], x[0])
+        return (atan, x[1]**2+x[0]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
+
+    return np.vstack(sorted(hull, key=key))
 # Warp atlas image roughly onto the DAPI section
 def warpToDAPI(atlasImage, dapiImage, annotation):
     '''
@@ -67,14 +74,48 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     
     def resampleHull(dapi, atlas):
         '''
-        Take a contour and return a smooth hull of n points
+        Take in countours and return matched convex hulls for warping
         '''
+        
+        def resample_polygon(xy: np.ndarray, n_points: int = 100) -> np.ndarray:
+            # Cumulative Euclidean distance between successive polygon points.
+            # This will be the "x" for interpolation
+            d = np.cumsum(np.r_[0, np.sqrt((np.diff(xy, axis=0) ** 2).sum(axis=1))])
+
+            # get linearly spaced points along the cumulative Euclidean distance
+            d_sampled = np.linspace(0, d.max(), n_points, dtype=int)
+
+            # interpolate x and y coordinates
+            xy_interp = np.c_[
+                np.interp(d_sampled, d, xy[:, 0]),
+                np.interp(d_sampled, d, xy[:, 1]),
+            ]
+            
+            return xy_interp.astype('int')
+
         roughDAPIHull = np.squeeze(cv2.convexHull(dapi))
         roughAtlasHull = np.squeeze(cv2.convexHull(atlas))
 
-        print(len(roughDAPIHull), len(roughAtlasHull))
+        return resample_polygon(roughDAPIHull, 15000), resample_polygon(roughAtlasHull, 15000)
+        # if len(roughAtlasHull) > len(roughDAPIHull):
+        #     difference = len(roughAtlasHull) - len(roughDAPIHull)
+        #     newDAPIHull = np.copy(roughDAPIHull)
+        #     for i in range(difference):
+        #         interp1 = roughDAPIHull[i]
+        #         interp2 = roughDAPIHull[i + 1]
+        #         np.insert(newDAPIHull, i, np.array([(interp1[0] + interp2[0])//2, (interp1[1] + interp2[1])//2]))
 
-        return None, None
+        #     return newDAPIHull, roughAtlasHull
+
+        # elif len(roughDAPIHull) > len(roughAtlasHull):
+        #     difference = len(roughDAPIHull) - len(roughAtlasHull)
+        #     newAtlasHull = np.copy(roughAtlasHull)
+        #     for i in range(difference):
+        #         interp1 = roughAtlasHull[i]
+        #         interp2 = roughAtlasHull[i + 1]
+        #         np.insert(newAtlasHull, i, np.array([(interp1[0] + interp2[0])//2, (interp1[1] + interp2[1])//2]))
+
+        #     return roughDAPIHull, newAtlasHull
 
     def triangles(points):
         '''Subdivide a given set of points into triangles'''
@@ -107,23 +148,24 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
             img2_cropped += img2_warped * mask
         return img2
     
+
     dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage)
     atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
 
     dapiHull, atlasHull = resampleHull(dapiContour,  atlasContour)
-
+    print(dapiHull)
     atlasRect = np.array([[atlasX, atlasY], [atlasX + atlasW, atlasY], [atlasX + atlasW, atlasY + atlasH], [atlasX, atlasY + atlasH]])
     dapiRect = np.array([[dapiX, dapiY], [dapiX + dapiW, dapiY], [dapiX + dapiW, dapiY + dapiH], [dapiX, dapiY + dapiH]])
     
     atlasResult, annotationResult = np.empty(atlasImage.shape), np.empty(atlasImage.shape)
     try:
-        atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiRect)
+        atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), (dapiRect), (atlasRect))
     except Exception as e:
         print("\n Could not warp atlas image!")
         print(e)
     
     try:
-        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasRect, dapiRect)
+        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasHull, dapiHull)
     except Exception as e:
         print("\n Could not warp annotations!")
         print(e)
@@ -134,32 +176,39 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
 if __name__ == "__main__":
     # Check if we have the nrrd files
     nrrdPath = Path.home() / ".belljar/nrrd"
-    if not nrrdPath.exists():
-        # If we don't have what we need, we should grab it from Allen
-        os.mkdir(nrrdPath)
-        print("Downloading refrence atlas")
-        nissl = downloadFile(nisslDownloadLink, nrrdPath)
-        annotation = downloadFile(annotationDownloadLink, nrrdPath)
-        print("Rotating refrence atlas")
-        buildRotatedAtlases(nrrdPath / nissl, nrrdPath / annotation, nrrdPath)
-
     # Get the file paths
     fileList = [name for name in os.listdir(args.input) if os.path.isfile(args.input + name) and not name.startswith('.')]
     absolutePaths = [args.input + p for p in fileList] 
+    
+    if not nrrdPath.exists():
+        # If we don't have what we need, we should grab it from Allen
+        os.mkdir(nrrdPath)
+        # Update the load bar that we have extra tasks
+        print(24)
+        print("Downloading refrence atlas...")
+        nissl = downloadFile(nisslDownloadLink, nrrdPath)
+        annotation = downloadFile(annotationDownloadLink, nrrdPath)
+        print("Rotating refrence atlas... this will take about an hour!")
+        buildRotatedAtlases(nrrdPath / nissl, nrrdPath / annotation, nrrdPath)
+    else:
+        # otherwise we are just processing these files, 3 steps
+        print(3)
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (512,512)) for im in images]
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
+    print("Making predictions...")
     predictions, angle = makePredictions(resizedImages, fileList)
     # Load the appropriate atlas
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(str(nrrdPath / f"r_annotation_{angle}.nrrd"))
+    print("Awaiting fine tuning...")
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
     sectionLayer = viewer.add_image(cv2.resize(images[0], (atlas.shape[2]//2,atlas.shape[1])), name="section")
-    atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//2], name="atlas", opacity=0.15)
+    atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//2], name="atlas", opacity=0.30)
     # Set the initial slider position
     viewer.dims.set_point(0, predictions[fileList[0]])
 
@@ -192,6 +241,7 @@ if __name__ == "__main__":
     
     def finishAlignment():
         '''Save our final updated prediction, perform warps, close'''
+        print("Writing output...")
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         for i in range(len(images)):
@@ -205,7 +255,7 @@ if __name__ == "__main__":
                 pickle.dump(annoWarp, annoOut)
 
         viewer.close()
-   
+        print("Done!")
     # Button objects
     nextButton = QPushButton('Next Section')
     backButton = QPushButton('Previous Section')

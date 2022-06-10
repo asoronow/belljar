@@ -11,6 +11,7 @@ def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
     aData, aHead = nrrd.read(annotationPath)
 
     for r in range(-10,11,1):
+        print(f'Rotating atlas to angle {0}')
         nissl_rotatedX = interpolation.rotate(nData[:, :, :], angle=r, axes=(0,2), order=0)
         annotation_rotatedX = interpolation.rotate(aData[:, :, :], angle=r, axes=(0,2), order=0)
         nrrd.write(str(outputPath) + f'/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
