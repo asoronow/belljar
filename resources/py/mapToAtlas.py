@@ -41,15 +41,20 @@ def sortClockwise(hull):
         return (atan, x[1]**2+x[0]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
 
     return np.vstack(sorted(hull, key=key))
+
+
 # Warp atlas image roughly onto the DAPI section
 def warpToDAPI(atlasImage, dapiImage, annotation):
     '''
     Takes in a DAPI image and its atlas prediction and warps the atlas to match the section
     Basis for warp protocol from Ann Zen on Stackoverflow.
     '''
-    # Open the image files.    
+    # Open the image files.
+    # Pad the dapi images to ensure no negaitve bounds issues with rotated rects
+    dapiImage = np.pad(dapiImage, [(100,100)], 'constant') 
     atlasImage = cv2.resize(atlasImage, dapiImage.shape)
     annotation = cv2.resize(annotation, dapiImage.shape, interpolation=cv2.INTER_NEAREST)
+    
     def getMaxContour(image):
         '''Returns the largest contour in an image and its bounding points'''
         # Get the gaussian threshold, otsu method (best automatic results)
@@ -71,51 +76,6 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
                 xL, yL, wL, hL = x, y, w, h
         
         return maxC, xL, yL, wL, hL
-    
-    def resampleHull(dapi, atlas):
-        '''
-        Take in countours and return matched convex hulls for warping
-        '''
-        
-        def resample_polygon(xy: np.ndarray, n_points: int = 100) -> np.ndarray:
-            # Cumulative Euclidean distance between successive polygon points.
-            # This will be the "x" for interpolation
-            d = np.cumsum(np.r_[0, np.sqrt((np.diff(xy, axis=0) ** 2).sum(axis=1))])
-
-            # get linearly spaced points along the cumulative Euclidean distance
-            d_sampled = np.linspace(0, d.max(), n_points, dtype=int)
-
-            # interpolate x and y coordinates
-            xy_interp = np.c_[
-                np.interp(d_sampled, d, xy[:, 0]),
-                np.interp(d_sampled, d, xy[:, 1]),
-            ]
-            
-            return xy_interp.astype('int')
-
-        roughDAPIHull = np.squeeze(cv2.convexHull(dapi))
-        roughAtlasHull = np.squeeze(cv2.convexHull(atlas))
-
-        return resample_polygon(roughDAPIHull, 15000), resample_polygon(roughAtlasHull, 15000)
-        # if len(roughAtlasHull) > len(roughDAPIHull):
-        #     difference = len(roughAtlasHull) - len(roughDAPIHull)
-        #     newDAPIHull = np.copy(roughDAPIHull)
-        #     for i in range(difference):
-        #         interp1 = roughDAPIHull[i]
-        #         interp2 = roughDAPIHull[i + 1]
-        #         np.insert(newDAPIHull, i, np.array([(interp1[0] + interp2[0])//2, (interp1[1] + interp2[1])//2]))
-
-        #     return newDAPIHull, roughAtlasHull
-
-        # elif len(roughDAPIHull) > len(roughAtlasHull):
-        #     difference = len(roughDAPIHull) - len(roughAtlasHull)
-        #     newAtlasHull = np.copy(roughAtlasHull)
-        #     for i in range(difference):
-        #         interp1 = roughAtlasHull[i]
-        #         interp2 = roughAtlasHull[i + 1]
-        #         np.insert(newAtlasHull, i, np.array([(interp1[0] + interp2[0])//2, (interp1[1] + interp2[1])//2]))
-
-        #     return roughDAPIHull, newAtlasHull
 
     def triangles(points):
         '''Subdivide a given set of points into triangles'''
@@ -151,21 +111,30 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
 
     dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage)
     atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
+    
+    center, shape, angle = cv2.minAreaRect(dapiContour)
+    print(angle)
+    dapiBox = np.int0(cv2.boxPoints(cv2.minAreaRect(dapiContour)))
 
-    dapiHull, atlasHull = resampleHull(dapiContour,  atlasContour)
-    print(dapiHull)
     atlasRect = np.array([[atlasX, atlasY], [atlasX + atlasW, atlasY], [atlasX + atlasW, atlasY + atlasH], [atlasX, atlasY + atlasH]])
     dapiRect = np.array([[dapiX, dapiY], [dapiX + dapiW, dapiY], [dapiX + dapiW, dapiY + dapiH], [dapiX, dapiY + dapiH]])
     
-    atlasResult, annotationResult = np.empty(atlasImage.shape), np.empty(atlasImage.shape)
+    atlasResult, annotationResult = np.empty(dapiImage.shape), np.empty(dapiImage.shape)
+    
     try:
-        atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), (dapiRect), (atlasRect))
+        if angle < 45:
+            atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), sortClockwise(atlasRect), sortClockwise(dapiBox))
+        else:
+            atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiBox)
     except Exception as e:
         print("\n Could not warp atlas image!")
         print(e)
     
     try:
-        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasHull, dapiHull)
+        if angle < 45:
+            annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), sortClockwise(atlasRect), sortClockwise(dapiBox))
+        else:
+            annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasRect, dapiBox)
     except Exception as e:
         print("\n Could not warp annotations!")
         print(e)

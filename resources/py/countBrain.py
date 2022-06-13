@@ -7,15 +7,11 @@ import pickle
 
 parser = argparse.ArgumentParser(description="Integrate cell positions with alignments to count an experiment")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-p', '--predictions', help="input directory, only use if graphical false", default="C:/Users/Alec/Downloads/Predictions/")
-parser.add_argument('-a', '--annotations', help="input directory, only use if graphical false", default="C:/Users/Alec/.belljar/dapi/subset/annotation/")
-parser.add_argument('-s', '--structures', help="structures file", default='C:/Users/Alec/Desktop/belljar/resources/csv/structure_tree_safe_2017.csv')
+parser.add_argument('-p', '--predictions', help="predictions directory, only use if graphical false", default="Z:/Richard Dickson/R Brains/R71, 72/Exports/R71/Predictions/")
+parser.add_argument('-a', '--annotations', help="annotations directory, only use if graphical false", default="C:/Users/imageprocessing/.belljar/dapi/subset/annotation/")
+parser.add_argument('-s', '--structures', help="structures file", default='C:/Users/imageprocessing/Desktop/belljar/resources/csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
-
-def countSlice(annotationFile, predictionFile):
-    '''Counts all the cells in regions of an annotation file'''
-    pass
 
 if __name__ == '__main__':
     annotationFiles = os.listdir(args.annotations)
@@ -31,6 +27,8 @@ if __name__ == '__main__':
         # manually set root, due to weird values
         regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
         regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A"}
+        nameToRegion["undefined"] = 997
+        nameToRegion["Lost in Warp"] = 0
         # store all other atlas regions and their linkages
         for row in structureReader:
             regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
@@ -48,8 +46,8 @@ if __name__ == '__main__':
             height, width = annotation.shape
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
-                xPos = int((mX - (mX - x)//2)*(width/predictedSize[1]))
-                yPos = int((mY - (mY - y)//2)*(height/predictedSize[0]))
+                xPos = int((mX - (mX - x)//2)*((width - 200)/predictedSize[1])) + 100
+                yPos = int((mY - (mY - y)//2)*((height - 200)/predictedSize[0])) + 100
                 atlasId = int(annotation[yPos, xPos])
                 name = regions[atlasId]["name"]
                 if "layer" in name.lower():
@@ -59,7 +57,12 @@ if __name__ == '__main__':
                         currentSection[name] += 1
                     else:
                         currentSection[name] = 1
-    
+                else:
+                    if currentSection.get(name, False):
+                        currentSection[name] += 1
+                    else:
+                        currentSection[name] = 1
+
     with open(args.output + "count_results.csv", "w", newline="") as resultFile:
         lines = []
         runningTotals = {}
