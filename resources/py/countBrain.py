@@ -7,8 +7,8 @@ import pickle
 
 parser = argparse.ArgumentParser(description="Integrate cell positions with alignments to count an experiment")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-p', '--predictions', help="predictions directory, only use if graphical false", default="Z:/Richard Dickson/R Brains/R71, 72/Exports/R71/Predictions/")
-parser.add_argument('-a', '--annotations', help="annotations directory, only use if graphical false", default="C:/Users/imageprocessing/.belljar/dapi/subset/annotation/")
+parser.add_argument('-p', '--predictions', help="predictions directory, only use if graphical false", default="")
+parser.add_argument('-a', '--annotations', help="annotations directory, only use if graphical false", default="")
 parser.add_argument('-s', '--structures', help="structures file", default='C:/Users/imageprocessing/Desktop/belljar/resources/csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()

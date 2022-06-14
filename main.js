@@ -277,6 +277,42 @@ ipcMain.on('runMax', function (event, data) {
         pyshell.kill();
     });
 });
+// Alignment
+ipcMain.on('runAlign', function (event, data) {
+    let options = {
+        mode: 'text',
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            `-o ${data[1]}`,
+            `-i ${data[0]}`
+        ]
+    };
+    let pyshell = new PythonShell('mapToAtlas.py', options);
+    var total = 0;
+    var current = 0;
+    pyshell.on('message', (message) => {
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == 'Done!') {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log('The exit code was: ' + code);
+                console.log('The exit signal was: ' + signal);
+                event.sender.send('alignResult');
+            });
+        }
+        else {
+            current++;
+            event.sender.send('updateLoad', [Math.round((current / total) * 100), message]);
+        }
+    });
+    ipcMain.once('killAlign', function (event, data) {
+        pyshell.kill();
+    });
+});
 // Top Hat
 ipcMain.on('runTopHat', function (event, data) {
     let options = {

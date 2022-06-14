@@ -297,10 +297,10 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
             `-i ${data[0]}`
           ]
   };
-  
-  let pyshell = new PythonShell('batchMaxProjection.py', options);
+  let pyshell = new PythonShell('mapToAtlas.py', options);
   var total: number = 0;
   var current: number = 0;
+
   pyshell.on('message', (message: string) => {
     if (total === 0) {
       total = Number(message);

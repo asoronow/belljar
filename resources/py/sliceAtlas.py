@@ -11,7 +11,7 @@ def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
     aData, aHead = nrrd.read(annotationPath)
 
     for r in range(-10,11,1):
-        print(f'Rotating atlas to angle {0}')
+        print(f'Rotating atlas to angle {0}', flush=True)
         nissl_rotatedX = interpolation.rotate(nData[:, :, :], angle=r, axes=(0,2), order=0)
         annotation_rotatedX = interpolation.rotate(aData[:, :, :], angle=r, axes=(0,2), order=0)
         nrrd.write(str(outputPath) + f'/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
@@ -20,7 +20,7 @@ def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
 def createTrainingSet():
     '''Make the set of all pngs to train the autoencoder'''
     for r in range(-10,11,1):
-        print(f'Processing angle {r}')
+        print(f'Processing angle {r}', flush=True)
         data, head = nrrd.read(nrrdPath + f"/r_nissl_{r}.nrrd")
         z, x, y = data.shape
         for slice in range(100,z-100, 1):
