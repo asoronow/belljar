@@ -198,18 +198,18 @@ def plot_ae_outputs(encoder,decoder, images, n=10 ):
          ax.set_title('Reconstructed images')
     plt.show()   
 
-def makePredictions(dapiImages, dapiLabels):
+def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
     '''Use the encoded sections and atlas embeddings to register brain regions'''
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Load models
     encoder = nn.DataParallel(Encoder())
-    encoder.load_state_dict(torch.load("../models/predictor_encoder.pt", map_location=device))
+    encoder.load_state_dict(torch.load(modelPath, map_location=device))
     encoder.eval()
     encoder.to(device)
     # load the atlas embeddings
     embeddings = {}
-    with open("atlasEmbeddings.pkl","rb") as f:
+    with open(embeddPath ,"rb") as f:
         embeddings = pickle.load(f)
         for name, e in embeddings.items():
             e = ((e - np.min(e))/np.ptp(e))

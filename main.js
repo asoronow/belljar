@@ -279,19 +279,27 @@ ipcMain.on('runMax', function (event, data) {
 });
 // Alignment
 ipcMain.on('runAlign', function (event, data) {
+    var modelPath = path.join(appDir, 'resources/models/predictor_encoder.pt');
+    var embedPath = path.join(appDir, 'resources/py/atlasEmbeddings.pkl');
     let options = {
         mode: 'text',
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
         args: [
             `-o ${data[1]}`,
-            `-i ${data[0]}`
+            `-i ${data[0]}`,
+            `-m ${modelPath}`,
+            `-e ${embedPath}`
         ]
     };
     let pyshell = new PythonShell('mapToAtlas.py', options);
     var total = 0;
     var current = 0;
+    pyshell.on('stderr', function (stderr) {
+        console.log(stderr);
+    });
     pyshell.on('message', (message) => {
+        console.log(message);
         if (total === 0) {
             total = Number(message);
         }
@@ -310,6 +318,49 @@ ipcMain.on('runAlign', function (event, data) {
         }
     });
     ipcMain.once('killAlign', function (event, data) {
+        pyshell.kill();
+    });
+});
+// Counting
+ipcMain.on('runCount', function (event, data) {
+    var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv');
+    let options = {
+        mode: 'text',
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            `-p ${data[0]}`,
+            `-a ${data[1]}`,
+            `-o ${data[2]}`,
+            `-s ${structPath}`
+        ]
+    };
+    let pyshell = new PythonShell('countBrain.py', options);
+    var total = 0;
+    var current = 0;
+    pyshell.on('stderr', function (stderr) {
+        console.log(stderr);
+    });
+    pyshell.on('message', (message) => {
+        console.log(message);
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == 'Done!') {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log('The exit code was: ' + code);
+                console.log('The exit signal was: ' + signal);
+                event.sender.send('countResult');
+            });
+        }
+        else {
+            current++;
+            event.sender.send('updateLoad', [Math.round((current / total) * 100), message]);
+        }
+    });
+    ipcMain.once('killCount', function (event, data) {
         pyshell.kill();
     });
 });

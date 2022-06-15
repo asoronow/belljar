@@ -4,22 +4,28 @@ import os
 import csv
 import cv2
 import pickle
+from pathlib import Path
 
 parser = argparse.ArgumentParser(description="Integrate cell positions with alignments to count an experiment")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
 parser.add_argument('-p', '--predictions', help="predictions directory, only use if graphical false", default="")
 parser.add_argument('-a', '--annotations', help="annotations directory, only use if graphical false", default="")
-parser.add_argument('-s', '--structures', help="structures file", default='C:/Users/imageprocessing/Desktop/belljar/resources/csv/structure_tree_safe_2017.csv')
+parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    annotationFiles = os.listdir(args.annotations)
-    predictionFiles = [name for name  in os.listdir(args.predictions) if name.endswith("pkl")]
+    predictionPath = Path(args.predictions.strip())
+    annotationPath = Path(args.annotations.strip())
+    outputPath = Path(args.output.strip())
+
+    annotationFiles = os.listdir(annotationPath)
+    print(len(annotationFiles) + 1, flush=True)
+    predictionFiles = [name for name  in os.listdir(predictionPath) if name.endswith("pkl")]
     # Reading in regions
     regions = {}
     nameToRegion = {}
-    with open(args.structures) as structureFile:
+    with open(args.structures.strip()) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
         
         header = next(structureReader) # skip header
@@ -39,7 +45,8 @@ if __name__ == '__main__':
         # divide up the results file by section as well
         sums[annotationFiles[i][11:]] = {}
         currentSection = sums[annotationFiles[i][11:]]
-        with open(args.predictions + pName, 'rb') as predictionPkl, open(args.annotations + annotationFiles[i], 'rb') as annotationPkl:
+        with open(predictionPath / pName, 'rb') as predictionPkl, open(annotationPath / annotationFiles[i], 'rb') as annotationPkl:
+            print("Counting...", flush=True)
             prediction = pickle.load(predictionPkl)
             predictedSize = prediction.pop()
             annotation = pickle.load(annotationPkl)
@@ -63,7 +70,8 @@ if __name__ == '__main__':
                     else:
                         currentSection[name] = 1
 
-    with open(args.output + "count_results.csv", "w", newline="") as resultFile:
+    with open(outputPath / "count_results.csv", "w", newline="") as resultFile:
+        print("Writing output...", flush=True)
         lines = []
         runningTotals = {}
         for section, counts in sums.items():
@@ -83,5 +91,6 @@ if __name__ == '__main__':
         # Write out the rows
         resultWriter = csv.writer(resultFile)
         resultWriter.writerows(lines)
-        
+    
+    print("Done!")
         

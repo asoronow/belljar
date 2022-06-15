@@ -288,20 +288,30 @@ ipcMain.on('runMax', function(event: any, data: any[]){
 
 // Alignment
 ipcMain.on('runAlign', function(event: any, data: any[]){
+  var modelPath = path.join(appDir, 'resources/models/predictor_encoder.pt')
+  var embedPath = path.join(appDir, 'resources/py/atlasEmbeddings.pkl')
+
   let options = {
     mode: 'text',
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
     args: [
             `-o ${data[1]}`, 
-            `-i ${data[0]}`
+            `-i ${data[0]}`,
+            `-m ${modelPath}`,
+            `-e ${embedPath}`
           ]
   };
   let pyshell = new PythonShell('mapToAtlas.py', options);
   var total: number = 0;
   var current: number = 0;
 
+  pyshell.on('stderr', function (stderr: string) {
+    console.log(stderr);
+  });
+
   pyshell.on('message', (message: string) => {
+    console.log(message);
     if (total === 0) {
       total = Number(message);
     } else if (message == 'Done!') {
@@ -309,7 +319,7 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
         if (err) throw err;
         console.log('The exit code was: ' + code);
         console.log('The exit signal was: ' + signal);
-        event.sender.send('alignResult')
+        event.sender.send('alignResult');
       });
     } else {
       current++;
@@ -318,6 +328,51 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
   });
 
   ipcMain.once('killAlign', function(event: any, data: any[]) {
+    pyshell.kill();
+  });
+});
+
+// Counting
+ipcMain.on('runCount', function(event: any, data: any[]){
+  var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')
+
+  let options = {
+    mode: 'text',
+    pythonPath: path.join(envPythonPath, pyCommand),
+    scriptPath: pyScriptsPath,
+    args: [
+            `-p ${data[0]}`, 
+            `-a ${data[1]}`,
+            `-o ${data[2]}`,
+            `-s ${structPath}`
+          ]
+  };
+  let pyshell = new PythonShell('countBrain.py', options);
+  var total: number = 0;
+  var current: number = 0;
+
+  pyshell.on('stderr', function (stderr: string) {
+    console.log(stderr);
+  });
+
+  pyshell.on('message', (message: string) => {
+    console.log(message);
+    if (total === 0) {
+      total = Number(message);
+    } else if (message == 'Done!') {
+      pyshell.end((err: string, code: any, signal: string) => {
+        if (err) throw err;
+        console.log('The exit code was: ' + code);
+        console.log('The exit signal was: ' + signal);
+        event.sender.send('countResult');
+      });
+    } else {
+      current++;
+      event.sender.send('updateLoad', [Math.round((current/total)*100), message]);
+    }
+  });
+
+  ipcMain.once('killCount', function(event: any, data: any[]) {
     pyshell.kill();
   });
 });

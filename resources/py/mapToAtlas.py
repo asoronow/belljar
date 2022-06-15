@@ -14,6 +14,9 @@ from qtpy.QtCore import Qt
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
 parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
 parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
+parser.add_argument('-m', "--model", default="../models/predictor_encoder.pt")
+parser.add_argument('-e', "--embeds", default="atlasEmbeddings.pkl")
+
 args = parser.parse_args()
 
 # Links in case we should need to redownload these, will not be included
@@ -174,7 +177,7 @@ if __name__ == "__main__":
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
     print("Making predictions...", flush=True)
-    predictions, angle = makePredictions(resizedImages, fileList)
+    predictions, angle = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip())
     # Load the appropriate atlas
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(str(nrrdPath / f"r_annotation_{angle}.nrrd"))
@@ -186,7 +189,6 @@ if __name__ == "__main__":
     atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//2], name="atlas", opacity=0.30)
     # Set the initial slider position
     viewer.dims.set_point(0, predictions[fileList[0]])
-
     # Track the current section
     currentSection = 0
     # Setup  the napari contorls
@@ -245,4 +247,5 @@ if __name__ == "__main__":
     doneButton.clicked.connect(finishAlignment)
     # Add them to the dock
     viewer.window.add_dock_widget([progressBar, nextButton, backButton, doneButton], name="Bell Jar Controls", area='left')
-    input("")
+    # Start event loop to keep viewer open
+    napari.run()

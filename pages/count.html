@@ -14,10 +14,10 @@
     <div id="parent" class="container h-100">
       <div class="row align-items-center">
         <div class="col">
-          <h1>Max Projection</h1>
+          <h1>Count Brain</h1>
           <p>
             <br>
-            Max projection takes your z-stacked single channel images and concatenates the z-stacks preserving only the pixels with the greatest intensity. This is a fast way of aquiring an in focus image or you can run your own EFI processing.
+            This tool combines the predictions from cell dectection and the annotations from Align to count your experiment.
             <br>
           </p>
         </div>
@@ -25,8 +25,8 @@
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
           <h5>
-            Input Path
-            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Path to max projection or EFI processed files"></i>
+            Predictions Path
+            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Path to prediction pkl files only!"></i>
           </h5>       
         </div>
         <div class="col d-grid">
@@ -34,7 +34,22 @@
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid">
-          <input type="url" id="indir" placeholder="Click to select directory or cancel to enter manually">
+          <input type="url" id="preddir" placeholder="Click to select directory or cancel to enter manually">
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <h5>
+            Annotations Path
+            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Path to annotation pkl files only!"></i>
+          </h5>       
+        </div>
+        <div class="col d-grid">
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid">
+          <input type="url" id="annodir" placeholder="Click to select directory or cancel to enter manually">
         </div>
       </div>
       <div class="row align-items-center m-1">
@@ -81,6 +96,6 @@
     <div class="loadmessage text-left" id="loadmessage"></div>
     <div class="loading" id="loadbar"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
-    <script type="module" src="../resources/js/max.js"></script>
+    <script type="module" src="../resources/js/count.js"></script>
     </body>
 </html>
