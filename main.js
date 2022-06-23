@@ -419,7 +419,6 @@ ipcMain.on('runCollate', function (event, data) {
             '-g False'
         ]
     };
-    console.log(data[0]);
     let pyshell = new PythonShell('collateCounts.py', options);
     pyshell.end((err, code, signal) => {
         if (err)
