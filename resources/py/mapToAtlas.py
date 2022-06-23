@@ -155,7 +155,7 @@ if __name__ == "__main__":
     inputPath = Path(args.input.strip())
     outputPath = Path(args.output.strip())
     # Get the file paths
-    fileList = [name for name in os.listdir(inputPath) if os.path.isfile(inputPath / name) and not name.startswith('.')]
+    fileList = [name for name in os.listdir(inputPath) if os.path.isfile(inputPath / name) and not name.startswith('.') and name.endswith('.png')]
     absolutePaths = [str(inputPath / p) for p in fileList] 
     
     if not nrrdPath.exists():
