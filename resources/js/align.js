@@ -31,7 +31,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('alignResult', function(event, response){
+ipc.on('alignResult', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
     back.classList.add('btn-warning');
@@ -43,7 +43,7 @@ ipc.once('alignResult', function(event, response){
     loadbar.style.width = "0";
 });
 
-ipc.once('maxError', function(event, response){
+ipc.once('alignError', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
 });

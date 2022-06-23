@@ -31,10 +31,10 @@ run.addEventListener('click', function(){
 
     if (indir && outdir && indir.value && outdir.value) {
         if (confidence.value && confidence.value < 1 && confidence.value > 0) {
-            c = (checkNumber(gamma, "Confidence should be a float between 0-1, using default.")) ? confidence.value:0.5
+            c = (checkNumber(confidence.value, "Confidence should be a float between 0-1, using default.")) ? confidence.value:0.5
         }
         if (tile.value && tile.value > 0) {
-            t = (checkNumber(gamma, "Tile should be an integer, using default.")) ? tile.value:640
+            t = (checkNumber(tile.value, "Tile should be an integer, using default.")) ? tile.value:640
         }
         if (model.value) {
             m = model.value

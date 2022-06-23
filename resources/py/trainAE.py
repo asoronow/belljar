@@ -5,6 +5,9 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset, random_split
 from torch.utils import tensorboard
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import minmax_scale
+from scipy.ndimage.interpolation import rotate
+
 from torch import nn
 import cv2
 import os, pickle
@@ -215,13 +218,49 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
             e = ((e - np.min(e))/np.ptp(e))
             embeddings[name] = e
     
-    t = transforms.Compose([transforms.ToTensor()])
+    # Normalize the dapi images to atlas range
+
+    def getMaxContour(image):
+        '''Returns the largest contour in an image and its bounding points'''
+        # Get the gaussian threshold, otsu method (best automatic results)
+        blur = cv2.GaussianBlur(image,(11,11),0)
+        ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        # Find the countours in the image, fast method
+        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        # Contours alone
+        contours = contours[0]
+        # Start with the first in the list compare subsequentW
+        xL, yL, wL, hL = cv2.boundingRect(contours[0])
+        maxC = contours[0]
+        for c in contours[1:]:
+            x, y, w, h  = cv2.boundingRect(c)
+            if (w*h) > (wL*hL):
+                maxC = c
+                xL, yL, wL, hL = x, y, w, h
+        
+        return maxC, xL, yL, wL, hL
     
-    dataset = Nissl(dapiImages, transform=t, labels=dapiLabels)
+    # Correcting rotation helps predictions
+    normalizedImages = []
+    for image in dapiImages:
+        maxC, xL, yL, wL, hL = getMaxContour(image)
+        cv2.drawContours(image, [maxC], -1, (255,255,255), 3)
+        center, shape, angle = cv2.minAreaRect(maxC)
+        image = rotate(image, angle, reshape=False)
+        normalizedImages.append(image)
+
+    # Load the images
+    t = transforms.Compose([transforms.ToTensor()])
+    dataset = Nissl(normalizedImages, transform=t, labels=dapiLabels)
+
+    # Create a dataloader
+    # We use a batch size of 1 to make sure that the images are loaded in memory
+    # This is necessary for the dataloader to work properly on single GPUs
     similarity = {}
     for i in range(len(dataset)):
         img = dataset[i].to(device)
         img = img[None, :]
+        # Normalize image to atlas values
         # Debug for verifying paths match the image we are processing
         # cv2.imshow("image from dataset", dataset[i].numpy().transpose(1, 2, 0))
         # cv2.imshow("image from filepaths", cv2.imread(nrrdPath + dataset.getPath(i)))
@@ -232,7 +271,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
             for name, e in embeddings.items():
                 similarity[dataset.getPath(i)][name] = spatial.distance.cosine(out, e)
     
-    # find the consensus angle
+    # Find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
     for name, scores in similarity.items():
         ordered = sorted(scores, key=scores.get)
@@ -243,7 +282,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
             angles.append(int(v[2]))
         consensus[stats.mode(angles)[0][0]] += 1
     
-    # select the best sections along that angle
+    # Select the best sections along that angle
     best = {}
     idealAngle = max(consensus, key=consensus.get)
     for name, scores in similarity.items():
@@ -255,7 +294,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
             if int(v[2]) == idealAngle:
                 section = result
                 break
-        
+                
         if section == None:
             sectionEmbedding = embeddings[ordered[0]]
             matches = {}

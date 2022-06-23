@@ -290,6 +290,7 @@ ipcMain.on('runMax', function(event: any, data: any[]){
 ipcMain.on('runAlign', function(event: any, data: any[]){
   var modelPath = path.join(appDir, 'resources/models/predictor_encoder.pt')
   var embedPath = path.join(appDir, 'resources/py/atlasEmbeddings.pkl')
+  var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')
 
   let options = {
     mode: 'text',
@@ -299,7 +300,8 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
             `-o ${data[1]}`, 
             `-i ${data[0]}`,
             `-m ${modelPath}`,
-            `-e ${embedPath}`
+            `-e ${embedPath}`,
+            `-s ${structPath}`
           ]
   };
   let pyshell = new PythonShell('mapToAtlas.py', options);
@@ -317,9 +319,9 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
     } else if (message == 'Done!') {
       pyshell.end((err: string, code: any, signal: string) => {
         if (err) throw err;
+        event.sender.send('alignResult');
         console.log('The exit code was: ' + code);
         console.log('The exit signal was: ' + signal);
-        event.sender.send('alignResult');
       });
     } else {
       current++;
@@ -449,6 +451,7 @@ ipcMain.on('runCollate', function(event: any, data: any[]){
 ipcMain.on('runDetection', function(event: any, data: any[]){
   // Set model path
   var modelPath = path.join(appDir, 'resources/models/ancientwizard.pt')
+  // Switch over to custom if necessary
   if (data[4].length > 0) {
     modelPath = data[4]
   }

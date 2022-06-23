@@ -1,3 +1,4 @@
+from msilib import add_stream
 import os, requests, math
 import numpy as np
 import cv2
@@ -6,6 +7,7 @@ from pathlib import Path
 from sliceAtlas import buildRotatedAtlases
 from trainAE import makePredictions
 import nrrd
+import csv
 import napari
 import argparse
 from qtpy.QtWidgets import QPushButton, QProgressBar
@@ -16,6 +18,7 @@ parser.add_argument('-o', '--output', help="output directory, only use if graphi
 parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
 parser.add_argument('-m', "--model", default="../models/predictor_encoder.pt")
 parser.add_argument('-e', "--embeds", default="atlasEmbeddings.pkl")
+parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
 
@@ -61,17 +64,16 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     def getMaxContour(image):
         '''Returns the largest contour in an image and its bounding points'''
         # Get the gaussian threshold, otsu method (best automatic results)
-        kernel = np.ones((5,5),np.uint8)
-        blur = cv2.GaussianBlur(image, (5,5), 0)
+        blur = cv2.GaussianBlur(image,(11,11),0)
         ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        closing = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
         # Find the countours in the image, fast method
-        contours = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # Contours alone
         contours = contours[0]
-        # Start with the first in the list compare subsequent
+        # Start with the first in the list compare subsequentW
         xL, yL, wL, hL = cv2.boundingRect(contours[0])
-        maxC = None
+        maxC = contours[0]
         for c in contours[1:]:
             x, y, w, h  = cv2.boundingRect(c)
             if (w*h) > (wL*hL):
@@ -221,6 +223,7 @@ if __name__ == "__main__":
         print("Writing output...", flush=True)
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
+        # Write the predictions to a file
         for i in range(len(images)):
             imageName = fileList[i]
             atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//2]/256).astype('uint8'), 
@@ -228,8 +231,59 @@ if __name__ == "__main__":
                                              (annotation[predictions[imageName], : , :annotation.shape[2]//2]).astype('int32')
                                             )
             cv2.imwrite(str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), atlasWarp)
+            
             with open(str(outputPath / f"Annotation_{imageName.split('.')[0]}.pkl"), "wb") as annoOut:
                 pickle.dump(annoWarp, annoOut)
+            
+
+            # Prep regions for saving
+            regions = {}
+            nameToRegion = {}
+            with open(args.structures.strip()) as structureFile:
+                structureReader = csv.reader(structureFile, delimiter=",")
+                
+                header = next(structureReader) # skip header
+                root = next(structureReader) # skip atlas root region
+                # manually set root, due to weird values
+                regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A","points":[]}
+                regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A", "points":[]}
+                nameToRegion["undefined"] = 997
+                nameToRegion["Lost in Warp"] = 0
+                # store all other atlas regions and their linkages
+                for row in structureReader:
+                    regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8]), "points":[]}
+                    nameToRegion[row[2]] = int(row[0])
+            
+            # Write the atlas borders ontop of dapi image
+            dapi = images[i]
+            y, x = annoWarp.shape
+            for i in range(x-1):
+                for j in range(y-1):
+                    surroundingPoints = [annoWarp[j, i+1], annoWarp[j+1, i+1], annoWarp[j+1, i-1], annoWarp[j-1, i+1], annoWarp[j+1, i], annoWarp[j, i-1], annoWarp[j-1, i-1], annoWarp[j-1, i]]
+                    area = annoWarp[j, i]
+                    if not all(x == area for x in surroundingPoints) and not all(x == 0 for x in surroundingPoints):
+                        try:
+                            if not all(regions[x]['parent'] == regions[area]['parent'] for x in surroundingPoints):
+                                # We are accounting for the padding in the rotation process here
+                                # Additonally write this pixel as white
+                                dapi[j-101, i-101] = 255
+                        except:
+                            pass
+                    try:
+                        if all(x == area for x in surroundingPoints):
+                            regions[regions[area]['parent']]['points'].append((j, i))
+                    except:
+                        pass
+            
+            # for region in regions:
+            #     if regions[region]['points'] != [] and region not in [997, 0]:
+            #         m = np.mean(regions[region]['points'], axis=0).astype(np.int8)
+            #         try:
+            #             cv2.putText(dapi, regions[region]['acronym'], (m[0] + 200, m[1] + 200) , cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            #         except Exception as e:
+            #             pass
+
+            cv2.imwrite(str(outputPath / f"Map_{imageName.split('.')[0]}.png"), dapi)
 
         viewer.close()
         print("Done!", flush=True)
