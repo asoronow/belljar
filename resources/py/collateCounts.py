@@ -144,7 +144,7 @@ def collateCount(objectsFile, safeRegions, resultFile):
     total = 0
     for obj in objects.items():
         for data in obj[1].items():
-            region, count = data[0], data[1]
+            region, count = int(data[0]), data[1]
             parent = regions[region]['parent']
             total += count
             if 'layer' in regions[region]['name'].lower():
@@ -166,19 +166,20 @@ def collateCount(objectsFile, safeRegions, resultFile):
         print("Writing output...", flush=True)
         lines = []
         runningTotals = {}
-        for region, counts in sums.items():
-            for r, count in counts.items():
-                if runningTotals.get(r, False):
-                    runningTotals[r] += count
-                else:
-                    runningTotals[r] = count
+        for r, count in sums.items():
+            if runningTotals.get(r, False):
+                runningTotals[r] += count
+            else:
+                runningTotals[r] = count
         
         lines.append(["Totals"])
         for r, count in runningTotals.items():
-            lines.append([r, regions[nameToRegion[r]]["acronym"], count])
+            lines.append([regions[r]['name'], regions[r]["acronym"], count])
         # Write out the rows
         resultWriter = csv.writer(resultFile)
         resultWriter.writerows(lines)
+    
+        print("Done!", flush=True)
 
 if __name__ == '__main__':
 
@@ -196,4 +197,5 @@ if __name__ == '__main__':
                             globals=globals)
         app.mainloop()
     else:
+        print("2", flush=True)
         collateCount(args.input.strip(), args.structures.strip(), args.output.strip())

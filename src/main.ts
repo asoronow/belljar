@@ -425,14 +425,13 @@ ipcMain.on('runCollate', function(event: any, data: any[]){
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
     args: [
-            String.raw`-o ${path.join(data[1], 'collate_result.csv')}`, 
+            String.raw`-o ${data[1]}`, 
             String.raw`-i ${data[0]}`, 
             `-r ${data[2]}`, 
             String.raw`-s ${path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')}`, 
             '-g False'
           ]
   };
-  console.log(data[0]);
   let pyshell = new PythonShell('collateCounts.py', options);
 
   pyshell.end((err: string, code: any, signal: string) => {
