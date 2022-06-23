@@ -3,6 +3,7 @@ import csv
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import *
+from pathlib import Path
 from belljarGUI import Page, GuiController
 import argparse
 
@@ -122,97 +123,62 @@ def collateCount(objectsFile, safeRegions, resultFile):
 
     # Reading in regions
     regions = {}
-    with open(safeRegions) as structureFile:
+    nameToRegion = {}
+    with open(args.structures.strip()) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
-        next(structureReader) # Skip Line 1
+        
+        header = next(structureReader) # skip header
+        root = next(structureReader) # skip atlas root region
+        # manually set root, due to weird values
+        regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
+        regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A"}
+        nameToRegion["undefined"] = 997
+        nameToRegion["Lost in Warp"] = 0
+        # store all other atlas regions and their linkages
         for row in structureReader:
-            regions[row[0]] = row[3]
+            regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
+            nameToRegion[row[2]] = int(row[0])
 
     # Now count things up
     sums = {}
     total = 0
     for obj in objects.items():
         for data in obj[1].items():
-            id, count = data[0], data[1]
-            acronym = regions.get(id)
+            region, count = data[0], data[1]
+            parent = regions[region]['parent']
             total += count
-            if acronym != None:
-                if sums.get(acronym) != None:
-                    sums[acronym] += count
+            if 'layer' in regions[region]['name'].lower():
+                if parent != None:
+                    if sums.get(parent) != None:
+                        sums[parent] += count
+                    else:
+                        sums[parent] = count
+            else:
+                if sums.get(region) != None:
+                    sums[region] += count
                 else:
-                    sums[acronym] = count
+                    sums[region] = count
 
-    # Make the results more human friendly
-    prettier = {}
-    for item in sums.items():
-        name, count = item[0], item[1]
-        if "1" in name:
-            new = name.replace("1", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L1"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L1": count, "Total": count}
-        elif "2/3" in name:
-            new = name.replace("2/3", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L2/3"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L2/3":count, "Total": count}
-        elif "4" in name:
-            new = name.replace("4", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L4"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L4":count, "Total": count}
-        elif "5" in name:
-            new = name.replace("5", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L5"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L5":count, "Total": count}
-        elif "6a" in name:
-            new = name.replace("6a", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L6a"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L6a":count, "Total": count}
-        elif "6b" in name:
-            new = name.replace("6b", "")
-            if prettier.get(new) != None:
-                    prettier[new]["L6b"] = count
-                    prettier[new]["Total"] += count
-            else:
-                prettier[new] = {"L6b":count, "Total": count}
-        else:
-            prettier[name] = count
 
     # Write the results
-    with open(resultFile, "w", newline='') as result:
-        writer = csv.writer(result)
-        head = ["Area", "Total", "L1", "L2/3", "L4", "L5", "L6a", "L6b"]
-        writer.writerow(head)
-        for item in sorted(prettier.items()):
-            area, counts = item[0], item[1]
-            if isinstance(counts, dict):
-                row = [
-                area,
-                counts.get("Total", 0),
-                counts.get("L1", 0),
-                counts.get("L2/3", 0),
-                counts.get("L4", 0),
-                counts.get("L5", 0),
-                counts.get("L6a", 0),
-                counts.get("L6b", 0)
-            ]
-            else:
-                row = [area, counts]
+    outputPath = Path(args.output.strip())
+    with open(outputPath / "count_results.csv", "w", newline="") as resultFile:
+        print("Writing output...", flush=True)
+        lines = []
+        runningTotals = {}
+        for region, counts in sums.items():
+            for r, count in counts.items():
+                if runningTotals.get(r, False):
+                    runningTotals[r] += count
+                else:
+                    runningTotals[r] = count
         
-            writer.writerow(row)
+        lines.append(["Totals"])
+        for r, count in runningTotals.items():
+            lines.append([r, regions[nameToRegion[r]]["acronym"], count])
+        # Write out the rows
+        resultWriter = csv.writer(resultFile)
+        resultWriter.writerows(lines)
 
 if __name__ == '__main__':
 
