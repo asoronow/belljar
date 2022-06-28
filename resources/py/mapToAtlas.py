@@ -258,7 +258,16 @@ if __name__ == "__main__":
             y, x = annoWarp.shape
             for i in range(x-1):
                 for j in range(y-1):
-                    surroundingPoints = [annoWarp[j, i+1], annoWarp[j+1, i+1], annoWarp[j+1, i-1], annoWarp[j-1, i+1], annoWarp[j+1, i], annoWarp[j, i-1], annoWarp[j-1, i-1], annoWarp[j-1, i]]
+                    surroundingPoints = [
+                                            annoWarp[j, i+1], 
+                                            annoWarp[j+1, i+1], 
+                                            annoWarp[j+1, i-1], 
+                                            annoWarp[j-1, i+1], 
+                                            annoWarp[j+1, i], 
+                                            annoWarp[j, i-1], 
+                                            annoWarp[j-1, i-1], 
+                                            annoWarp[j-1, i]
+                                        ]
                     area = annoWarp[j, i]
                     if not all(x == area for x in surroundingPoints) and not all(x == 0 for x in surroundingPoints):
                         try:
