@@ -17,6 +17,7 @@ parser.add_argument('-o', '--output', help="output directory, only use if graphi
 parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
 parser.add_argument('-m', "--model", default="../models/predictor_encoder.pt")
 parser.add_argument('-e', "--embeds", default="atlasEmbeddings.pkl")
+parser.add_argument('-w', "--whole", default=False)
 parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
@@ -218,7 +219,7 @@ if __name__ == "__main__":
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def finishAlignment():
-        '''Save our final updated prediction, perform warps, close'''
+        '''Save our final updated prediction, perform warps, close, also write atlas borders to file'''
         print("Writing output...", flush=True)
         global currentSection
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
@@ -256,8 +257,9 @@ if __name__ == "__main__":
             # Write the atlas borders ontop of dapi image
             dapi = images[i]
             y, x = annoWarp.shape
-            for i in range(x-1):
-                for j in range(y-1):
+            mapImage = np.zeros((y-200, x-200, 3), dtype='uint8')
+            for (j, i), area in np.ndenumerate(annoWarp):
+                if j > 0 and j < y - 1 and i > 0 and i < x - 1:
                     surroundingPoints = [
                                             annoWarp[j, i+1], 
                                             annoWarp[j+1, i+1], 
@@ -268,30 +270,33 @@ if __name__ == "__main__":
                                             annoWarp[j-1, i-1], 
                                             annoWarp[j-1, i]
                                         ]
-                    area = annoWarp[j, i]
                     if not all(x == area for x in surroundingPoints) and not all(x == 0 for x in surroundingPoints):
                         try:
                             if not all(regions[x]['parent'] == regions[area]['parent'] for x in surroundingPoints):
                                 # We are accounting for the padding in the rotation process here
                                 # Additonally write this pixel as white
-                                dapi[j-101, i-101] = 255
+                                mapImage[j-101, i-101] = [255, 255, 255]
                         except:
                             pass
                     try:
                         if all(x == area for x in surroundingPoints):
-                            regions[regions[area]['parent']]['points'].append((j, i))
+                            if "layer" in regions[area]['name'].lower():
+                                regions[regions[area]['parent']]['points'].append((j-101, i-101))
+                            else:
+                                regions[area]['points'].append((j-101, i-101))
                     except:
                         pass
             
-            # for region in regions:
-            #     if regions[region]['points'] != [] and region not in [997, 0]:
-            #         m = np.mean(regions[region]['points'], axis=0).astype(np.int8)
-            #         try:
-            #             cv2.putText(dapi, regions[region]['acronym'], (m[0] + 200, m[1] + 200) , cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            #         except Exception as e:
-            #             pass
+            # Write the region names
+            for region, info in regions.items():
+                if info['points'] != [] and region not in [997, 688, 1009, 0]:
+                    m = np.mean(info['points'], axis=0).astype(np.int32)
+                    try:
+                        cv2.putText(mapImage, regions[region]['acronym'], (m[1] - 2, m[0]), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 1)
+                    except Exception as e:
+                        pass
 
-            cv2.imwrite(str(outputPath / f"Map_{imageName.split('.')[0]}.png"), dapi)
+            cv2.imwrite(str(outputPath / f"Map_{imageName.split('.')[0]}.png"), mapImage)
 
         viewer.close()
         print("Done!", flush=True)

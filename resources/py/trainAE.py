@@ -313,7 +313,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
     return best, idealAngle
 
 
-def runTraining(nrrdPath, dapiPath):
+def runTraining(nrrdPath):
     '''Loads the models and executes training in dataparallel fashion, not recommended to run the training on a single gpu'''
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -339,17 +339,13 @@ def runTraining(nrrdPath, dapiPath):
     t = transforms.Compose([transforms.ToTensor()])
 
     fileList = os.listdir(nrrdPath) # path to flat pngs
-    dapiList = os.listdir(dapiPath)
     absolutePaths = [nrrdPath + p for p in fileList]
-    dapiAbsPaths = [dapiPath + p for p in dapiList]
     # Load all the images into memory
-    allDAPI = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in dapiAbsPaths]
     allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths[:int(len(absolutePaths)*0.01)]] #[:int(len(absolutePaths)*0.05)]
     # Split this up into t and v
     trainingAtlasImages, validationAtlasImages = train_test_split(allSlices, test_size=0.2)
-    trainingDAPIImages, validationDAPIImages = train_test_split(allDAPI, test_size=0.2)
 
-    trainingDataset, validationDataset = Nissl(trainingDAPIImages + trainingAtlasImages, transform=t), Nissl(validationAtlasImages + validationDAPIImages, transform=t)
+    trainingDataset, validationDataset = Nissl( trainingAtlasImages, transform=t), Nissl(validationAtlasImages, transform=t)
     # Now construct data loaders for batch training
     trainingLoader, validationLoader = DataLoader(trainingDataset, batch_size=4, shuffle=True), DataLoader(validationDataset, batch_size=4, shuffle=True)
 
@@ -358,7 +354,7 @@ def runTraining(nrrdPath, dapiPath):
     writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
     epoch_number = 0
 
-    EPOCHS = 10
+    EPOCHS = 900
 
     best_vloss = float('inf')
 
@@ -403,7 +399,7 @@ def runTraining(nrrdPath, dapiPath):
         if avg_vloss < best_vloss:
             # plot_ae_outputs(encoder, decoder)
             best_vloss = avg_vloss
-            model_path = '../models/predictor'.format(timestamp, epoch_number)
+            model_path = '../models/predictor_full'
             torch.save(encoder.state_dict(), model_path+"_encoder.pt")
             torch.save(decoder.state_dict(), model_path+"_decoder.pt")
 
@@ -414,5 +410,5 @@ if __name__ == '__main__':
     # PNG locations, change these for running fresh training
     # Training pngs can be generated with the sliceAtlas.py file
     # DAPI images should be at least 200 images, otherwise the model will not do well on DAPI sections
-    nrrdPath = "C:/Users/Alec/.belljar/nrrd/png_half/"
-    dapiPath = "C:/Users/Alec/.belljar/dapi/"
+    nrrdPath = "C:/Users/Alec/.belljar/nrrd/png/"
+    runTraining(nrrdPath)
