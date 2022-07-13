@@ -279,7 +279,7 @@ ipcMain.on('runMax', function (event, data) {
 });
 // Alignment
 ipcMain.on('runAlign', function (event, data) {
-    var modelPath = path.join(appDir, 'resources/models/predictor_encoder.pt');
+    var modelPath = (data[2] == "False" ? path.join(appDir, 'resources/models/predictor_encoder.pt') : path.join(appDir, 'resources/models/predictor_full_encoder.pt'));
     var embedPath = path.join(appDir, 'resources/py/atlasEmbeddings.pkl');
     var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv');
     let options = {
@@ -289,6 +289,7 @@ ipcMain.on('runAlign', function (event, data) {
         args: [
             `-o ${data[1]}`,
             `-i ${data[0]}`,
+            `-w ${data[2]}`,
             `-m ${modelPath}`,
             `-e ${embedPath}`,
             `-s ${structPath}`

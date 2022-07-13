@@ -5,7 +5,20 @@ var outdir = document.getElementById('outdir');
 var loadbar = document.getElementById('loadbar');
 var loadmessage = document.getElementById('loadmessage');
 var back = document.getElementById('back');
+var whole = document.getElementById('whole');
+var half = document.getElementById('half');
+var alignmentMethod = 'True';
+var methods = document.querySelector('#methods');
 
+whole.addEventListener('click', function() {
+    methods.textContent = 'Whole Slice';
+    alignmentMethod = 'True';
+});
+
+half.addEventListener('click', function() {
+    methods.textContent = 'Hemisphere Only';
+    alignmentMethod = 'False';
+});
 run.addEventListener('click', function(){
     if (indir && outdir && indir.value && outdir.value) {
         run.classList.add('disabled');
@@ -13,7 +26,7 @@ run.addEventListener('click', function(){
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runAlign', [indir.value, outdir.value]);
+        ipc.send('runAlign', [indir.value, outdir.value, alignmentMethod]);
     }
 });
 

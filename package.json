@@ -33,7 +33,9 @@
   },
   "config": {
     "forge": {
-      "packagerConfig": {},
+      "packagerConfig": {
+        "quiet": false
+      },
       "makers": [
         {
           "name": "@electron-forge/maker-zip"

@@ -151,6 +151,9 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
 if __name__ == "__main__":
     # Check if we have the nrrd files
     nrrdPath = Path.home() / ".belljar/nrrd"
+    
+    # Set if we are using whole or half the brain
+    selectionModifier = 2 if not args.whole else 1
 
     # Setup path objects
     inputPath = Path(args.input.strip())
@@ -187,8 +190,8 @@ if __name__ == "__main__":
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
-    sectionLayer = viewer.add_image(cv2.resize(images[0], (atlas.shape[2]//2,atlas.shape[1])), name="section")
-    atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//2], name="atlas", opacity=0.30)
+    sectionLayer = viewer.add_image(cv2.resize(images[0], (atlas.shape[2]//selectionModifier,atlas.shape[1])), name="section")
+    atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//selectionModifier], name="atlas", opacity=0.30)
     # Set the initial slider position
     viewer.dims.set_point(0, predictions[fileList[0]])
     # Track the current section
@@ -203,7 +206,7 @@ if __name__ == "__main__":
             currentSection += 1
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
-            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//2,atlas.shape[1]))
+            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def prevSection():
@@ -215,7 +218,7 @@ if __name__ == "__main__":
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
-            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//2,atlas.shape[1]))
+            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def finishAlignment():
@@ -226,9 +229,9 @@ if __name__ == "__main__":
         # Write the predictions to a file
         for i in range(len(images)):
             imageName = fileList[i]
-            atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//2]/256).astype('uint8'), 
+            atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//selectionModifier]/256).astype('uint8'), 
                                               images[i], 
-                                             (annotation[predictions[imageName], : , :annotation.shape[2]//2]).astype('int32')
+                                             (annotation[predictions[imageName], : , :annotation.shape[2]//selectionModifier]).astype('int32')
                                             )
             cv2.imwrite(str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), atlasWarp)
             
@@ -315,4 +318,4 @@ if __name__ == "__main__":
     # Add them to the dock
     viewer.window.add_dock_widget([progressBar, nextButton, backButton, doneButton], name="Bell Jar Controls", area='left')
     # Start event loop to keep viewer open
-    napari.run()
+    napari.run() 

@@ -54,6 +54,27 @@
           <input type="url" id="outdir" placeholder="Click to select directory or cancel to enter manually">
         </div>
       </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <h5>
+            Alignment Method
+            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Select the alignment method you want to use, hemisphere requires all slices are in left hemisphere orientation"></i>
+          </h5>
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <div class="dropdown">
+            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
+            Whole Slice
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="regions">
+              <li><a class="dropdown-item" id="whole" href="#">Whole Slice</a></li>
+              <li><a class="dropdown-item" id="half" href="#">Hemisphere Only</a></li>
+            </ul>
+          </div>        
+        </div>
+      </div>
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
             <a role="button" class="btn btn-warning" id="back" href="./menu.html">Back</a>
