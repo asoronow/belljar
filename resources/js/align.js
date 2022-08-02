@@ -13,12 +13,15 @@ var methods = document.querySelector('#methods');
 whole.addEventListener('click', function() {
     methods.textContent = 'Whole Slice';
     alignmentMethod = 'True';
+    console.log(alignmentMethod);
 });
 
 half.addEventListener('click', function() {
     methods.textContent = 'Hemisphere Only';
     alignmentMethod = 'False';
+    console.log(alignmentMethod);
 });
+
 run.addEventListener('click', function(){
     if (indir && outdir && indir.value && outdir.value) {
         run.classList.add('disabled');

@@ -153,7 +153,7 @@ if __name__ == "__main__":
     nrrdPath = Path.home() / ".belljar/nrrd"
     
     # Set if we are using whole or half the brain
-    selectionModifier = 2 if not args.whole else 1
+    selectionModifier = 2 if not eval(args.whole) else 1
 
     # Setup path objects
     inputPath = Path(args.input.strip())
