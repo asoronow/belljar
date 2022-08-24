@@ -1,3 +1,4 @@
+from locale import normalize
 import os, requests, math
 import numpy as np
 import cv2
@@ -182,7 +183,7 @@ if __name__ == "__main__":
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
     print("Making predictions...", flush=True)
-    predictions, angle = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip())
+    predictions, angle, normalizedImages = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip(), hemisphere=eval(args.whole))
     # Load the appropriate atlas
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(str(nrrdPath / f"r_annotation_{angle}.nrrd"))
@@ -190,7 +191,7 @@ if __name__ == "__main__":
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
-    sectionLayer = viewer.add_image(cv2.resize(images[0], (atlas.shape[2]//selectionModifier,atlas.shape[1])), name="section")
+    sectionLayer = viewer.add_image(cv2.resize(normalizedImages[0], (atlas.shape[2]//selectionModifier,atlas.shape[1])), name="section")
     atlasLayer = viewer.add_image(atlas[:, :, :atlas.shape[2]//selectionModifier], name="atlas", opacity=0.30)
     # Set the initial slider position
     viewer.dims.set_point(0, predictions[fileList[0]])
@@ -201,12 +202,12 @@ if __name__ == "__main__":
     def nextSection():
         '''Move one section forward by crawling file paths'''
         global currentSection, progressBar
-        if not currentSection == len(images) - 1:
+        if not currentSection == len(normalizedImages) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             currentSection += 1
-            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)
-            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
+            sectionLayer.data = cv2.resize(normalizedImages[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def prevSection():
@@ -215,10 +216,10 @@ if __name__ == "__main__":
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             currentSection -= 1
-            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
-            sectionLayer.data = cv2.resize(images[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
+            sectionLayer.data = cv2.resize(normalizedImages[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
     
     def finishAlignment():
@@ -258,9 +259,9 @@ if __name__ == "__main__":
                     nameToRegion[row[2]] = int(row[0])
             
             # Write the atlas borders ontop of dapi image
-            dapi = images[i]
+            # dapi = images[i]
             y, x = annoWarp.shape
-            mapImage = np.zeros((y-200, x-200, 3), dtype='uint8')
+            mapImage = np.zeros((y-200, x-200, 3), dtype='uint8') 
             for (j, i), area in np.ndenumerate(annoWarp):
                 if j > 0 and j < y - 1 and i > 0 and i < x - 1:
                     surroundingPoints = [

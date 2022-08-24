@@ -17,16 +17,24 @@ def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
         nrrd.write(str(outputPath) + f'/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
         nrrd.write(str(outputPath) + f'/r_annotation_{r}.nrrd', annotation_rotatedX, aHead)
 
-def createTrainingSet():
+def createTrainingSet(hemisphere=True):
     '''Make the set of all pngs to train the autoencoder'''
+    if hemisphere:
+        out = '/png_hemisphere'
+    else:
+        out = '/png'
+    
     for r in range(-10,11,1):
         print(f'Processing angle {r}', flush=True)
         data, head = nrrd.read(nrrdPath + f"/r_nissl_{r}.nrrd")
         z, x, y = data.shape
         for slice in range(100,z-100, 1):
-            writePath = nrrdPath + "/png" + f"/r_nissil_{r}_{slice}.png"
+            writePath = nrrdPath + out + f"/r_nissil_{r}_{slice}.png"
             print(f"Writing slice {slice} to {writePath}")
-            image = data[slice, :, :]
+            if hemisphere:
+                image = data[slice,:,:y//2]
+            else:
+                image = data[slice, :, :]
             image = cv2.resize(image, (512,512))
             image8 = (image / 256).astype('uint8')
             cv2.imwrite(writePath, image8)

@@ -286,10 +286,51 @@ ipcMain.on('runMax', function(event: any, data: any[]){
   });
 });
 
+// Adjust
+ipcMain.on('runAdjust', function(event: any, data: any[]){
+  var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')
+
+  let options = {
+    mode: 'text',
+    pythonPath: path.join(envPythonPath, pyCommand),
+    scriptPath: pyScriptsPath,
+    args: [
+            `-i ${data[0]}`,
+            `-s ${structPath}`
+          ]
+  };
+  
+  let pyshell = new PythonShell('adjustAlignment.py', options);
+  var total: number = 0;
+  var current: number = 0;
+  pyshell.on('stderr', function (stderr: string) {
+    console.log(stderr);
+  });
+  pyshell.on('message', (message: string) => {
+    if (total === 0) {
+      total = Number(message);
+    } else if (message == 'Done!') {
+      pyshell.end((err: string, code: any, signal: string) => {
+        if (err) throw err;
+        console.log('The exit code was: ' + code);
+        console.log('The exit signal was: ' + signal);
+        event.sender.send('adjustResult')
+      });
+    } else {
+      current++;
+      event.sender.send('updateLoad', [Math.round((current/total)*100), message]);
+    }
+  });
+  ipcMain.once('killAdjust', function(event: any, data: any[]) {
+    pyshell.kill();
+  });
+});
+
+
 // Alignment
 ipcMain.on('runAlign', function(event: any, data: any[]){
   var modelPath = (data[2] == "False" ? path.join(appDir, 'resources/models/predictor_encoder.pt'):path.join(appDir, 'resources/models/predictor_full_encoder.pt'));
-  var embedPath = path.join(appDir, 'resources/py/atlasEmbeddings.pkl')
+  var embedPath = (data[2] == "False" ? path.join(appDir, 'resources/py/hemisphere_embeddings.pkl') : path.join(appDir, 'resources/py/whole_embeddings.pkl'));
   var structPath = path.join(appDir, 'resources/csv/structure_tree_safe_2017.csv')
 
   let options = {

@@ -1,3 +1,5 @@
+from re import T
+from venv import create
 import matplotlib.pyplot as plt 
 import numpy as np
 import torch
@@ -201,7 +203,7 @@ def plot_ae_outputs(encoder,decoder, images, n=10 ):
          ax.set_title('Reconstructed images')
     plt.show()   
 
-def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
+def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=True):
     '''Use the encoded sections and atlas embeddings to register brain regions'''
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -243,11 +245,24 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
     # Correcting rotation helps predictions
     normalizedImages = []
     for image in dapiImages:
-        maxC, xL, yL, wL, hL = getMaxContour(image)
-        cv2.drawContours(image, [maxC], -1, (255,255,255), 3)
-        center, shape, angle = cv2.minAreaRect(maxC)
-        image = rotate(image, angle, reshape=False)
-        normalizedImages.append(image)
+        image = cv2.normalize(image, None, 0, 85, cv2.NORM_MINMAX)
+        maxC, xL, yL, wL, hL = getMaxContour(image)        
+        # Now isolate the section using its contour and place it on blank image
+        template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+        normalImage = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+        cv2.rectangle(template, (xL, yL), (xL+wL, yL+hL), 255, -1)
+        selection = np.where(template == 255)
+        if hemisphere:
+            # get the largest x value from selection
+            x = np.max(selection[1])
+            xShift = 511 - x
+        else:
+            xShift = 0
+
+        for i, j in zip(selection[0], selection[1]):
+            normalImage[i,j + xShift] = image[i,j]
+
+        normalizedImages.append(normalImage)
 
     # Load the images
     t = transforms.Compose([transforms.ToTensor()])
@@ -260,16 +275,12 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
     for i in range(len(dataset)):
         img = dataset[i].to(device)
         img = img[None, :]
-        # Normalize image to atlas values
-        # Debug for verifying paths match the image we are processing
-        # cv2.imshow("image from dataset", dataset[i].numpy().transpose(1, 2, 0))
-        # cv2.imshow("image from filepaths", cv2.imread(nrrdPath + dataset.getPath(i)))
-        # cv2.waitKey(0)
         with torch.no_grad():
             out = encoder(img).cpu().numpy()
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
-                similarity[dataset.getPath(i)][name] = spatial.distance.cosine(out, e)
+                out = ((out - np.min(out))/np.ptp(out))
+                similarity[dataset.getPath(i)][name] = spatial.distance.euclidean(out, e)
     
     # Find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
@@ -301,7 +312,8 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
             for atlasName, e in embeddings.items():
                 v = atlasName.split("_")
                 if int(v[2]) == idealAngle:
-                    matches[atlasName] = spatial.distance.cosine(sectionEmbedding, e)
+                    sectionEmbedding = ((sectionEmbedding - np.min(sectionEmbedding))/np.ptp(sectionEmbedding))
+                    matches[atlasName] = spatial.distance.euclidean(sectionEmbedding, e)
             best[name] = min(matches, key=matches.get)
         else:
             best[name] = section
@@ -310,7 +322,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath):
     for sectionName, matchName in best.items():
         best[sectionName] = int(matchName.split("_")[3].split(".")[0])
 
-    return best, idealAngle
+    return best, idealAngle, normalizedImages
 
 
 def runTraining(nrrdPath):
@@ -405,10 +417,37 @@ def runTraining(nrrdPath):
 
         epoch_number += 1
 
+def createEmbeddings(pngFolder, embeddingFileName, modelPath):
+    '''
+    Create a pkl with embeddings from a folder of section slices
+    '''
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    encoder = nn.DataParallel(Encoder())
+    encoder.load_state_dict(torch.load(modelPath, map_location=device))
+    encoder.eval()
+    encoder.to(device)
+    files = os.listdir(pngFolder)
+    absolutePaths = [pngFolder + p for p in files]
+    allSlices = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths] #[:int(len(absolutePaths)*0.05)]
+    allLabels = [p for p in files]
+    t = transforms.Compose([transforms.ToTensor()])
+    dataset = Nissl(allSlices, transform=t, labels=allLabels)
+    loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    embeddings = {}
+    for i, data in enumerate(loader):
+        inputs = data.to(device)
+        encoded = encoder(inputs)
+        embeddings[dataset.getPath(i)] = encoded.cpu().detach().numpy()
+
+    with open(embeddingFileName, 'wb') as f:
+        pickle.dump(embeddings, f)
+
 if __name__ == '__main__':
     # TODO: Implement argparse for use with electron
     # PNG locations, change these for running fresh training
     # Training pngs can be generated with the sliceAtlas.py file
     # DAPI images should be at least 200 images, otherwise the model will not do well on DAPI sections
-    nrrdPath = "C:/Users/Alec/.belljar/nrrd/png/"
-    runTraining(nrrdPath)
+    # nrrdPath = "C:/Users/Alec/.belljar/nrrd/png/"
+    # runTraining(nrrdPath)
+    createEmbeddings('C:/Users/Alec/.belljar/nrrd/png_hemisphere/', 'hemisphere_embeddings.pkl', '../models/predictor_encoder.pt')
+    createEmbeddings('C:/Users/Alec/.belljar/nrrd/png/', 'whole_embeddings.pkl', '../models/predictor_full_encoder.pt')
