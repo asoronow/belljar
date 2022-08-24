@@ -217,7 +217,6 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
     with open(embeddPath ,"rb") as f:
         embeddings = pickle.load(f)
         for name, e in embeddings.items():
-            e = ((e - np.min(e))/np.ptp(e))
             embeddings[name] = e
     
     # Normalize the dapi images to atlas range
@@ -279,8 +278,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
             out = encoder(img).cpu().numpy()
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
-                out = ((out - np.min(out))/np.ptp(out))
-                similarity[dataset.getPath(i)][name] = spatial.distance.euclidean(out, e)
+                similarity[dataset.getPath(i)][name] = spatial.distance.cosine(out, e)
     
     # Find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
@@ -312,8 +310,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
             for atlasName, e in embeddings.items():
                 v = atlasName.split("_")
                 if int(v[2]) == idealAngle:
-                    sectionEmbedding = ((sectionEmbedding - np.min(sectionEmbedding))/np.ptp(sectionEmbedding))
-                    matches[atlasName] = spatial.distance.euclidean(sectionEmbedding, e)
+                    matches[atlasName] = spatial.distance.cosine(sectionEmbedding, e)
             best[name] = min(matches, key=matches.get)
         else:
             best[name] = section
