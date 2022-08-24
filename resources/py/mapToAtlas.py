@@ -10,6 +10,7 @@ import nrrd
 import csv
 import napari
 import argparse
+from scipy.spatial import distance as dist
 from qtpy.QtWidgets import QPushButton, QProgressBar
 from qtpy.QtCore import Qt
 
@@ -42,13 +43,28 @@ def downloadFile(url, outpath):
                 f.write(chunk)
     return local_filename
 
-def sortClockwise(hull):
-    '''Sort the points of a hull clockwise'''
-    def key(x):
-        atan = math.atan2(x[1], x[0])
-        return (atan, x[1]**2+x[0]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
-
-    return np.vstack(sorted(hull, key=key))
+def orderPoints(pts):
+	# sort the points based on their x-coordinates
+	xSorted = pts[np.argsort(pts[:, 0]), :]
+	# grab the left-most and right-most points from the sorted
+	# x-roodinate points
+	leftMost = xSorted[:2, :]
+	rightMost = xSorted[2:, :]
+	# now, sort the left-most coordinates according to their
+	# y-coordinates so we can grab the top-left and bottom-left
+	# points, respectively
+	leftMost = leftMost[np.argsort(leftMost[:, 1]), :]
+	(tl, bl) = leftMost
+	# now that we have the top-left coordinate, use it as an
+	# anchor to calculate the Euclidean distance between the
+	# top-left and right-most points; by the Pythagorean
+	# theorem, the point with the largest distance will be
+	# our bottom-right point
+	D = dist.cdist(tl[np.newaxis], rightMost, "euclidean")[0]
+	(br, tr) = rightMost[np.argsort(D)[::-1], :]
+	# return the coordinates in top-left, top-right,
+	# bottom-right, and bottom-left order
+	return np.array([tl, tr, br, bl], dtype='int64')
 
 
 # Warp atlas image roughly onto the DAPI section
@@ -127,25 +143,19 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     
     atlasResult, annotationResult = np.empty(dapiImage.shape), np.empty(dapiImage.shape)
     
-    try:
-        if angle < 45:
-            atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), sortClockwise(atlasRect), sortClockwise(dapiBox))
-        else:
-            atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), atlasRect, dapiBox)
+    try:        
+        atlasResult = warp(atlasImage, np.zeros(dapiImage.shape), orderPoints( atlasRect ), orderPoints( dapiBox))
     except Exception as e:
         pass
-        # print("\n Could not warp atlas image!")
-        # print(e)
+        print("\n Could not warp atlas image!")
+        print(e)
     
     try:
-        if angle < 45:
-            annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), sortClockwise(atlasRect), sortClockwise(dapiBox))
-        else:
-            annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), atlasRect, dapiBox)
+        annotationResult = warp(annotation, np.zeros(dapiImage.shape, dtype="int32"), orderPoints( atlasRect ), orderPoints( dapiBox))
     except Exception as e:
         pass
-        # print("\n Could not warp annotations!")
-        # print(e)
+        print("\n Could not warp annotations!")
+        print(e)
 
     
     return atlasResult, annotationResult
@@ -185,6 +195,31 @@ if __name__ == "__main__":
     # Predictions dict holds the section numbers for atlas
     print("Making predictions...", flush=True)
     predictions, angle, normalizedImages = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip(), hemisphere=eval(args.whole))
+    
+    # Create a dict to track which sections have been visted
+    visited = {}
+    for f in fileList:
+        visited[f] = False
+
+    # Helper function to adjust predictions of the unvisted sections based on current settings
+    def adjustPredictions(predictions, visited, fileList):
+        # if any other sections are visited, get the average increase between visted sections
+        # and adjust the predictions of the unvisted sections
+        # this is to prevent the predictions from being too far off from the visted sections
+
+        if sum([1 for x in visited.values() if x == True]) > 1:
+            # Get the average increase between visted sections
+            averageIncrease = 0
+            for i in range(1, len(fileList)):
+                if visited[fileList[i]]:
+                    averageIncrease += predictions[fileList[i]] - predictions[fileList[i - 1]]
+            averageIncrease /= sum(visited.values())
+            # Adjust the predictions of the unvisted sections
+            for i in range(len(fileList)):
+                if not visited[fileList[i]]:
+                    predictions[fileList[i]] = predictions[fileList[i - 1]] + averageIncrease               
+
+        return predictions
     # Load the appropriate atlas
     # Override the angle if needed
     if eval(args.angle) != False:
@@ -209,6 +244,8 @@ if __name__ == "__main__":
         global currentSection, progressBar
         if not currentSection == len(normalizedImages) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
+            visited[fileList[currentSection]] = True
+            adjustPredictions(predictions, visited, fileList)
             currentSection += 1
             progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)
@@ -220,6 +257,8 @@ if __name__ == "__main__":
         global currentSection, progressBar
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
+            visited[fileList[currentSection]] = True
+            adjustPredictions(predictions, visited, fileList)
             currentSection -= 1
             progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)

@@ -245,7 +245,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
     normalizedImages = []
     for image in dapiImages:
         image = cv2.normalize(image, None, 0, 85, cv2.NORM_MINMAX)
-        maxC, xL, yL, wL, hL = getMaxContour(image)        
+        maxC, xL, yL, wL, hL = getMaxContour(image)
         # Now isolate the section using its contour and place it on blank image
         template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         normalImage = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
@@ -278,7 +278,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
             out = encoder(img).cpu().numpy()
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
-                similarity[dataset.getPath(i)][name] = spatial.distance.cosine(out, e)
+                similarity[dataset.getPath(i)][name] = spatial.distance.euclidean(out, e)
     
     # Find the consensus angle
     consensus = {i:0 for i in range(-10,11,1)}
@@ -310,7 +310,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
             for atlasName, e in embeddings.items():
                 v = atlasName.split("_")
                 if int(v[2]) == idealAngle:
-                    matches[atlasName] = spatial.distance.cosine(sectionEmbedding, e)
+                    matches[atlasName] = spatial.distance.euclidean(sectionEmbedding, e)
             best[name] = min(matches, key=matches.get)
         else:
             best[name] = section

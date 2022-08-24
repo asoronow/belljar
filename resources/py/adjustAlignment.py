@@ -201,3 +201,5 @@ for annoPkl, dapi in zip(annotationsPkl, dapiImages):
             cv2.destroyAllWindows()
             print('Done!', flush=True)
             break
+
+print('Done!', flush=True)
