@@ -341,6 +341,7 @@ ipcMain.on('runAlign', function(event: any, data: any[]){
             `-o ${data[1]}`, 
             `-i ${data[0]}`,
             `-w ${data[2]}`,
+            `-a ${data[3]}`,
             `-m ${modelPath}`,
             `-e ${embedPath}`,
             `-s ${structPath}`

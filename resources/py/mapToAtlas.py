@@ -19,6 +19,7 @@ parser.add_argument('-i', '--input', help="input directory, only use if graphica
 parser.add_argument('-m', "--model", default="../models/predictor_encoder.pt")
 parser.add_argument('-e', "--embeds", default="atlasEmbeddings.pkl")
 parser.add_argument('-w', "--whole", default=False)
+parser.add_argument('-a', "--angle", help="override predicted angle", default=False)
 parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
 
 args = parser.parse_args()
@@ -185,6 +186,10 @@ if __name__ == "__main__":
     print("Making predictions...", flush=True)
     predictions, angle, normalizedImages = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip(), hemisphere=eval(args.whole))
     # Load the appropriate atlas
+    # Override the angle if needed
+    if eval(args.angle) != False:
+        angle = args.angle.strip()
+
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(str(nrrdPath / f"r_annotation_{angle}.nrrd"))
     print("Awaiting fine tuning...", flush=True)

@@ -7,6 +7,7 @@ var loadmessage = document.getElementById('loadmessage');
 var back = document.getElementById('back');
 var whole = document.getElementById('whole');
 var half = document.getElementById('half');
+var angle = document.getElementById('angle');
 var alignmentMethod = 'True';
 var methods = document.querySelector('#methods');
 
@@ -24,12 +25,22 @@ half.addEventListener('click', function() {
 
 run.addEventListener('click', function(){
     if (indir && outdir && indir.value && outdir.value) {
+        var a;
+        if (angle && angle.value && angle.value >= -10 && angle.value <= 10) {
+            a = angle.value;
+        } else if (!angle || !angle.value) {
+            a = 'False';
+        } else {
+            alert('Please enter a valid angle between -10 and 10');
+            return;
+        }
+
         run.classList.add('disabled');
         back.classList.remove('btn-warning');
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runAlign', [indir.value, outdir.value, alignmentMethod]);
+        ipc.send('runAlign', [indir.value, outdir.value, alignmentMethod, a]);
     }
 });
 
