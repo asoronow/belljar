@@ -241,11 +241,17 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
         
         return maxC, xL, yL, wL, hL
     
+    def dilate(image, kernelSize=21, iterations=1):
+        '''Dilate an image'''
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernelSize, kernelSize))
+        return cv2.dilate(image, kernel, iterations=iterations)
+
     # Correcting rotation helps predictions
     normalizedImages = []
     for image in dapiImages:
         image = cv2.normalize(image, None, 0, 85, cv2.NORM_MINMAX)
-        maxC, xL, yL, wL, hL = getMaxContour(image)
+        dilated = dilate(image)
+        maxC, xL, yL, wL, hL = getMaxContour(dilated)
         # Now isolate the section using its contour and place it on blank image
         template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         normalImage = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)

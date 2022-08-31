@@ -11,7 +11,7 @@ import csv
 import napari
 import argparse
 from scipy.spatial import distance as dist
-from qtpy.QtWidgets import QPushButton, QProgressBar
+from qtpy.QtWidgets import QPushButton, QProgressBar, QCheckBox
 from qtpy.QtCore import Qt
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
@@ -68,7 +68,7 @@ def orderPoints(pts):
 
 
 # Warp atlas image roughly onto the DAPI section
-def warpToDAPI(atlasImage, dapiImage, annotation):
+def warpToDAPI(atlasImage, dapiImage, annotation, shouldDilate=False):
     '''
     Takes in a DAPI image and its atlas prediction and warps the atlas to match the section
     Basis for warp protocol from Ann Zen on Stackoverflow.
@@ -79,9 +79,18 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
     atlasImage = cv2.resize(atlasImage, dapiImage.shape)
     annotation = cv2.resize(annotation, dapiImage.shape, interpolation=cv2.INTER_NEAREST)
     
-    def getMaxContour(image):
+
+    def dilate(image, kernelSize=21, iterations=3):
+        '''Dilate an image'''
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernelSize, kernelSize))
+        return cv2.dilate(image, kernel, iterations=iterations)
+
+    def getMaxContour(image, shouldDilate=False):
         '''Returns the largest contour in an image and its bounding points'''
         # Get the gaussian threshold, otsu method (best automatic results)
+        if shouldDilate:
+            image = dilate(image)
+        
         blur = cv2.GaussianBlur(image,(11,11),0)
         ret, thresh = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
@@ -132,7 +141,7 @@ def warpToDAPI(atlasImage, dapiImage, annotation):
         return img2
     
 
-    dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage)
+    dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage, shouldDilate)
     atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
     
     center, shape, angle = cv2.minAreaRect(dapiContour)
@@ -196,6 +205,12 @@ if __name__ == "__main__":
     print("Making predictions...", flush=True)
     predictions, angle, normalizedImages = makePredictions(resizedImages, fileList, args.model.strip(), args.embeds.strip(), hemisphere=eval(args.whole))
     
+
+    # Create a dict to track which sections are seperated
+    separated = {}
+    for f in fileList:
+        separated[f] = False
+
     # Create a dict to track which sections have been visted
     visited = {}
     for f in fileList:
@@ -241,12 +256,20 @@ if __name__ == "__main__":
     # Button callbacks
     def nextSection():
         '''Move one section forward by crawling file paths'''
-        global currentSection, progressBar
+        global currentSection, progressBar, separatedCheckbox
         if not currentSection == len(normalizedImages) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
+            if separatedCheckbox.isChecked():
+                separated[fileList[currentSection]] = True
+            else:
+                separated[fileList[currentSection]] = False
             adjustPredictions(predictions, visited, fileList)
             currentSection += 1
+            if separated[fileList[currentSection]]:
+                separatedCheckbox.setChecked(True)
+            else:
+                separatedCheckbox.setChecked(False)
             progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)
             sectionLayer.data = cv2.resize(normalizedImages[currentSection], (atlas.shape[2]//selectionModifier,atlas.shape[1]))
@@ -254,12 +277,20 @@ if __name__ == "__main__":
     
     def prevSection():
         '''Move one section backward by crawling file paths'''
-        global currentSection, progressBar
+        global currentSection, progressBar, separatedCheckbox
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
+            if separatedCheckbox.isChecked():
+                separated[fileList[currentSection]] = True
+            else:
+                separated[fileList[currentSection]] = False
             adjustPredictions(predictions, visited, fileList)
             currentSection -= 1
+            if separated[fileList[currentSection]]:
+                separatedCheckbox.setChecked(True)
+            else:
+                separatedCheckbox.setChecked(False)
             progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
@@ -269,14 +300,20 @@ if __name__ == "__main__":
     def finishAlignment():
         '''Save our final updated prediction, perform warps, close, also write atlas borders to file'''
         print("Writing output...", flush=True)
-        global currentSection
+        global currentSection, separatedCheckbox
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
+        if separatedCheckbox.isChecked():
+            separated[fileList[currentSection]] = True
+        else:
+            separated[fileList[currentSection]] = False
         # Write the predictions to a file
         for i in range(len(images)):
             imageName = fileList[i]
+            print(separated[imageName])
             atlasWarp, annoWarp = warpToDAPI((atlas[predictions[imageName], : , :atlas.shape[2]//selectionModifier]/256).astype('uint8'), 
                                               images[i], 
-                                             (annotation[predictions[imageName], : , :annotation.shape[2]//selectionModifier]).astype('int32')
+                                             (annotation[predictions[imageName], : , :annotation.shape[2]//selectionModifier]).astype('int32'),
+                                             separated[imageName],
                                             )
             cv2.imwrite(str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), atlasWarp)
             
@@ -352,6 +389,8 @@ if __name__ == "__main__":
     nextButton = QPushButton('Next Section')
     backButton = QPushButton('Previous Section')
     doneButton = QPushButton('Done')
+    # Add checkbox for seperated
+    separatedCheckbox = QCheckBox('Seperated?')
     progressBar = QProgressBar(minimum=1, maximum=len(images))
     progressBar.setFormat(f"1/{len(images)}")
     progressBar.setValue(1)
@@ -361,6 +400,6 @@ if __name__ == "__main__":
     backButton.clicked.connect(prevSection)
     doneButton.clicked.connect(finishAlignment)
     # Add them to the dock
-    viewer.window.add_dock_widget([progressBar, nextButton, backButton, doneButton], name="Bell Jar Controls", area='left')
+    viewer.window.add_dock_widget([progressBar, nextButton, backButton, separatedCheckbox, doneButton], name="Bell Jar Controls", area='left')
     # Start event loop to keep viewer open
     napari.run() 
