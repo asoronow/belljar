@@ -8,13 +8,18 @@ from belljarGUI import Page, GuiController
 import argparse
 
 parser = argparse.ArgumentParser(description='Process z-stack images')
-parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
-parser.add_argument('-r', '--regions', help="which regions to include in output", default='')
+parser.add_argument(
+    '-o', '--output', help="output directory, only use if graphical false", default='')
+parser.add_argument(
+    '-i', '--input', help="input directory, only use if graphical false", default='')
+parser.add_argument('-r', '--regions',
+                    help="which regions to include in output", default='')
 parser.add_argument('-s', '--structures', help="structures file", default='')
-parser.add_argument('-g', '--graphical', help='provides prompts when true', default=True)
+parser.add_argument('-g', '--graphical',
+                    help='provides prompts when true', default=True)
 
 args = parser.parse_args()
+
 
 class FileLocations(ttk.Frame, Page):
     def __init__(self, parent, controller):
@@ -23,120 +28,123 @@ class FileLocations(ttk.Frame, Page):
         self.parent = parent
         self.controller = controller
 
-        label1 = ttk.Label(self, text ="All Objects File")
-        label1.grid(row = 0, column = 0, padx = 10, pady = 10)
-        
-        label2 = ttk.Label(self, text ="Output File")
-        label2.grid(row = 1, column = 0, padx = 10, pady = 10)
+        label1 = ttk.Label(self, text="All Objects File")
+        label1.grid(row=0, column=0, padx=10, pady=10)
 
-        label3 = ttk.Label(self, text ="Safe Structure File")
-        label3.grid(row = 2, column = 0, padx = 10, pady = 10)
+        label2 = ttk.Label(self, text="Output File")
+        label2.grid(row=1, column=0, padx=10, pady=10)
+
+        label3 = ttk.Label(self, text="Safe Structure File")
+        label3.grid(row=2, column=0, padx=10, pady=10)
 
         self.objectsEntry = ttk.Entry(self)
-        self.objectsEntry.grid(row= 0, column = 1, padx = 10, pady = 10)
+        self.objectsEntry.grid(row=0, column=1, padx=10, pady=10)
 
         self.resultEntry = ttk.Entry(self)
-        self.resultEntry.grid(row= 1, column = 1,padx = 10, pady = 10)
+        self.resultEntry.grid(row=1, column=1, padx=10, pady=10)
 
         self.structuresEntry = ttk.Entry(self)
-        self.structuresEntry.grid(row= 2, column = 1,padx = 10, pady = 10)
+        self.structuresEntry.grid(row=2, column=1, padx=10, pady=10)
 
-        button2 = ttk.Button(self, text="Browse", 
-                                command= lambda :self.browseObjectFiles(self.objectsEntry))
+        button2 = ttk.Button(self, text="Browse",
+                             command=lambda: self.browseObjectFiles(self.objectsEntry))
 
-        button2.grid(row=0, column=2, padx = 10, pady = 10)
+        button2.grid(row=0, column=2, padx=10, pady=10)
 
-        button3 = ttk.Button(self, text="Save As", 
-                                command= lambda : self.saveFiles(self.resultEntry))
+        button3 = ttk.Button(self, text="Save As",
+                             command=lambda: self.saveFiles(self.resultEntry))
 
         button3.grid(row=1, column=2)
 
-        button4 = ttk.Button(self, text="Browse", 
-                                command= lambda :self.browseStructuresFiles(self.structuresEntry))
+        button4 = ttk.Button(self, text="Browse",
+                             command=lambda: self.browseStructuresFiles(self.structuresEntry))
 
-        button4.grid(row=2, column=2, padx = 10, pady = 10)
+        button4.grid(row=2, column=2, padx=10, pady=10)
 
-        button1 = ttk.Button(self, text ="Done",
-                                command = lambda : collateCount(self.controller.objectsFile, self.controller.structuresFile, self.controller.resultsFile))
+        button1 = ttk.Button(self, text="Done",
+                             command=lambda: collateCount(self.controller.objectsFile, self.controller.structuresFile, self.controller.resultsFile))
 
-        button1.grid(row = 3, column = 2, padx = 10, pady = 20)
-    
+        button1.grid(row=3, column=2, padx=10, pady=20)
+
     def browseObjectFiles(self, entry):
-        filename = filedialog.askopenfilename(initialdir = "Z:/",
-                                            title = "Select a File",
-                                            filetypes = (("CSV Files",
-                                                            "*.csv"),
-                                                        ("all files",
-                                                            "*.*")))
+        filename = filedialog.askopenfilename(initialdir="Z:/",
+                                              title="Select a File",
+                                              filetypes=(("CSV Files",
+                                                          "*.csv"),
+                                                         ("all files",
+                                                          "*.*")))
         # Change label contents
         entry.delete(0, END)
-        entry.insert(0,filename)
+        entry.insert(0, filename)
         self.controller.objectsFile = filename
 
-        
     def browseStructuresFiles(self, entry):
-        filename = filedialog.askopenfilename(initialdir = "../csv",
-                                            title = "Select a File",
-                                            filetypes = (("CSV Files",
-                                                            "*.csv"),
-                                                        ("all files",
-                                                            "*.*")))
+        filename = filedialog.askopenfilename(initialdir="../csv",
+                                              title="Select a File",
+                                              filetypes=(("CSV Files",
+                                                          "*.csv"),
+                                                         ("all files",
+                                                          "*.*")))
         # Change label contents
         entry.delete(0, END)
-        entry.insert(0,filename)
+        entry.insert(0, filename)
         self.controller.structuresFile = filename
 
     def saveFiles(self, entry):
-        filename = filedialog.asksaveasfilename(initialdir = "Z:/",
-                                            defaultextension  = ".csv",
-                                            title = "Select a File",
-                                            filetypes = (("CSV Files",
+        filename = filedialog.asksaveasfilename(initialdir="Z:/",
+                                                defaultextension=".csv",
+                                                title="Select a File",
+                                                filetypes=(("CSV Files",
                                                             "*.csv"),
-                                                        ("all files",
+                                                           ("all files",
                                                             "*.*")))
         # Change label contents
         entry.delete(0, END)
-        entry.insert(0,filename)
+        entry.insert(0, filename)
         self.controller.resultsFile = filename
-        
+
     def didAppear(self):
         super().didAppear(self)
         self.controller.update()
+
 
 def collateCount(objectsFile, safeRegions, resultFile):
     # Reading in objects
     objects = {}
     with open(objectsFile) as objectFile:
         objectReader = csv.reader(objectFile, delimiter=";")
-        next(objectReader) # Skip Line 1
+        next(objectReader)  # Skip Line 1
         for row in objectReader:
             section = row[0]
             if objects.get(section) != None:
                 if objects[section].get(row[6]) != None:
-                    objects[section][row[6]] +=1
+                    objects[section][row[6]] += 1
                 else:
                     objects[section][row[6]] = 1
             else:
                 objects[section] = {
-                row[6]: 1
-            }
+                    row[6]: 1
+                }
 
     # Reading in regions
     regions = {}
     nameToRegion = {}
     with open(args.structures.strip()) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
-        
-        header = next(structureReader) # skip header
-        root = next(structureReader) # skip atlas root region
+
+        header = next(structureReader)  # skip header
+        root = next(structureReader)  # skip atlas root region
         # manually set root, due to weird values
-        regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
-        regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A"}
+        regions[997] = {"acronym": "undefined",
+                        "name": "undefined", "parent": "N/A"}
+        regions[0] = {"acronym": "LIW",
+                      "name": "Lost in Warp", "parent": "N/A"}
         nameToRegion["undefined"] = 997
         nameToRegion["Lost in Warp"] = 0
         # store all other atlas regions and their linkages
         for row in structureReader:
-            regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
+            regions[int(row[0])] = {"acronym": row[3],
+                                    "name": row[2], "parent": int(row[8])}
             nameToRegion[row[2]] = int(row[0])
 
     # Now count things up
@@ -159,7 +167,6 @@ def collateCount(objectsFile, safeRegions, resultFile):
                 else:
                     sums[region] = count
 
-
     # Write the results
     outputPath = Path(args.output.strip())
     with open(outputPath / "count_results.csv", "w", newline="") as resultFile:
@@ -171,31 +178,33 @@ def collateCount(objectsFile, safeRegions, resultFile):
                 runningTotals[r] += count
             else:
                 runningTotals[r] = count
-        
+
         lines.append(["Totals"])
         for r, count in runningTotals.items():
             lines.append([regions[r]['name'], regions[r]["acronym"], count])
         # Write out the rows
         resultWriter = csv.writer(resultFile)
         resultWriter.writerows(lines)
-    
+
         print("Done!", flush=True)
+
 
 if __name__ == '__main__':
 
     if args.graphical == True:
         globals = {
-                "objectsFile": "",
-                "resultsFile": "",
-                "structuresFile": "",
-                }
+            "objectsFile": "",
+            "resultsFile": "",
+            "structuresFile": "",
+        }
 
         app = GuiController(pages=[
-                            FileLocations, 
+                            FileLocations,
                             ],
                             firstPage=FileLocations,
                             globals=globals)
         app.mainloop()
     else:
         print("2", flush=True)
-        collateCount(args.input.strip(), args.structures.strip(), args.output.strip())
+        collateCount(args.input.strip(), args.structures.strip(),
+                     args.output.strip())

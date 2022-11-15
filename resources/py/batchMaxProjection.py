@@ -6,9 +6,12 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Process z-stack images')
-parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-i', '--input', help="input directory, only use if graphical false", default='')
-parser.add_argument('-g', '--graphical', help='provides prompts when true', default=True)
+parser.add_argument(
+    '-o', '--output', help="output directory, only use if graphical false", default='')
+parser.add_argument(
+    '-i', '--input', help="input directory, only use if graphical false", default='')
+parser.add_argument('-g', '--graphical',
+                    help='provides prompts when true', default=True)
 args = parser.parse_args()
 
 if args.graphical == True:
@@ -34,5 +37,5 @@ for file in files:
         tf.imwrite(f"{outputDirectory}/{file}",  img)
     except:
         print("Invalid image!", flush=True)
-        
+
 print('Done!')

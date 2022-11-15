@@ -2,6 +2,7 @@ from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
 
+
 class GuiController(Tk):
     '''
     A GuiController manages the paging and display of a set
@@ -14,7 +15,7 @@ class GuiController(Tk):
     Author: Alec Soronow
     Credit: Soumi Bardhan
     Date: September 21, 2021    
-    
+
     Attributes: pages; a list of pages
                 firstPage; initialy displayed page
                 globals; a dict of global attributes to share between pages
@@ -23,47 +24,50 @@ class GuiController(Tk):
 
     Methods: showPage(); displays the selected page and resizes view
     '''
-    def  __init__(self, pages, firstPage, globals, *args, **kwargs):
+
+    def __init__(self, pages, firstPage, globals, *args, **kwargs):
         '''Contructor to setup Tk, paging, and globals attributes'''
         Tk.__init__(self, *args, **kwargs)
 
-        self.resizable(False, False) # Let pages decide how large the view should be
-        self.title("Counting Application") # Set title here
+        # Let pages decide how large the view should be
+        self.resizable(False, False)
+        self.title("Counting Application")  # Set title here
         self.args = args
         self.kwargs = kwargs
         self.pages = pages
 
         for key, value in globals.items():
             setattr(self, key, value)
-        
-        # creating a container
-        container = ttk.Frame(self) 
-        container.pack(side = "top", fill = "both", expand = True)
 
-        container.grid_rowconfigure(0, weight = 1)
-        container.grid_columnconfigure(0, weight = 1)
+        # creating a container
+        container = ttk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
 
         # initializing pages to an empty array
-        self.frames = {} 
+        self.frames = {}
 
         # iterating through a tuple consisting
         # of the different page layouts
         for F in self.pages:
             frame = F(container, self)
             self.frames[F] = frame
-            frame.grid(row = 0, column = 0, sticky ="nsew")
-        
+            frame.grid(row=0, column=0, sticky="nsew")
+
         self.showPage(firstPage)
-        
+
     def showPage(self, cont):
         '''First removes all page grid layouts to allow resizing, rebuilds displayed layout'''
         for frame in self.frames.values():
             frame.grid_remove()
-        
-        frame = self.frames[cont] # Select the desired page
-        frame.tkraise() # Make this the presented frame
-        frame.grid() # Layout its grid objects
-        frame.didAppear() # Let this object know its being displayed
+
+        frame = self.frames[cont]  # Select the desired page
+        frame.tkraise()  # Make this the presented frame
+        frame.grid()  # Layout its grid objects
+        frame.didAppear()  # Let this object know its being displayed
+
 
 class Page():
     '''
@@ -80,6 +84,7 @@ class Page():
 
     Methods: didAppear(); a notification method, page specific actions upon display
     '''
+
     def didAppear(self, debug=False):
         if debug:
             print(f"Page{self.__class__} appeared")
