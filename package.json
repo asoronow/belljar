@@ -42,13 +42,10 @@
       "packagerConfig": {
         "asar": true,
         "icon": "assets/icons/icon",
-        "tmpdir": false,
         "ignore": [
           "node_modules",
           "src",
-          "assets",
           "tsconfig.json",
-          "package.json",
           "package-lock.json",
           "README.md",
           "LICENSE"
