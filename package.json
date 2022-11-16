@@ -40,9 +40,9 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "icon": "assets/icons/icon",
+        "asar": true,
+        "icon": "assets/icons/icon.png",
         "ignore": [
-          "node_modules",
           "src",
           "tsconfig.json",
           "yarn.lock",
@@ -52,16 +52,14 @@
       },
       "makers": [
         {
-          "name": "@electron-forge/maker-squirrel",
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "darwin",
+            "win32"
+          ],
           "config": {
             "name": "belljar"
           }
-        },
-        {
-          "name": "@electron-forge/maker-zip",
-          "platforms": [
-            "darwin"
-          ]
         },
         {
           "name": "@electron-forge/maker-deb",
