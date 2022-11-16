@@ -32,7 +32,7 @@ const envPythonPath = path.join(envPath, envMod);
 // Command choses wether to use the exe (windows) or alias (unix based)
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
-const pyScriptsPath = path.join(appDir, "/resources/py");
+const pyScriptsPath = path.join(appDir, "/py");
 // Promise version of file moving
 function move(o, t) {
     return new Promise((resolve, reject) => {
@@ -101,7 +101,13 @@ function setupPython(win) {
             }
         }
         else {
-            resolve(false);
+            // Double check that the environment is setup by confirming if the benv folder exists
+            if (!fs.existsSync(envPath)) {
+                resolve(true);
+            }
+            else {
+                resolve(false);
+            }
         }
     });
 }
@@ -183,7 +189,9 @@ function downloadResources(win, fresh) {
                     });
                 });
             }
-            return;
+            if (downloading.length === 0) {
+                resolve(true);
+            }
         }
         // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
         // Check if these directories exist, if they do, we don't need to download any files
@@ -307,7 +315,7 @@ function setupEnvironment(win) {
         // Install pip packages
         function installDeps() {
             return __awaiter(this, void 0, void 0, function* () {
-                const reqs = path.join(appDir, "resources/py/requirements.txt");
+                const reqs = path.join(appDir, "py/requirements.txt");
                 const { stdout, stderr } = yield exec(`${pyCommand} -m pip install -r ${reqs}`, { cwd: envPythonPath });
                 return { stdout, stderr };
             });
@@ -319,11 +327,14 @@ function updatePythonDependencies(win) {
     return new Promise((resolve, reject) => {
         win.webContents.send("updateStatus", "Updating packages...");
         // Run pip install -r requirements.txt --no-cache-dir to update the packages
-        exec(`${pyCommand} -m pip install -r ${path.join(appDir, "resources/py/requirements.txt")} --no-cache-dir`, { cwd: envPythonPath })
+        exec(`${pyCommand} -m pip install -r ${path.join(appDir, "py/requirements.txt")} --no-cache-dir`, { cwd: envPythonPath })
             .then(({ stdout, stderr }) => {
             console.log(stdout);
             win.webContents.send("updateStatus", "Update complete!");
             resolve(true);
+        }).catch((error) => {
+            console.log(error);
+            reject(error);
         });
     });
 }
@@ -337,6 +348,7 @@ function fixMissingDirectories(win) {
     });
 }
 // Makes the local user writable folder
+// TODO: Version checking to see if we need to update the files
 function checkLocalDir() {
     if (!fs.existsSync(homeDir)) {
         fs.mkdirSync(homeDir, {
@@ -485,7 +497,7 @@ ipcMain.on("runMax", function (event, data) {
 });
 // Adjust
 ipcMain.on("runAdjust", function (event, data) {
-    var structPath = path.join(appDir, "resources/csv/structure_tree_safe_2017.csv");
+    var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
@@ -532,7 +544,7 @@ ipcMain.on("runAlign", function (event, data) {
         ? path.join(homeDir, "embeddings/hemisphere_embeddings.pkl")
         : path.join(history, "embeddings/whole_embeddings.pkl");
     const nrrdPath = path.join(homeDir, "nrrd");
-    const structPath = path.join(appDir, "resources/csv/structure_tree_safe_2017.csv");
+    const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
@@ -582,7 +594,7 @@ ipcMain.on("runAlign", function (event, data) {
 });
 // Counting
 ipcMain.on("runCount", function (event, data) {
-    var structPath = path.join(appDir, "resources/csv/structure_tree_safe_2017.csv");
+    var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
@@ -678,7 +690,7 @@ ipcMain.on("runCollate", function (event, data) {
             String.raw `-o ${data[1]}`,
             String.raw `-i ${data[0]}`,
             `-r ${data[2]}`,
-            String.raw `-s ${path.join(appDir, "resources/csv/structure_tree_safe_2017.csv")}`,
+            String.raw `-s ${path.join(appDir, "csv/structure_tree_safe_2017.csv")}`,
             "-g False",
         ],
     };

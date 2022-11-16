@@ -1,13 +1,27 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="../node_modules/@fortawesome/fontawesome-free/css/all.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-    <link rel="stylesheet" href="../resources/css/style.css">
+    <meta charset="UTF-8" />
+    <link
+      rel="stylesheet"
+      href="../node_modules/@fortawesome/fontawesome-free/css/all.css"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="../css/style.css" />
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'  https://cdn.jsdelivr.net/; style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net/; font-src 'self' https://fonts.gstatic.com;">
-    <meta http-equiv="X-Content-Security-Policy" content="default-src 'self'; script-src 'self'  https://cdn.jsdelivr.net/; style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net/; font-src 'self' https://fonts.gstatic.com;">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'  https://cdn.jsdelivr.net/; style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net/; font-src 'self' https://fonts.gstatic.com;"
+    />
+    <meta
+      http-equiv="X-Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'  https://cdn.jsdelivr.net/; style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net/; font-src 'self' https://fonts.gstatic.com;"
+    />
     <title>BellJar</title>
   </head>
   <body>
@@ -16,9 +30,12 @@
         <div class="col">
           <h1>Cell Detection</h1>
           <p>
-            <br>
-            Finds cells in the filtered tissue using object detection. Each image is subdivided into overlapping tile regions and scanned for cells. Point maps, bounding boxes, and raw predictions are saved for each image.
-            <br>
+            <br />
+            Finds cells in the filtered tissue using object detection. Each
+            image is subdivided into overlapping tile regions and scanned for
+            cells. Point maps, bounding boxes, and raw predictions are saved for
+            each image.
+            <br />
           </p>
         </div>
       </div>
@@ -26,35 +43,58 @@
         <div class="col d-grid justify-content-start">
           <h5>
             Input Path
-            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Path to max projection or EFI processed files"></i>
+            <i
+              class="fas fa-circle-question fa-fw fa-xs"
+              data-bs-toggle="tooltip"
+              data-bs-placement="right"
+              title="Path to max projection or EFI processed files"
+            ></i>
           </h5>
         </div>
-        <div class="col d-grid">
-        </div>
+        <div class="col d-grid"></div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid">
-          <input type="url" id="indir" placeholder="Click to select directory or cancel to enter manually">
+          <input
+            type="url"
+            id="indir"
+            placeholder="Click to select directory or cancel to enter manually"
+          />
         </div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col justify-content-start d-grid">
           <h5>
             Output Path
-            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Path to where output should go"></i>
+            <i
+              class="fas fa-circle-question fa-fw fa-xs"
+              data-bs-toggle="tooltip"
+              data-bs-placement="right"
+              title="Path to where output should go"
+            ></i>
           </h5>
         </div>
-        <div class="col d-grid">
-        </div>
+        <div class="col d-grid"></div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid">
-          <input type="url" id="outdir" placeholder="Click to select directory or cancel to enter manually">
+          <input
+            type="url"
+            id="outdir"
+            placeholder="Click to select directory or cancel to enter manually"
+          />
         </div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
-          <a id="advance" data-bs-toggle="collapse" href="#collapseExample" role="button" aria-expanded="false" aria-controls="collapseExample">
+          <a
+            id="advance"
+            data-bs-toggle="collapse"
+            href="#collapseExample"
+            role="button"
+            aria-expanded="false"
+            aria-controls="collapseExample"
+          >
             Advanced Settings
             <i class="fa-solid fa-angle-up fa-fw rotate down" id="arrow"></i>
           </a>
@@ -65,63 +105,112 @@
           <div class="col d-grid justify-content-start">
             <h5>
               Tile Size
-              <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Size of the tiling for detection, do not change unless your model detects at a different resolution"></i>
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Size of the tiling for detection, do not change unless your model detects at a different resolution"
+              ></i>
             </h5>
           </div>
           <div class="col d-grid justify-content-start">
             <h5>
               Confidence Threshold
-              <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="At what value confidence do we consider detections cells, default is 0.5. Note: For accuracy adjust only for image quality concerns or custom models!"></i>
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="At what value confidence do we consider detections cells, default is 0.5. Note: For accuracy adjust only for image quality concerns or custom models!"
+              ></i>
             </h5>
           </div>
           <div class="col d-grid justify-content-start">
             <h5>
               Custom Model
-              <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Specify a path to a custom yolov5 model for your dataset"></i>
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Specify a path to a custom yolov5 model for your dataset"
+              ></i>
             </h5>
           </div>
         </div>
         <div class="row align-items-center m-1">
           <div class="col d-grid">
-            <input type="text" id="tile" placeholder="(Optional) Enter an integer tile size in pixels">
+            <input
+              type="text"
+              id="tile"
+              placeholder="(Optional) Enter an integer tile size in pixels"
+            />
           </div>
           <div class="col d-grid">
-            <input type="text" id="confidence" placeholder="(Optional) Enter a confidence level">
+            <input
+              type="text"
+              id="confidence"
+              placeholder="(Optional) Enter a confidence level"
+            />
           </div>
           <div class="col d-grid">
-            <input type="text" id="model" placeholder="(Optional) Enter a custom model file">
+            <input
+              type="text"
+              id="model"
+              placeholder="(Optional) Enter a custom model file"
+            />
           </div>
         </div>
       </div>
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
-            <a role="button" class="btn btn-warning" id="back" href="./menu.html">Back</a>
+          <a role="button" class="btn btn-warning" id="back" href="./menu.html"
+            >Back</a
+          >
         </div>
         <div class="col d-grid">
-            <button type="button" class="btn btn-primary" id="run">Run</button>
+          <button type="button" class="btn btn-primary" id="run">Run</button>
         </div>
       </div>
     </div>
 
     <!-- Error Modal -->
-    <div class="modal" id="error" tabindex="-1" role="dialog" aria-labelledby="processing" data-bs-backdrop='static' aria-hidden="true">
+    <div
+      class="modal"
+      id="error"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="processing"
+      data-bs-backdrop="static"
+      aria-hidden="true"
+    >
       <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
           <div class="modal-header text-center">
-            <p class="modal-title fw-bold fs-5 w-100" id="processingTitle">Error</p>
+            <p class="modal-title fw-bold fs-5 w-100" id="processingTitle">
+              Error
+            </p>
           </div>
           <div class="modal-body fa-3x">
             <i class="fas fa-times"></i>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Exit</button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              data-bs-dismiss="modal"
+            >
+              Exit
+            </button>
           </div>
         </div>
       </div>
     </div>
     <div class="loadmessage text-left" id="loadmessage"></div>
     <div class="loading" id="loadbar"></div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
-    <script type="module" src="../resources/js/detect.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
+      crossorigin="anonymous"
+    ></script>
+    <script type="module" src="../js/detect.js"></script>
   </body>
 </html>

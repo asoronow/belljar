@@ -24,7 +24,7 @@ const envPythonPath = path.join(envPath, envMod);
 // Command choses wether to use the exe (windows) or alias (unix based)
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
-const pyScriptsPath = path.join(appDir, "/resources/py");
+const pyScriptsPath = path.join(appDir, "/py");
 
 // Promise version of file moving
 function move(o: string, t: string) {
@@ -106,7 +106,12 @@ function setupPython(win: typeof BrowserWindow) {
           break;
       }
     } else {
-      resolve(false);
+      // Double check that the environment is setup by confirming if the benv folder exists
+      if (!fs.existsSync(envPath)) {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
     }
   });
 }
@@ -194,7 +199,10 @@ function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
           });
         });
       }
-      return
+      
+      if (downloading.length === 0) {
+        resolve(true);
+      }
     }
 
     // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
@@ -339,7 +347,7 @@ function setupEnvironment(win: typeof BrowserWindow) {
 
     // Install pip packages
     async function installDeps() {
-      const reqs = path.join(appDir, "resources/py/requirements.txt");
+      const reqs = path.join(appDir, "py/requirements.txt");
       const { stdout, stderr } = await exec(
         `${pyCommand} -m pip install -r ${reqs}`,
         { cwd: envPythonPath }
@@ -358,14 +366,17 @@ function updatePythonDependencies(win: typeof BrowserWindow) {
       pyCommand
     } -m pip install -r ${path.join(
       appDir,
-      "resources/py/requirements.txt"
+      "py/requirements.txt"
     )} --no-cache-dir`, { cwd: envPythonPath })
       .then(({ stdout, stderr } : {stdout: string, stderr: string}) => {
         console.log(stdout);
         win.webContents.send("updateStatus", "Update complete!");
         resolve(true);
       }
-      )
+      ).catch((error: any) => {
+        console.log(error);
+        reject(error);
+      });
   });
 }
 
@@ -381,6 +392,7 @@ function fixMissingDirectories(win: typeof BrowserWindow) {
 
 
 // Makes the local user writable folder
+// TODO: Version checking to see if we need to update the files
 function checkLocalDir() {
   if (!fs.existsSync(homeDir)) {
     fs.mkdirSync(homeDir, {
@@ -540,7 +552,7 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
 ipcMain.on("runAdjust", function (event: any, data: any[]) {
   var structPath = path.join(
     appDir,
-    "resources/csv/structure_tree_safe_2017.csv"
+    "csv/structure_tree_safe_2017.csv"
   );
 
   let options = {
@@ -592,7 +604,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
   const nrrdPath = path.join(homeDir, "nrrd"); 
   const structPath = path.join(
     appDir,
-    "resources/csv/structure_tree_safe_2017.csv"
+    "csv/structure_tree_safe_2017.csv"
   );
 
 
@@ -648,7 +660,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
 ipcMain.on("runCount", function (event: any, data: any[]) {
   var structPath = path.join(
     appDir,
-    "resources/csv/structure_tree_safe_2017.csv"
+    "csv/structure_tree_safe_2017.csv"
   );
 
   let options = {
@@ -749,7 +761,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
       `-r ${data[2]}`,
       String.raw`-s ${path.join(
         appDir,
-        "resources/csv/structure_tree_safe_2017.csv"
+        "csv/structure_tree_safe_2017.csv"
       )}`,
       "-g False",
     ],
