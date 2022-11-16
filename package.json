@@ -40,13 +40,12 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "asar": true,
         "icon": "assets/icons/icon",
         "ignore": [
           "node_modules",
           "src",
           "tsconfig.json",
-          "package-lock.json",
+          "yarn.lock",
           "README.md",
           "LICENSE"
         ]
