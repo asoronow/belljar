@@ -2,7 +2,7 @@ import cv2
 import pickle
 import os
 import torch
-from sahi.model import Yolov5DetectionModel
+from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 import numpy as np
 import tkinter as tk
@@ -36,7 +36,7 @@ else:
     tileSize = int(args.tile)
     modelPath = args.model.strip()
 
-detectionModel = Yolov5DetectionModel(
+detectionModel = AutoDetectionModel.from_pretrained(
     model_path=modelPath,
     confidence_threshold=float(args.confidence),
     device='cuda:0' if torch.cuda.is_available() else 'cpu'
