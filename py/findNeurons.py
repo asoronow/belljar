@@ -37,6 +37,7 @@ else:
     modelPath = args.model.strip()
 
 detectionModel = AutoDetectionModel.from_pretrained(
+    model_type='yolov5',
     model_path=modelPath,
     confidence_threshold=float(args.confidence),
     device='cuda:0' if torch.cuda.is_available() else 'cpu'
