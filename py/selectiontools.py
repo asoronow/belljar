@@ -14,7 +14,7 @@ class PolygonSelectionTool:
     The entire shape may be erased at anytime by double clicking the mousewheel.
     When you are satisfied with completed shape, press Space Bar to confirm.
 
-    Created By: Alec Soronow
+    Created By: XXXX
     '''
 
     def __init__(self, filepath):

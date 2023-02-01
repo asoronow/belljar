@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.ndimage import interpolation
 # Path to nrrd
-nrrdPath = "C:/Users/Alec/.belljar/nrrd"
+nrrdPath = "C:/Users/XXXX/.belljar/nrrd"
 
 
 def buildRotatedAtlases(nisslPath, annotationPath, outputPath):

@@ -12,7 +12,7 @@ class GuiController(Tk):
     should inherit from the Page class. A controller may be
     configured with any args associated with Tk root views.
 
-    Author: Alec Soronow
+    Author: XXXX
     Credit: Soumi Bardhan
     Date: September 21, 2021    
 
@@ -77,7 +77,7 @@ class Page():
     generates a unique id for a page and provides a default
     didAppear method with a debug feature.
 
-    Author: Alec Soronow
+    Author: XXXX
     Date: September 21, 2021
 
     Attributes: None
