@@ -3,8 +3,8 @@
   "description": "A tool for mouse neurohistology",
   "version": "3.0.0-beta",
   "main": "main.js",
-  "repository": "git@github.com:asoronow/belljar.git",
-  "author": "Alec <a.soronow@gmail.com>",
+  "repository": "XXXXX",
+  "author": "XXXX <XXXX@gmail.com>",
   "license": "MIT",
   "private": false,
   "scripts": {
