@@ -44,73 +44,6 @@ function move(o, t) {
         });
     });
 }
-function setupPython(win) {
-    var standalone = path.join(appDir, "standalone");
-    return new Promise((resolve, reject) => {
-        if (!fs.existsSync(path.join(homeDir, "python"))) {
-            win.webContents.send("updateStatus", "Settting up python...");
-            switch (process.platform) {
-                case "win32":
-                    tar
-                        .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(standalone, "win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"),
-                    })
-                        .then(() => {
-                        win.webContents.send("updateStatus", "Extracted python...");
-                        resolve(true);
-                    });
-                    break;
-                case "linux":
-                    tar
-                        .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(standalone, "linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"),
-                    })
-                        .then(() => {
-                        win.webContents.send("updateStatus", "Extracted python...");
-                        resolve(true);
-                    });
-                    break;
-                case "darwin":
-                    tar
-                        .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(standalone, "osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"),
-                    })
-                        .then(() => {
-                        win.webContents.send("updateStatus", "Extracted python...");
-                        resolve(true);
-                    });
-                    break;
-                default:
-                    tar
-                        .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(standalone, "linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"),
-                    })
-                        .then(() => {
-                        win.webContents.send("updateStatus", "Extracted python...");
-                        resolve(true);
-                    });
-                    break;
-            }
-        }
-        else {
-            // Double check that the environment is setup by confirming if the benv folder exists
-            if (!fs.existsSync(envPath)) {
-                resolve(true);
-            }
-            else {
-                resolve(false);
-            }
-        }
-    });
-}
 // Get files asynchonously
 function downloadFile(url, target, win) {
     return new Promise((resolve, reject) => {
@@ -146,6 +79,82 @@ function deleteFile(file) {
     return new Promise((resolve, reject) => {
         fs.unlinkSync(file);
         resolve(true);
+    });
+}
+function setupPython(win) {
+    const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
+    const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
+    const winURL = `${bucketParentPath}/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz`;
+    const osxURL = `${bucketParentPath}/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz`;
+    return new Promise((resolve, reject) => {
+        if (!fs.existsSync(path.join(homeDir, "python"))) {
+            win.webContents.send("updateStatus", "Settting up python...");
+            switch (process.platform) {
+                case "win32":
+                    // Download and extract python to the home directory
+                    downloadFile(winURL, path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"), win)
+                        .then(() => {
+                        // Extract the tarball  
+                        tar
+                            .x({
+                            cwd: homeDir,
+                            preservePaths: true,
+                            file: path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"),
+                        })
+                            .then(() => {
+                            win.webContents.send("updateStatus", "Extracted python...");
+                            resolve(true);
+                        });
+                    })
+                        .catch((err) => {
+                        console.log(err);
+                    });
+                    break;
+                case "linux":
+                    downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win)
+                        .then(() => {
+                        tar
+                            .x({
+                            cwd: homeDir,
+                            preservePaths: true,
+                            file: path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"),
+                        })
+                            .then(() => {
+                            win.webContents.send("updateStatus", "Extracted python...");
+                            resolve(true);
+                        });
+                    });
+                    break;
+                case "darwin":
+                    downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
+                        .then(() => {
+                        tar
+                            .x({
+                            cwd: homeDir,
+                            preservePaths: true,
+                            file: path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"),
+                        })
+                            .then(() => {
+                            win.webContents.send("updateStatus", "Extracted python...");
+                            resolve(true);
+                        });
+                    });
+                    break;
+                default:
+                    // If we don't have a supported platform, just resolve
+                    resolve(true);
+                    break;
+            }
+        }
+        else {
+            // Double check that the environment is setup by confirming if the benv folder exists
+            if (!fs.existsSync(envPath)) {
+                resolve(true);
+            }
+            else {
+                resolve(false);
+            }
+        }
     });
 }
 // Download the required tar files from the bucket
@@ -256,6 +265,7 @@ function downloadResources(win, fresh) {
             });
         }
         else {
+            //TODO: Error handling for unsupported platforms
             resolve(true);
         }
     });
