@@ -38,84 +38,6 @@ function move(o: string, t: string) {
   });
 }
 
-function setupPython(win: typeof BrowserWindow) {
-  var standalone = path.join(appDir, "standalone");
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(path.join(homeDir, "python"))) {
-      win.webContents.send("updateStatus", "Settting up python...");
-      switch (process.platform) {
-        case "win32":
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(
-                standalone,
-                "win/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"
-              ),
-            })
-            .then(() => {
-              win.webContents.send("updateStatus", "Extracted python...");
-              resolve(true);
-            });
-          break;
-        case "linux":
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(
-                standalone,
-                "linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
-              ),
-            })
-            .then(() => {
-              win.webContents.send("updateStatus", "Extracted python...");
-              resolve(true);
-            });
-          break;
-        case "darwin":
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(
-                standalone,
-                "osx/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
-              ),
-            })
-            .then(() => {
-              win.webContents.send("updateStatus", "Extracted python...");
-              resolve(true);
-            });
-          break;
-        default:
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(
-                standalone,
-                "linux/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
-              ),
-            })
-            .then(() => {
-              win.webContents.send("updateStatus", "Extracted python...");
-              resolve(true);
-            });
-          break;
-      }
-    } else {
-      // Double check that the environment is setup by confirming if the benv folder exists
-      if (!fs.existsSync(envPath)) {
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    }
-  });
-}
-
 // Get files asynchonously
 function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
@@ -155,6 +77,91 @@ function deleteFile(file: string) {
   });
 }
 
+
+
+function setupPython(win: typeof BrowserWindow) {
+  const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
+  const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
+  const winURL = `${bucketParentPath}/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz`;
+  const osxURL = `${bucketParentPath}/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz`;
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(path.join(homeDir, "python"))) {
+      win.webContents.send("updateStatus", "Settting up python...");
+      switch (process.platform) {
+        case "win32":
+          // Download and extract python to the home directory
+          downloadFile(winURL, path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"), win)
+            .then(() => {
+              // Extract the tarball  
+              tar
+                .x({
+                  cwd: homeDir,
+                  preservePaths: true,
+                  file: path.join(
+                    homeDir,
+                    "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"
+                  ),
+                })
+                .then(() => {
+                  win.webContents.send("updateStatus", "Extracted python...");
+                  resolve(true);
+                });
+            })
+            .catch((err: any) => {
+              console.log(err);
+            });
+          break;
+        case "linux":
+          downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win)
+            .then(() => {
+              tar
+                .x({
+                  cwd: homeDir,
+                  preservePaths: true,
+                  file: path.join(
+                    homeDir,
+                    "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+                  ),
+                })
+                .then(() => {
+                  win.webContents.send("updateStatus", "Extracted python...");
+                  resolve(true);
+                });
+            });
+          break;
+        case "darwin":
+          downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
+            .then(() => {
+              tar
+                .x({
+                  cwd: homeDir,
+                  preservePaths: true,
+                  file: path.join(
+                    homeDir,
+                    "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+                  ),
+                })
+                .then(() => {
+                  win.webContents.send("updateStatus", "Extracted python...");
+                  resolve(true);
+                });
+            });
+          break;
+        default:
+          // If we don't have a supported platform, just resolve
+          resolve(true);
+          break;
+      }
+    } else {
+      // Double check that the environment is setup by confirming if the benv folder exists
+      if (!fs.existsSync(envPath)) {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    }
+  });
+}
 
 // Download the required tar files from the bucket
 function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
@@ -283,6 +290,7 @@ function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
         }
       );
     } else {
+      //TODO: Error handling for unsupported platforms
       resolve(true);
     }
   });
@@ -349,7 +357,7 @@ function setupEnvironment(win: typeof BrowserWindow) {
     async function installDeps() {
       const reqs = path.join(appDir, "py/requirements.txt");
       const { stdout, stderr } = await exec(
-        `${pyCommand} -m pip install -r ${reqs}`,
+        `${pyCommand} -m pip install -r ${reqs} --use-pep517`,
         { cwd: envPythonPath }
       );
       return { stdout, stderr };
@@ -367,7 +375,7 @@ function updatePythonDependencies(win: typeof BrowserWindow) {
     } -m pip install -r ${path.join(
       appDir,
       "py/requirements.txt"
-    )} --no-cache-dir`, { cwd: envPythonPath })
+    )} --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
       .then(({ stdout, stderr } : {stdout: string, stderr: string}) => {
         console.log(stdout);
         win.webContents.send("updateStatus", "Update complete!");
@@ -419,7 +427,7 @@ function createWindow() {
 let win: typeof BrowserWindow = null;
 
 app.on("ready", () => {
-  let win = createWindow();
+  const win = createWindow();
   // Uncomment if you want tools on launch
   // win.webContents.toggleDevTools()
   win.on("close", function (e: any) {
@@ -600,7 +608,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
   const embedPath =
     data[2] == "False"
       ? path.join(homeDir, "embeddings/hemisphere_embeddings.pkl")
-      : path.join(history, "embeddings/whole_embeddings.pkl");
+      : path.join(homeDir, "embeddings/whole_embeddings.pkl");
   const nrrdPath = path.join(homeDir, "nrrd"); 
   const structPath = path.join(
     appDir,

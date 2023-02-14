@@ -6,7 +6,6 @@ from scipy.ndimage import interpolation
 # Path to nrrd
 nrrdPath = "C:/Users/Alec/.belljar/nrrd"
 
-
 def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
     '''Constructions the rotated (z-x) atlases for the most common cutting angles'''
     nData, nHead = nrrd.read(nisslPath)
@@ -22,7 +21,6 @@ def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
                    f'/r_nissl_{r}.nrrd', nissl_rotatedX, nHead)
         nrrd.write(str(outputPath) +
                    f'/r_annotation_{r}.nrrd', annotation_rotatedX, aHead)
-
 
 def createTrainingSet(hemisphere=True):
     '''Make the set of all pngs to train the autoencoder'''
@@ -46,7 +44,6 @@ def createTrainingSet(hemisphere=True):
             image8 = (image / 256).astype('uint8')
             cv2.imwrite(writePath, image8)
 
-
 if __name__ == '__main__':
-    # buildRotatedAtlases()
-    createTrainingSet()
+    buildRotatedAtlases("/Volumes/T7/ara_nissl_10.nrrd", "/Volumes/T7/annotation_10.nrrd", "/Volumes/T7/nrrd")
+    # createTrainingSet()

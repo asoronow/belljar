@@ -241,7 +241,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
         
         return maxC, xL, yL, wL, hL
     
-    def dilate(image, kernelSize=21, iterations=1):
+    def dilate(image, kernelSize=4, iterations=1):
         '''Dilate an image'''
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernelSize, kernelSize))
         return cv2.dilate(image, kernel, iterations=iterations)
@@ -252,11 +252,13 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
         image = cv2.normalize(image, None, 0, 85, cv2.NORM_MINMAX)
         dilated = dilate(image)
         maxC, xL, yL, wL, hL = getMaxContour(dilated)
+
         # Now isolate the section using its contour and place it on blank image
         template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         normalImage = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         cv2.rectangle(template, (xL, yL), (xL+wL, yL+hL), 255, -1)
         selection = np.where(template == 255)
+        
         if hemisphere:
             # get the largest x value from selection
             x = np.max(selection[1])
@@ -282,8 +284,12 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
         img = img[None, :]
         with torch.no_grad():
             out = encoder(img).cpu().numpy()
+            out = out.reshape(out.shape[1],)
+
             similarity[dataset.getPath(i)] = {}
             for name, e in embeddings.items():
+                e = e.reshape(e.shape[1],)
+
                 similarity[dataset.getPath(i)][name] = spatial.distance.euclidean(out, e)
     
     # Find the consensus angle
@@ -312,10 +318,12 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
                 
         if section == None:
             sectionEmbedding = embeddings[ordered[0]]
+            sectionEmbedding = sectionEmbedding.reshape(sectionEmbedding.shape[1],)
             matches = {}
             for atlasName, e in embeddings.items():
                 v = atlasName.split("_")
                 if int(v[2]) == idealAngle:
+                    e = e.reshape(e.shape[1],)
                     matches[atlasName] = spatial.distance.euclidean(sectionEmbedding, e)
             best[name] = min(matches, key=matches.get)
         else:

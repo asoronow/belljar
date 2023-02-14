@@ -1,12 +1,8 @@
-from locale import normalize
 import os
-import requests
-import math
 import numpy as np
 import cv2
 import pickle
 from pathlib import Path
-from sliceAtlas import buildRotatedAtlases
 from trainAE import makePredictions
 import nrrd
 import csv
@@ -32,6 +28,7 @@ parser.add_argument('-s', '--structures', help="structures file",
 
 args = parser.parse_args()
 
+print(args.angle)
 
 def orderPoints(pts):
     # sort the points based on their x-coordinates
@@ -230,9 +227,7 @@ if __name__ == "__main__":
         return predictions
     # Load the appropriate atlas
     # Override the angle if needed
-    if eval(args.angle) != False:
-        angle = args.angle.strip()
-
+    angle = int(args.angle.strip()) if not int(args.angle.strip()) == 99 else angle
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(
         str(nrrdPath / f"r_annotation_{angle}.nrrd"))
