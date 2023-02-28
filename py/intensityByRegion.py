@@ -5,13 +5,19 @@ import csv
 import cv2
 import numpy as np
 
-parser = argparse.ArgumentParser(description="Calculate the average intensity of a region in normalized coordinates")
+parser = argparse.ArgumentParser(
+    description="Calculate the average intensity of a region in normalized coordinates")
 
-parser.add_argument('-i', '--images', help="input directory for intensity images", default='')
-parser.add_argument('-o', '--output', help="output directory for average intensity pkl", default='')
-parser.add_argument('-a', '--annotations', help="input directory for annotation pkls", default='')
-parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
-
+parser.add_argument(
+    '-i', '--images', help="input directory for intensity images", default='')
+parser.add_argument(
+    '-o', '--output', help="output directory for average intensity pkl", default='')
+parser.add_argument('-a', '--annotations',
+                    help="input directory for annotation pkls", default='')
+parser.add_argument('-s', '--structures', help="structures file",
+                    default='../csv/structure_tree_safe_2017.csv')
+parser.add_argument(
+    '-w', '--whole', help="Set True to process a whole brain slice (Default is False)", default=False)
 args = parser.parse_args()
 
 
@@ -37,22 +43,25 @@ if __name__ == '__main__':
     nameToRegion = {}
     with open(args.structures.strip()) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
-        
+
         header = next(structureReader)
         root = next(structureReader)
-        regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
-        regions [0] = {"acronym":"root", "name":"root", "parent":"N/A"}
+        regions[997] = {"acronym": "undefined",
+                        "name": "undefined", "parent": "N/A"}
+        regions[0] = {"acronym": "root", "name": "root", "parent": "N/A"}
         nameToRegion["undefined"] = 997
         nameToRegion["root"] = 0
         for row in structureReader:
-            regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
+            regions[int(row[0])] = {"acronym": row[3],
+                                    "name": row[2], "parent": int(row[8])}
             nameToRegion[row[3]] = int(row[0])
 
     for i, iName in enumerate(intensityFiles):
         intensities = {}
         verticies = {}
         # load the image
-        intensity = cv2.imread(intensityPath + "/" + iName, cv2.IMREAD_GRAYSCALE)
+        intensity = cv2.imread(intensityPath + "/" +
+                               iName, cv2.IMREAD_GRAYSCALE)
         # get the image width and height
         height, width = intensity.shape
 
@@ -85,7 +94,7 @@ if __name__ == '__main__':
                     regionId = annotation[i, j]
                     if 'layer' in regions[regionId]["name"].lower():
                         regionId = regions[regionId]["parent"]
-                                        
+
                     if regionId in requiredIds:
                         # Get the region name
                         regionName = regions[regionId]["acronym"]
@@ -101,10 +110,11 @@ if __name__ == '__main__':
 
                         if not verticies.get(regionName, False):
                             verticies[regionName] = []
-                        
-                        intensities[regionName][(imageY, imageX)] = intensityValue
+
+                        intensities[regionName][(
+                            imageY, imageX)] = intensityValue
                         verticies[regionName].append((imageX, imageY))
-            
+
             # Use Cv2 to find the convex hull of each region using its verticies
             # Split them into groups basec on the midpoint of the image
             for region in verticies.keys():
@@ -123,7 +133,6 @@ if __name__ == '__main__':
                 # Now draw a filled polygon using the hull verts
                 cv2.fillConvexPoly(intensity, leftHull, 255)
                 cv2.fillConvexPoly(intensity, rightHull, 255)
-                
 
             # Save the intensity values and the verticies as ROI package pkls
             cv2.imshow("intensity", intensity)
@@ -134,8 +143,5 @@ if __name__ == '__main__':
                 # split file name
                 name = iName.split(".")[0]
                 with open(args.output + "/" + f"{name}_{region}" + ".pkl", 'wb') as f:
-                    pickle.dump({"roi":intensities[region], "verts":verticies[region], "name": region}, f)
-
-
-
-
+                    pickle.dump(
+                        {"roi": intensities[region], "verts": verticies[region], "name": region}, f)
