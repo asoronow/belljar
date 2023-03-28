@@ -61,7 +61,7 @@ ipc.on("intensityResult", function (event, response) {
 	loadbar.style.width = "0";
 });
 
-ipc.once("intensityError", function (event, response) {
+ipc.on("intensityError", function (event, response) {
 	run.innerHTML = "Run";
 	run.classList.remove("disabled");
 });

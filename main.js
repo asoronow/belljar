@@ -44,6 +44,10 @@ function move(o, t) {
         });
     });
 }
+function createLogFile(message) {
+    const logPath = path.join(homeDir, "belljar.log");
+    fs.appendFileSync(logPath, message);
+}
 // Get files asynchonously
 function downloadFile(url, target, win) {
     return new Promise((resolve, reject) => {
@@ -344,6 +348,9 @@ function updatePythonDependencies(win) {
             resolve(true);
         }).catch((error) => {
             console.log(error);
+            createLogFile(error);
+            createLogFile("Failed to update python dependencies");
+            createLogFile(appDir);
             reject(error);
         });
     });
@@ -513,7 +520,7 @@ ipcMain.on("runAdjust", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-i ${data[0]}`, `-s ${structPath}`],
+        args: [`-i ${data[0]}`, `-s ${structPath}`, `-m ${data[1]}`],
     };
     let pyshell = new PythonShell("adjustAlignment.py", options);
     var total = 0;

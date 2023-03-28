@@ -31,7 +31,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('maxResult', function(event, response){
+ipc.on('maxResult', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
     back.classList.add('btn-warning');

@@ -42,7 +42,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('collateResult', function(event, response){
+ipc.on('collateResult', function(event, response){
     back.classList.add('btn-warning');
     back.classList.remove('btn-danger')
     back.innerHTML = "Back";

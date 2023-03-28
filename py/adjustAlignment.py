@@ -11,6 +11,8 @@ parser.add_argument(
     '-i', '--input', help='input files, pkl atlas files and dapi images in same folder', default='')
 parser.add_argument('-s', '--structures', help='structures file',
                     default='../csv/structure_tree_safe_2017.csv')
+parser.add_argument(
+    '-m', '--mode', help='mode to run in, either "paint" or "affine"', default='affine')
 args = parser.parse_args()
 
 # Get all files in the input directory
@@ -96,8 +98,9 @@ for annoPkl, dapi in zip(annotationsPkl, dapiImages):
     displayed = np.zeros((y, x, 3), np.uint8)
     cv2.namedWindow('Map', cv2.WINDOW_NORMAL)
     adjustment = np.zeros((500, 500, 3), np.uint8)
-    cv2.namedWindow('Adjust', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('Adjust', 500, 500)
+    if args.mode.strip().lower() == 'paint':
+        cv2.namedWindow('Adjust', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Adjust', 500, 500)
     # the scale and position window
 
     def adjustPosition(event):
@@ -133,20 +136,21 @@ for annoPkl, dapi in zip(annotationsPkl, dapiImages):
         cv2.addWeighted(displayed, 0.3, dapi, 0.5, 0, displayed)
         cv2.imshow('Map', displayed)
 
-    cv2.namedWindow("Scale and Position", cv2.WINDOW_NORMAL)
-    cv2.createTrackbar('Y Scale', 'Scale and Position',
-                       0, 100, adjustPosition)
-    cv2.createTrackbar('X Scale', 'Scale and Position',
-                       0, 100, adjustPosition)
-    cv2.createTrackbar('X', 'Scale and Position', 0, 1000, adjustPosition)
-    cv2.createTrackbar('Y', 'Scale and Position', 0, 1000, adjustPosition)
-    cv2.setTrackbarMin('Y Scale', 'Scale and Position', -100)
-    cv2.setTrackbarMin('X Scale', 'Scale and Position', -100)
-    cv2.setTrackbarMin('X', 'Scale and Position', -1000)
-    cv2.setTrackbarMin('Y', 'Scale and Position', -1000)
-    cv2.createTrackbar('Rotation', 'Scale and Position',
-                       0, 360, adjustPosition)
-    cv2.setTrackbarMin('Rotation', 'Scale and Position', -360)
+    if args.mode.strip().lower() == 'affine':
+        cv2.namedWindow("Scale and Position", cv2.WINDOW_NORMAL)
+        cv2.createTrackbar('Y Scale', 'Scale and Position',
+                           0, 100, adjustPosition)
+        cv2.createTrackbar('X Scale', 'Scale and Position',
+                           0, 100, adjustPosition)
+        cv2.createTrackbar('X', 'Scale and Position', 0, 1000, adjustPosition)
+        cv2.createTrackbar('Y', 'Scale and Position', 0, 1000, adjustPosition)
+        cv2.setTrackbarMin('Y Scale', 'Scale and Position', -100)
+        cv2.setTrackbarMin('X Scale', 'Scale and Position', -100)
+        cv2.setTrackbarMin('X', 'Scale and Position', -1000)
+        cv2.setTrackbarMin('Y', 'Scale and Position', -1000)
+        cv2.createTrackbar('Rotation', 'Scale and Position',
+                           0, 360, adjustPosition)
+        cv2.setTrackbarMin('Rotation', 'Scale and Position', -360)
     # Create a mouse callback to display the region name in the Adjust window
     selectedRegion = None
     brushSize = 5
@@ -227,7 +231,9 @@ for annoPkl, dapi in zip(annotationsPkl, dapiImages):
             drawing = False
 
     # Add callback
-    cv2.setMouseCallback('Map', mouseCallback)
+    if args.mode.strip().lower() == 'paint':
+        cv2.setMouseCallback('Map', mouseCallback)
+
     cv2.addWeighted(blank, 0.3, dapi, 0.5, 0, displayed)
     cv2.imshow('Map', displayed)
 
@@ -237,33 +243,38 @@ for annoPkl, dapi in zip(annotationsPkl, dapiImages):
         if key == ord('q'):
             # Save the annoWarp back to the pkl
             with open(os.path.join(args.input, annoPkl), 'wb') as f:
-                xScale = cv2.getTrackbarPos('X Scale', 'Scale and Position')
-                yScale = cv2.getTrackbarPos('Y Scale', 'Scale and Position')
-                xOff = cv2.getTrackbarPos('X', 'Scale and Position')
-                yOff = cv2.getTrackbarPos('Y', 'Scale and Position')
-                rotation = cv2.getTrackbarPos('Rotation', 'Scale and Position')
+                if args.mode.strip().lower() == 'affine':
+                    xScale = cv2.getTrackbarPos(
+                        'X Scale', 'Scale and Position')
+                    yScale = cv2.getTrackbarPos(
+                        'Y Scale', 'Scale and Position')
+                    xOff = cv2.getTrackbarPos('X', 'Scale and Position')
+                    yOff = cv2.getTrackbarPos('Y', 'Scale and Position')
+                    rotation = cv2.getTrackbarPos(
+                        'Rotation', 'Scale and Position')
 
-                annoRows, annoCols = annoWarp.shape
-                annoM = np.float64([[1, 0, xOff], [0, 1, yOff]])
-                annoTranslated = cv2.warpAffine(annoWarp.astype(
-                    'float64'), annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
+                    annoRows, annoCols = annoWarp.shape
+                    annoM = np.float64([[1, 0, xOff], [0, 1, yOff]])
+                    annoTranslated = cv2.warpAffine(annoWarp.astype(
+                        'float64'), annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
 
-                # scale
-                decimalX = 1 + (xScale / 100)
-                decimalY = 1 + (yScale / 100)
+                    # scale
+                    decimalX = 1 + (xScale / 100)
+                    decimalY = 1 + (yScale / 100)
 
-                annoM = np.float32([[decimalX, 0, 0], [0, decimalY, 0]])
-                annoScaled = cv2.warpAffine(
-                    annoTranslated, annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
+                    annoM = np.float32([[decimalX, 0, 0], [0, decimalY, 0]])
+                    annoScaled = cv2.warpAffine(
+                        annoTranslated, annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
 
-                # rotate
-                annoM = cv2.getRotationMatrix2D(
-                    (annoCols/2, annoRows/2), rotation, 1)
-                annoRotated = cv2.warpAffine(
-                    annoScaled, annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
-                annoWarp = annoRotated.astype('int32')
+                    # rotate
+                    annoM = cv2.getRotationMatrix2D(
+                        (annoCols/2, annoRows/2), rotation, 1)
+                    annoRotated = cv2.warpAffine(
+                        annoScaled, annoM, (annoCols, annoRows), flags=cv2.INTER_NEAREST)
+                    annoWarp = annoRotated.astype('int32')
 
                 pickle.dump(annoWarp, f)
+                print("Done!", flush=True)
             break
         elif key == ord('z'):
             cv2.namedWindow('Undoing...', cv2.WINDOW_NORMAL)

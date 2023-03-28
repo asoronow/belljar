@@ -4,6 +4,21 @@ var indir = document.getElementById('indir');
 var loadbar = document.getElementById('loadbar');
 var loadmessage = document.getElementById('loadmessage');
 var back = document.getElementById('back');
+var methods = document.getElementById('methods');
+var affine = document.getElementById('affine');
+var paint = document.getElementById('paint');
+var selectedMethod = 'affine';
+
+
+affine.addEventListener('click', function(){
+    methods.textContent = 'Affine';
+    selectedMethod = 'affine';
+});
+
+paint.addEventListener('click', function(){
+    methods.textContent = 'Paint';
+    selectedMethod = 'paint';
+});
 
 run.addEventListener('click', function(){
     if (indir && indir.value) {
@@ -12,7 +27,7 @@ run.addEventListener('click', function(){
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runAdjust', [indir.value]);
+        ipc.send('runAdjust', [indir.value, selectedMethod]);
     }
 });
 
@@ -30,7 +45,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('adjustResult', function(event, response){
+ipc.on('adjustResult', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
     back.classList.add('btn-warning');

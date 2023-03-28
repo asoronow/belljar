@@ -50,7 +50,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('topHatResult', function(event, response){
+ipc.on('topHatResult', function(event, response){
     back.classList.add('btn-warning');
     back.classList.remove('btn-danger')
     back.innerHTML = "Back";
@@ -60,7 +60,7 @@ ipc.once('topHatResult', function(event, response){
     loadbar.style.width = "0";
 });
 
-ipc.once('topHatError', function(event, response){
+ipc.on('topHatError', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
 });

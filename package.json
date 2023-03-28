@@ -1,7 +1,7 @@
 {
   "name": "belljar",
   "description": "A tool for mouse neurohistology",
-  "version": "3.0.0-beta",
+  "version": "3.4.0-beta",
   "main": "main.js",
   "repository": "git@github.com:asoronow/belljar.git",
   "author": "Alec <a.soronow@gmail.com>",
@@ -40,7 +40,7 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "asar": true,
+        "asar": false,
         "icon": "assets/icons/icon.png",
         "ignore": [
           "src",

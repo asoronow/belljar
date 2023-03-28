@@ -32,7 +32,7 @@ back.addEventListener('click', function (event){
     }
 });
 
-ipc.once('countResult', function(event, response){
+ipc.on('countResult', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
     back.classList.add('btn-warning');
@@ -44,7 +44,7 @@ ipc.once('countResult', function(event, response){
     loadbar.style.width = "0";
 });
 
-ipc.once('countError', function(event, response){
+ipc.on('countError', function(event, response){
     run.innerHTML = "Run";
     run.classList.remove('disabled');
 });

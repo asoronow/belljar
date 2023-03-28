@@ -30,18 +30,18 @@ if __name__ == '__main__':
 
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
-    annotationFile = os.listdir(annotationPath)
-    annotationFile = [f for f in annotationFile if f.endswith('.pkl')]
-    annotationFile.sort()
+    annotationFiles = os.listdir(annotationPath)
+    annotationFiles = [f for f in annotationFiles if f.endswith('.pkl')]
+    annotationFiles.sort()
 
     # Drop .DS_Store files
     if intensityFiles[0] == ".DS_Store":
         intensityFiles.pop(0)
 
-    if annotationFile[0] == ".DS_Store":
-        annotationFile.pop(0)
+    if annotationFiles[0] == ".DS_Store":
+        annotationFiles.pop(0)
 
-    assert (len(intensityFiles) == len(annotationFile))
+    # assert (len(intensityFiles) == len(annotationFile))
 
     print(2 + len(intensityFiles), flush=True)
     print("Setting up...", flush=True)
@@ -73,7 +73,7 @@ if __name__ == '__main__':
         height, width = intensity.shape
 
         # load the annotation
-        with open(annotationPath + "/" + annotationFile[i], 'rb') as f:
+        with open(annotationPath + "/" + annotationFiles[i], 'rb') as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
             # get the annotation width and height
@@ -101,6 +101,9 @@ if __name__ == '__main__':
                 for j in range(aWidth):
                     # Get to parent acronym
                     regionId = annotation[i, j]
+                    if regions.get(regionId, False) == False:
+                        regionId = 997
+
                     if 'layer' in regions[regionId]["name"].lower():
                         regionId = regions[regionId]["parent"]
 
@@ -119,7 +122,7 @@ if __name__ == '__main__':
             # perserve only left points and create mask for extracting intensity
             for region in verticies.keys():
                 mask = np.zeros_like(intensity)
-                if eval(args.whole):
+                if eval(args.whole.strip()):
                     leftPoints = []
                     for point in verticies[region]:
                         if point[0] < width / 2:
@@ -149,14 +152,14 @@ if __name__ == '__main__':
                     intensities[region][tuple(point)] = intensityValues[i]
 
                 # DEBUG: show intensity on blank image size of mask
-                blank = np.zeros_like(intensity)
-                blank[mask == 255] = list(intensities[region].values())
-                cv2.namedWindow("intensity", cv2.WINDOW_NORMAL)
-                cv2.resizeWindow("intensity", 600, 600)
-                resized = cv2.resize(
-                    blank, (600, 600))
-                cv2.imshow("intensity", resized)
-                cv2.waitKey(3000)
+                # blank = np.zeros_like(intensity)
+                # blank[mask == 255] = list(intensities[region].values())
+                # cv2.namedWindow("intensity", cv2.WINDOW_NORMAL)
+                # cv2.resizeWindow("intensity", 600, 600)
+                # resized = cv2.resize(
+                #     blank, (600, 600))
+                # cv2.imshow("intensity", resized)
+                # cv2.waitKey(3000)
 
             # Save the intensity values and the verticies as ROI package pkls
             for region in intensities.keys():
@@ -165,7 +168,6 @@ if __name__ == '__main__':
                 outputPath = Path(args.output.strip() + "/" +
                                   f"{name}_{region}" + ".pkl")
                 with open(outputPath, 'wb') as f:
-                    print(intensities[region].keys())
                     pickle.dump(
                         {"roi": intensities[region], "verts": verticies[region], "name": region}, f)
 

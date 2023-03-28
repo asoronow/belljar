@@ -64,6 +64,29 @@
           />
         </div>
       </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
+          <h5>
+            Affine or Paint
+            <i
+              class="fas fa-circle-question fa-fw fa-xs"
+              data-bs-toggle="tooltip"
+              data-bs-placement="right"
+              title="Select the adjustment you'd like to make. Affine allows you to move and rotate regions. Paint allows you to paint over regions."
+            ></i>
+          </h5>
+        <div class="col d-grid justify-content-start">
+          <div class="dropdown">
+            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
+            Affine
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="regions">
+              <li><a class="dropdown-item" id="affine" href="#">Affine</a></li>
+              <li><a class="dropdown-item" id="paint" href="#">Paint</a></li>
+            </ul>
+          </div> 
+        </div>
+    </div>
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
           <a role="button" class="btn btn-warning" id="back" href="./menu.html"
