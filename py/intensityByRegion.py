@@ -2,6 +2,7 @@ import os
 import pickle
 import argparse
 import csv
+from pathlib import Path
 import cv2
 import numpy as np
 
@@ -30,14 +31,20 @@ if __name__ == '__main__':
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
     annotationFile = os.listdir(annotationPath)
+    annotationFile = [f for f in annotationFile if f.endswith('.pkl')]
     annotationFile.sort()
 
     # Drop .DS_Store files
     if intensityFiles[0] == ".DS_Store":
         intensityFiles.pop(0)
+
     if annotationFile[0] == ".DS_Store":
         annotationFile.pop(0)
 
+    assert (len(intensityFiles) == len(annotationFile))
+
+    print(2 + len(intensityFiles), flush=True)
+    print("Setting up...", flush=True)
     # Read in the regions
     regions = {}
     nameToRegion = {}
@@ -67,6 +74,7 @@ if __name__ == '__main__':
 
         # load the annotation
         with open(annotationPath + "/" + annotationFile[i], 'rb') as f:
+            print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
             # get the annotation width and height
             aHeight, aWidth = annotation.shape
@@ -86,6 +94,7 @@ if __name__ == '__main__':
                 "VISpor",
                 "VISrl"
             ]
+
             requiredIds = [nameToRegion[region] for region in requiredRegions]
             # Iterate through the annotation and check if any of the required regions are present
             for i in range(aHeight):
@@ -98,50 +107,66 @@ if __name__ == '__main__':
                     if regionId in requiredIds:
                         # Get the region name
                         regionName = regions[regionId]["acronym"]
-                        # Get the intensity value
+                        # Get the region verts
                         imageX = int((j - 100) * scaleX)
                         imageY = int((i - 100) * scaleY)
-                        intensityValue = intensity[imageY, imageX]
-                        intensity[imageY, imageX] = 255
-                        # Save the intensity value and the coordinates
-                        # Check if the region has been added to the dictionary
-                        if not intensities.get(regionName, False):
-                            intensities[regionName] = {}
 
                         if not verticies.get(regionName, False):
                             verticies[regionName] = []
 
-                        intensities[regionName][(
-                            imageY, imageX)] = intensityValue
                         verticies[regionName].append((imageX, imageY))
 
-            # Use Cv2 to find the convex hull of each region using its verticies
-            # Split them into groups basec on the midpoint of the image
+            # perserve only left points and create mask for extracting intensity
             for region in verticies.keys():
-                leftPoints = []
-                rightPoints = []
-                for point in verticies[region]:
-                    if point[0] < width / 2:
-                        leftPoints.append(point)
-                    else:
-                        rightPoints.append(point)
+                mask = np.zeros_like(intensity)
+                if eval(args.whole):
+                    leftPoints = []
+                    for point in verticies[region]:
+                        if point[0] < width / 2:
+                            leftPoints.append(point)
 
-                # Find the convex hull of the left and right points
-                leftHull = cv2.convexHull(np.array(leftPoints))
-                rightHull = cv2.convexHull(np.array(rightPoints))
+                    leftHull = cv2.convexHull(np.array(leftPoints))
+                    cv2.fillConvexPoly(mask, leftHull, 255)
+                else:
+                    hull = cv2.convexHull(np.array(verticies[region]))
+                    cv2.fillConvexPoly(mask, hull, 255)
 
-                # Now draw a filled polygon using the hull verts
-                cv2.fillConvexPoly(intensity, leftHull, 255)
-                cv2.fillConvexPoly(intensity, rightHull, 255)
+                # DEBUG: show mask
+                # cv2.namedWindow("mask", cv2.WINDOW_NORMAL)
+                # cv2.resizeWindow("mask", 600, 600)
+                # resized = cv2.resize(mask, (600, 600))
+                # cv2.imshow("mask", mask)
+                # cv2.waitKey(3000)
+
+                if not intensities.get(region, False):
+                    intensities[region] = {}
+
+                intensityValues = intensity[mask == 255]
+                # get the points of the mask'
+                points = np.argwhere(mask == 255)
+
+                for i, point in enumerate(points):
+                    intensities[region][tuple(point)] = intensityValues[i]
+
+                # DEBUG: show intensity on blank image size of mask
+                blank = np.zeros_like(intensity)
+                blank[mask == 255] = list(intensities[region].values())
+                cv2.namedWindow("intensity", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("intensity", 600, 600)
+                resized = cv2.resize(
+                    blank, (600, 600))
+                cv2.imshow("intensity", resized)
+                cv2.waitKey(3000)
 
             # Save the intensity values and the verticies as ROI package pkls
-            cv2.imshow("intensity", intensity)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
             for region in intensities.keys():
                 # split file name
                 name = iName.split(".")[0]
-                with open(args.output + "/" + f"{name}_{region}" + ".pkl", 'wb') as f:
+                outputPath = Path(args.output.strip() + "/" +
+                                  f"{name}_{region}" + ".pkl")
+                with open(outputPath, 'wb') as f:
+                    print(intensities[region].keys())
                     pickle.dump(
                         {"roi": intensities[region], "verts": verticies[region], "name": region}, f)
+
+    print("Done!", flush=True)

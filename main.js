@@ -491,6 +491,7 @@ ipcMain.on("runMax", function (event, data) {
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
                 event.sender.send("maxResult");
+                ipcMain.removeAllListeners("killMax");
             });
         }
         else {
@@ -531,6 +532,7 @@ ipcMain.on("runAdjust", function (event, data) {
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
                 event.sender.send("adjustResult");
+                ipcMain.removeAllListeners("killAdjust");
             });
         }
         else {
@@ -588,6 +590,7 @@ ipcMain.on("runAlign", function (event, data) {
                 event.sender.send("alignResult");
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
+                ipcMain.removeAllListeners("killAlign");
             });
         }
         else {
@@ -599,6 +602,53 @@ ipcMain.on("runAlign", function (event, data) {
         }
     });
     ipcMain.once("killAlign", function (event, data) {
+        pyshell.kill();
+    });
+});
+// Intensity by Region
+ipcMain.on("runIntensity", function (event, data) {
+    const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+    let options = {
+        mode: "text",
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: [
+            `-i ${data[0]}`,
+            `-o ${data[1]}`,
+            `-a ${data[2]}`,
+            `-w ${data[3]}`,
+            `-s ${structPath}`,
+        ],
+    };
+    let pyshell = new PythonShell("intensityByRegion.py", options);
+    var total = 0;
+    var current = 0;
+    pyshell.on("stderr", function (stderr) {
+        console.log(stderr);
+    });
+    pyshell.on("message", (message) => {
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == "Done!") {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log("The exit code was: " + code);
+                console.log("The exit signal was: " + signal);
+                event.sender.send("intensityResult");
+                ipcMain.removeAllListeners("killIntensity");
+            });
+        }
+        else {
+            current++;
+            event.sender.send("updateLoad", [
+                Math.round((current / total) * 100),
+                message,
+            ]);
+        }
+    });
+    ipcMain.once("killIntensity", function (event, data) {
         pyshell.kill();
     });
 });
@@ -634,6 +684,7 @@ ipcMain.on("runCount", function (event, data) {
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
                 event.sender.send("countResult");
+                ipcMain.removeAllListeners("killCount");
             });
         }
         else {
@@ -676,6 +727,7 @@ ipcMain.on("runTopHat", function (event, data) {
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
                 event.sender.send("topHatResult");
+                ipcMain.removeAllListeners("killTopHat");
             });
         }
         else {
@@ -752,6 +804,7 @@ ipcMain.on("runDetection", function (event, data) {
                 console.log("The exit code was: " + code);
                 console.log("The exit signal was: " + signal);
                 event.sender.send("detectResult");
+                ipcMain.removeAllListeners("killDetect");
             });
         }
         else if (message.includes("Processing")) {
