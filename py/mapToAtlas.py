@@ -30,6 +30,7 @@ args = parser.parse_args()
 
 print(args.angle)
 
+
 def orderPoints(pts):
     # sort the points based on their x-coordinates
     xSorted = pts[np.argsort(pts[:, 0]), :]
@@ -227,7 +228,8 @@ if __name__ == "__main__":
         return predictions
     # Load the appropriate atlas
     # Override the angle if needed
-    angle = int(args.angle.strip()) if not int(args.angle.strip()) == 99 else angle
+    angle = int(args.angle.strip()) if not int(
+        args.angle.strip()) == 99 else angle
     atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
     annotation, annotationHeader = nrrd.read(
         str(nrrdPath / f"r_annotation_{angle}.nrrd"))
@@ -376,7 +378,13 @@ if __name__ == "__main__":
             # Write the region names
             for region, info in regions.items():
                 if info['points'] != [] and region not in [997, 688, 1009, 0]:
-                    m = np.mean(info['points'], axis=0).astype(np.int32)
+                    # if wholebrain, we should only take the mean of the left side points
+                    m = 0
+                    if eval(args.whole):
+                        m = np.mean(
+                            [p for p in info['points'] if p[1] < (x-200)//2], axis=0).astype(np.int32)
+                    else:
+                        m = np.mean(info['points'], axis=0).astype(np.int32)
                     try:
                         cv2.putText(mapImage, regions[region]['acronym'], (
                             m[1] - 2, m[0]), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 1)

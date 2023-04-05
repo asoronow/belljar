@@ -88,7 +88,6 @@ if __name__ == '__main__':
                 "VISam",
                 "VISl",
                 "VISli",
-                "VISp",
                 "VISpl",
                 "VISpm",
                 "VISpor",
@@ -127,9 +126,9 @@ if __name__ == '__main__':
                     for point in verticies[region]:
                         if point[0] < width / 2:
                             leftPoints.append(point)
-
-                    leftHull = cv2.convexHull(np.array(leftPoints))
-                    cv2.fillConvexPoly(mask, leftHull, 255)
+                    if len(leftPoints) > 0:
+                        leftHull = cv2.convexHull(np.array(leftPoints))
+                        cv2.fillConvexPoly(mask, leftHull, 255)
                 else:
                     hull = cv2.convexHull(np.array(verticies[region]))
                     cv2.fillConvexPoly(mask, hull, 255)
