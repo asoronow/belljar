@@ -91,7 +91,11 @@ if __name__ == '__main__':
                 "VISpl",
                 "VISpm",
                 "VISpor",
-                "VISrl"
+                "VISrl",
+                "TEa",
+                "RSPagl",
+                "RSPd",
+                "RSPv",
             ]
 
             requiredIds = [nameToRegion[region] for region in requiredRegions]
@@ -126,10 +130,14 @@ if __name__ == '__main__':
                     for point in verticies[region]:
                         if point[0] < width / 2:
                             leftPoints.append(point)
-                    if len(leftPoints) > 0:
+                    if len(leftPoints) > 3:
                         leftHull = cv2.convexHull(np.array(leftPoints))
                         cv2.fillConvexPoly(mask, leftHull, 255)
+                    else:
+                        continue
                 else:
+                    if len(verticies[region]) < 3:
+                        continue
                     hull = cv2.convexHull(np.array(verticies[region]))
                     cv2.fillConvexPoly(mask, hull, 255)
 
