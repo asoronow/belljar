@@ -82,7 +82,12 @@ function deleteFile(file: string) {
   });
 }
 
+function getVersion() {
+  // get version from package.json
+  const packageJson = require(path.join(appDir, "package.json"));
+  return packageJson.version;
 
+}
 
 function setupPython(win: typeof BrowserWindow) {
   const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
@@ -486,6 +491,10 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", function () {
   app.quit();
+});
+
+ipcMain.on("getVersion", (event: any) => {
+  event.sender.send("version", getVersion());
 });
 
 // Handlers

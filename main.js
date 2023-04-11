@@ -85,6 +85,11 @@ function deleteFile(file) {
         resolve(true);
     });
 }
+function getVersion() {
+    // get version from package.json
+    const packageJson = require(path.join(appDir, "package.json"));
+    return packageJson.version;
+}
 function setupPython(win) {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
@@ -436,6 +441,9 @@ app.whenReady().then(() => {
 });
 app.on("window-all-closed", function () {
     app.quit();
+});
+ipcMain.on("getVersion", (event) => {
+    event.sender.send("version", getVersion());
 });
 // Handlers
 // Directories

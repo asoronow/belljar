@@ -4,25 +4,38 @@ import argparse
 import csv
 from pathlib import Path
 import cv2
+import tifffile
 import numpy as np
 
 parser = argparse.ArgumentParser(
-    description="Calculate the average intensity of a region in normalized coordinates")
+    description="Calculate the average intensity of a region in normalized coordinates"
+)
 
 parser.add_argument(
-    '-i', '--images', help="input directory for intensity images", default='')
+    "-i", "--images", help="input directory for intensity images", default=""
+)
 parser.add_argument(
-    '-o', '--output', help="output directory for average intensity pkl", default='')
-parser.add_argument('-a', '--annotations',
-                    help="input directory for annotation pkls", default='')
-parser.add_argument('-s', '--structures', help="structures file",
-                    default='../csv/structure_tree_safe_2017.csv')
+    "-o", "--output", help="output directory for average intensity pkl", default=""
+)
 parser.add_argument(
-    '-w', '--whole', help="Set True to process a whole brain slice (Default is False)", default=False)
+    "-a", "--annotations", help="input directory for annotation pkls", default=""
+)
+parser.add_argument(
+    "-s",
+    "--structures",
+    help="structures file",
+    default="../csv/structure_tree_safe_2017.csv",
+)
+parser.add_argument(
+    "-w",
+    "--whole",
+    help="Set True to process a whole brain slice (Default is False)",
+    default=False,
+)
 args = parser.parse_args()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Read in the intensity images
     intensityPath = args.images.strip()
     intensityFiles = os.listdir(intensityPath)
@@ -31,7 +44,7 @@ if __name__ == '__main__':
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
     annotationFiles = os.listdir(annotationPath)
-    annotationFiles = [f for f in annotationFiles if f.endswith('.pkl')]
+    annotationFiles = [f for f in annotationFiles if f.endswith(".pkl")]
     annotationFiles.sort()
 
     # Drop .DS_Store files
@@ -53,27 +66,35 @@ if __name__ == '__main__':
 
         header = next(structureReader)
         root = next(structureReader)
-        regions[997] = {"acronym": "undefined",
-                        "name": "undefined", "parent": "N/A"}
+        regions[997] = {"acronym": "undefined", "name": "undefined", "parent": "N/A"}
         regions[0] = {"acronym": "root", "name": "root", "parent": "N/A"}
         nameToRegion["undefined"] = 997
         nameToRegion["root"] = 0
         for row in structureReader:
-            regions[int(row[0])] = {"acronym": row[3],
-                                    "name": row[2], "parent": int(row[8])}
+            regions[int(row[0])] = {
+                "acronym": row[3],
+                "name": row[2],
+                "parent": int(row[8]),
+            }
             nameToRegion[row[3]] = int(row[0])
 
     for i, iName in enumerate(intensityFiles):
         intensities = {}
         verticies = {}
+
+        # image size in gb
+        imageSize = os.path.getsize(intensityPath + "/" + iName) / 1e9
+
         # load the image
-        intensity = cv2.imread(intensityPath + "/" +
-                               iName, cv2.IMREAD_GRAYSCALE)
+        if imageSize > 1:
+            intensity = tifffile.imread(intensityPath + "/" + iName)
+        else:
+            intensity = cv2.imread(intensityPath + "/" + iName, cv2.IMREAD_GRAYSCALE)
         # get the image width and height
         height, width = intensity.shape
 
         # load the annotation
-        with open(annotationPath + "/" + annotationFiles[i], 'rb') as f:
+        with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
             # get the annotation width and height
@@ -107,7 +128,7 @@ if __name__ == '__main__':
                     if regions.get(regionId, False) == False:
                         regionId = 997
 
-                    if 'layer' in regions[regionId]["name"].lower():
+                    if "layer" in regions[regionId]["name"].lower():
                         regionId = regions[regionId]["parent"]
 
                     if regionId in requiredIds:
@@ -172,10 +193,17 @@ if __name__ == '__main__':
             for region in intensities.keys():
                 # split file name
                 name = iName.split(".")[0]
-                outputPath = Path(args.output.strip() + "/" +
-                                  f"{name}_{region}" + ".pkl")
-                with open(outputPath, 'wb') as f:
+                outputPath = Path(
+                    args.output.strip() + "/" + f"{name}_{region}" + ".pkl"
+                )
+                with open(outputPath, "wb") as f:
                     pickle.dump(
-                        {"roi": intensities[region], "verts": verticies[region], "name": region}, f)
+                        {
+                            "roi": intensities[region],
+                            "verts": verticies[region],
+                            "name": region,
+                        },
+                        f,
+                    )
 
     print("Done!", flush=True)

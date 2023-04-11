@@ -6,38 +6,66 @@ import cv2
 import pickle
 from pathlib import Path
 
-parser = argparse.ArgumentParser(description="Integrate cell positions with alignments to count an experiment")
-parser.add_argument('-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument('-p', '--predictions', help="predictions directory, only use if graphical false", default="")
-parser.add_argument('-a', '--annotations', help="annotations directory, only use if graphical false", default="")
-parser.add_argument('-s', '--structures', help="structures file", default='../csv/structure_tree_safe_2017.csv')
+parser = argparse.ArgumentParser(
+    description="Integrate cell positions with alignments to count an experiment"
+)
+parser.add_argument(
+    "-o", "--output", help="output directory, only use if graphical false", default=""
+)
+parser.add_argument(
+    "-p",
+    "--predictions",
+    help="predictions directory, only use if graphical false",
+    default="",
+)
+parser.add_argument(
+    "-a",
+    "--annotations",
+    help="annotations directory, only use if graphical false",
+    default="",
+)
+parser.add_argument(
+    "-s",
+    "--structures",
+    help="structures file",
+    default="../csv/structure_tree_safe_2017.csv",
+)
 
 args = parser.parse_args()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     predictionPath = Path(args.predictions.strip())
     annotationPath = Path(args.annotations.strip())
     outputPath = Path(args.output.strip())
 
     annotationFiles = os.listdir(annotationPath)
+    annotationFiles = [name for name in annotationFiles if name.endswith("pkl")]
+    annotationFiles.sort()
     print(len(annotationFiles) + 1, flush=True)
-    predictionFiles = [name for name  in os.listdir(predictionPath) if name.endswith("pkl")]
+    predictionFiles = [
+        name for name in os.listdir(predictionPath) if name.endswith("pkl")
+    ]
+    predictionFiles.sort()
     # Reading in regions
     regions = {}
     nameToRegion = {}
     with open(args.structures.strip()) as structureFile:
         structureReader = csv.reader(structureFile, delimiter=",")
-        
-        header = next(structureReader) # skip header
-        root = next(structureReader) # skip atlas root region
+
+        header = next(structureReader)  # skip header
+        root = next(structureReader)  # skip atlas root region
         # manually set root, due to weird values
-        regions[997] = {"acronym":"undefined", "name":"undefined", "parent":"N/A"}
-        regions[0] = {"acronym":"LIW", "name":"Lost in Warp", "parent":"N/A"}
+        regions[997] = {"acronym": "undefined", "name": "undefined", "parent": "N/A"}
+        regions[0] = {"acronym": "LIW", "name": "Lost in Warp", "parent": "N/A"}
         nameToRegion["undefined"] = 997
         nameToRegion["Lost in Warp"] = 0
         # store all other atlas regions and their linkages
         for row in structureReader:
-            regions[int(row[0])] = {"acronym":row[3], "name":row[2], "parent":int(row[8])}
+            regions[int(row[0])] = {
+                "acronym": row[3],
+                "name": row[2],
+                "parent": int(row[8]),
+            }
             nameToRegion[row[2]] = int(row[0])
 
     sums = {}
@@ -45,7 +73,9 @@ if __name__ == '__main__':
         # divide up the results file by section as well
         sums[annotationFiles[i][11:]] = {}
         currentSection = sums[annotationFiles[i][11:]]
-        with open(predictionPath / pName, 'rb') as predictionPkl, open(annotationPath / annotationFiles[i], 'rb') as annotationPkl:
+        with open(predictionPath / pName, "rb") as predictionPkl, open(
+            annotationPath / annotationFiles[i], "rb"
+        ) as annotationPkl:
             print("Counting...", flush=True)
             prediction = pickle.load(predictionPkl)
             predictedSize = prediction.pop()
@@ -53,8 +83,13 @@ if __name__ == '__main__':
             height, width = annotation.shape
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
-                xPos = int((mX - (mX - x)//2)*((width - 200)/predictedSize[1])) + 100
-                yPos = int((mY - (mY - y)//2)*((height - 200)/predictedSize[0])) + 100
+                xPos = (
+                    int((mX - (mX - x) // 2) * ((width - 200) / predictedSize[1])) + 100
+                )
+                yPos = (
+                    int((mY - (mY - y) // 2) * ((height - 200) / predictedSize[0]))
+                    + 100
+                )
                 atlasId = int(annotation[yPos, xPos])
                 name = regions[atlasId]["name"]
                 if "layer" in name.lower():
@@ -84,13 +119,12 @@ if __name__ == '__main__':
 
                 lines.append([r, regions[nameToRegion[r]]["acronym"], count])
             lines.append([])
-        
+
         lines.append(["Totals"])
         for r, count in runningTotals.items():
             lines.append([r, regions[nameToRegion[r]]["acronym"], count])
         # Write out the rows
         resultWriter = csv.writer(resultFile)
         resultWriter.writerows(lines)
-    
+
     print("Done!")
-        
