@@ -94,6 +94,7 @@ function setupPython(win: typeof BrowserWindow) {
   const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
   const winURL = `${bucketParentPath}/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz`;
   const osxURL = `${bucketParentPath}/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz`;
+  const osxIntelURL = `${bucketParentPath}/cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz`;
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(path.join(homeDir, "python"))) {
       win.webContents.send("updateStatus", "Settting up python...");
@@ -140,6 +141,25 @@ function setupPython(win: typeof BrowserWindow) {
             });
           break;
         case "darwin":
+          // Check if we are on intel or arm
+          if (process.arch === "x64") {
+            downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
+                .then(() => {
+                  tar
+                    .x({
+                      cwd: homeDir,
+                      preservePaths: true,
+                      file: path.join(
+                        homeDir,
+                        "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
+                      ),
+                    })
+                    .then(() => {
+                      win.webContents.send("updateStatus", "Extracted python...");
+                      resolve(true);
+                    });
+                });
+          } else {
           downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
             .then(() => {
               tar
@@ -156,6 +176,7 @@ function setupPython(win: typeof BrowserWindow) {
                   resolve(true);
                 });
             });
+          }
           break;
         default:
           // If we don't have a supported platform, just resolve
