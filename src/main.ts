@@ -160,22 +160,22 @@ function setupPython(win: typeof BrowserWindow) {
                     });
                 });
           } else {
-          downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
-            .then(() => {
-              tar
-                .x({
-                  cwd: homeDir,
-                  preservePaths: true,
-                  file: path.join(
-                    homeDir,
-                    "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
-                  ),
-                })
-                .then(() => {
-                  win.webContents.send("updateStatus", "Extracted python...");
-                  resolve(true);
-                });
-            });
+            downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
+              .then(() => {
+                tar
+                  .x({
+                    cwd: homeDir,
+                    preservePaths: true,
+                    file: path.join(
+                      homeDir,
+                      "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+                    ),
+                  })
+                  .then(() => {
+                    win.webContents.send("updateStatus", "Extracted python...");
+                    resolve(true);
+                  });
+              });
           }
           break;
         default:
