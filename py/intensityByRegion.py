@@ -97,6 +97,7 @@ if __name__ == "__main__":
         with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
+            print(annotation)
             # get the annotation width and height
             aHeight, aWidth = annotation.shape
             # calculate the scaling factor, minus 200px for annotation padding
@@ -107,6 +108,7 @@ if __name__ == "__main__":
                 "VISa",
                 "VISal",
                 "VISam",
+                "VISp",
                 "VISl",
                 "VISli",
                 "VISpl",
@@ -173,6 +175,7 @@ if __name__ == "__main__":
                     intensities[region] = {}
 
                 intensityValues = intensity[mask == 255]
+
                 # get the points of the mask'
                 points = np.argwhere(mask == 255)
 
@@ -200,7 +203,6 @@ if __name__ == "__main__":
                     pickle.dump(
                         {
                             "roi": intensities[region],
-                            "verts": verticies[region],
                             "name": region,
                         },
                         f,

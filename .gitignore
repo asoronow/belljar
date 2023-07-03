@@ -6,6 +6,10 @@
 
 # Makes
 out/
+*.pt
+*.pth
+*.pkl
+*.hdf5
 # Pytorch runs
 resources/py/runs
 __pycache__/
@@ -124,3 +128,7 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Wandb files
+py/wandb/
+wandb/
