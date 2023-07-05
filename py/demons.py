@@ -15,15 +15,15 @@ def register_to_atlas(tissue, section, label, class_map_path):
 
     scaled_atlas = Image.fromarray(section)
     scaled_atlas = scaled_atlas.resize((tissue.shape[1], tissue.shape[0]))
-    scaled_atlas = np.array(scaled_atlas, dtype=np.float32)
+    scaled_atlas = np.array(scaled_atlas)
+    scaled_atlas = (scaled_atlas / 256).astype(np.uint8)
     scaled_label = Image.fromarray(label)
     scaled_label = scaled_label.resize(
         (tissue.shape[1], tissue.shape[0]), resample=Image.Resampling.NEAREST
     )
-    scaled_label = np.array(scaled_label, dtype=np.float32)
+    scaled_label = np.array(scaled_label)
 
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.GetImageFromArray(scaled_atlas, isVector=False)
     label = sitk.GetImageFromArray(scaled_label, isVector=False)
 
@@ -40,9 +40,10 @@ def register_to_atlas(tissue, section, label, class_map_path):
         elif registration_method.GetMetric() < 2:
             registration_method.StopRegistration()
 
-    demons = sitk.DemonsRegistrationFilter()
-    demons.SetNumberOfIterations(500000)
-    demons.SetStandardDeviations(2.0)
+    demons = sitk.DiffeomorphicDemonsRegistrationFilter()
+    demons.SetNumberOfIterations(10000)
+    demons.SetSmoothDisplacementField(True)
+    demons.SetStandardDeviations(1.0)
     demons.AddCommand(sitk.sitkIterationEvent, lambda: stopping_rule(demons))
     displacement_field = demons.Execute(fixed, moving)
 
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     demons = sitk.DemonsRegistrationFilter()
     # Standard deviation for Gaussian smoothing of displacement field
     demons.SetStandardDeviations(2.0)
-    demons.SetNumberOfIterations(500000)
+    demons.SetNumberOfIterations(1000)
     demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
 
     displacementField = demons.Execute(fixed, moving)

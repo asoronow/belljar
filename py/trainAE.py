@@ -301,7 +301,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
             # print(name, result, scores[result])
             v = result.split("_")
             angles.append(int(v[2]))
-        consensus[stats.mode(angles)[0][0]] += 1
+        consensus[stats.mode(angles, keepdims=True)[0][0]] += 1
     
     # Select the best sections along that angle
     best = {}

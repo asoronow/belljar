@@ -133,17 +133,6 @@ def warpToDAPI(atlasImage, dapiImage, annotation, shouldDilate=False):
             img2_cropped += img2_warped * mask
         return img2
 
-    def warpDemons(imageDAPI, imageAtlas):
-        """Use the demons algorithm to warp the atlas to the DAPI image"""
-        demons_registration = sitk.DiffeomorphicDemonsRegistrationFilter()
-        demons_registration.SetNumberOfIterations(100)
-        demons_registration.SetStandardDeviations(1.0)
-
-        atlas_registered = demons_registration.Execute(
-            sitk.GetImageFromArray(imageAtlas), sitk.GetImageFromArray(imageDAPI)
-        )
-
-        return sitk.GetArrayFromImage(atlas_registered)
 
     dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage, shouldDilate)
     atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
@@ -361,14 +350,31 @@ if __name__ == "__main__":
         for i in range(len(images)):
             imageName = fileList[i]
             # print(separated[imageName])
-            label = annotation[
-                predictions[imageName],
-                :,
-                : annotation.shape[2] // selectionModifier,
-            ]
-            section = atlas[
-                predictions[imageName], :, : atlas.shape[2] // selectionModifier
-            ]
+            if selectionModifier == 2:
+                x_val = (annotation.shape[2] // 2)
+                pre_label = annotation[
+                    int(predictions[imageName]), :, : x_val
+                ]
+                pre_section = atlas[
+                    int(predictions[imageName]), :, : x_val
+                ] 
+
+                label = np.zeros((pre_label.shape[0], x_val), dtype=np.uint32)
+                label[:, :pre_label.shape[1] - 50]  = pre_label[:, 50:x_val]
+
+                section = np.zeros((pre_section.shape[0], x_val))
+                section[:, :pre_section.shape[1] - 50]  = pre_section[:, 50:x_val]
+
+            else:
+                x_val = annotation.shape[2]
+                label = annotation[
+                    int(predictions[imageName]), :, : x_val
+                ]
+
+                section = atlas[
+                    int(predictions[imageName]), :, : x_val
+                ]   
+
             tissue = images[i]
             warped_labels, warped_atlas, color_label = register_to_atlas(
                 tissue, section, label, "./csv/class_map.pkl"
