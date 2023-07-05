@@ -88,12 +88,15 @@ if __name__ == "__main__":
         classMap[0] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
     zero_angle_atlas = nrrd.read(nrrd_path + "\\r_nissl_0.nrrd")[0]
     zero_angle_labels = nrrd.read(nrrd_path + "\\r_annotation_0.nrrd")[0]
-    dapi_image_path = "C:\\Users\\Alec\\Downloads\\DAPI\\M496_s013.png"
+    dapi_image_path = (
+        "C:\\Users\\Alec\\Projects\\belljar-testing\\r71\\dapi\\R71_s01.png"
+    )
     dapi_image = Image.open(dapi_image_path)
     dapi_image = np.array(dapi_image)
     # get the middle section
-    zero_angle_atlas_image = zero_angle_atlas[758, :, :]
-    zero_angle_atlas_label = zero_angle_labels[758, :, :]
+    z, y, x = zero_angle_atlas.shape
+    zero_angle_atlas_image = zero_angle_atlas[600, :, : x // 2 - 100]
+    zero_angle_atlas_label = zero_angle_labels[600, :, : x // 2 - 100]
     zero_angle_atlas_image = Image.fromarray(zero_angle_atlas_image)
     zero_angle_atlas_image = zero_angle_atlas_image.resize(
         (dapi_image.shape[1], dapi_image.shape[0])
@@ -107,6 +110,9 @@ if __name__ == "__main__":
 
     def command_iteration(filter):
         print(f"{filter.GetElapsedIterations():3} = {filter.GetMetric():10.5f}")
+
+        if filter.GetMetric() < 0.1:
+            filter.StopRegistration()
 
     fixed = sitk.ReadImage(dapi_image_path, sitk.sitkFloat32)
 
@@ -123,11 +129,10 @@ if __name__ == "__main__":
     # Note there is a whole family of Demons Registration algorithms included in
     # SimpleITK
     demons = sitk.DemonsRegistrationFilter()
-    demons.SetNumberOfIterations(2000)
     # Standard deviation for Gaussian smoothing of displacement field
-    demons.SetStandardDeviations(4.0)
-
-    # demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
+    demons.SetStandardDeviations(2.0)
+    demons.SetNumberOfIterations(100000)
+    demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
 
     displacementField = demons.Execute(fixed, moving)
 
