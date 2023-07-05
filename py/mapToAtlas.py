@@ -365,28 +365,11 @@ if __name__ == "__main__":
                 predictions[imageName],
                 :,
                 : annotation.shape[2] // selectionModifier,
-            ].astype(np.uint32)
+            ]
             section = atlas[
                 predictions[imageName], :, : atlas.shape[2] // selectionModifier
             ]
             tissue = images[i]
-            # atlasWarp, annoWarp = warpToDAPI(
-            #     (
-            #         atlas[
-            #             predictions[imageName], :, : atlas.shape[2] // selectionModifier
-            #         ]
-            #         / 256
-            #     ).astype("uint8"),
-            #     images[i],
-            #     (
-            #         annotation[
-            #             predictions[imageName],
-            #             :,
-            #             : annotation.shape[2] // selectionModifier,
-            #         ]
-            #     ).astype("int32"),
-            #     separated[imageName],
-            # )
             warped_labels, warped_atlas, color_label = register_to_atlas(
                 tissue, section, label, "./csv/class_map.pkl"
             )

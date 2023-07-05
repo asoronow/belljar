@@ -15,41 +15,35 @@ def register_to_atlas(tissue, section, label, class_map_path):
 
     scaled_atlas = Image.fromarray(section)
     scaled_atlas = scaled_atlas.resize((tissue.shape[1], tissue.shape[0]))
-    scaled_atlas = np.array(scaled_atlas)
-    # pad 100 pixels on each side
-    scaled_atlas = np.pad(
-        scaled_atlas, ((100, 100), (100, 100)), "constant", constant_values=0
-    )
+    scaled_atlas = np.array(scaled_atlas, dtype=np.float32)
     scaled_label = Image.fromarray(label)
     scaled_label = scaled_label.resize(
         (tissue.shape[1], tissue.shape[0]), resample=Image.Resampling.NEAREST
     )
-    scaled_label = np.array(scaled_label)
-    scaled_label = np.pad(
-        scaled_label, ((100, 100), (100, 100)), "constant", constant_values=0
-    )
-
-    tissue = np.pad(
-        tissue, ((100, 100), (100, 100)), "constant", constant_values=0
-    ).astype(np.float32)
+    scaled_label = np.array(scaled_label, dtype=np.float32)
 
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.GetImageFromArray(scaled_atlas, isVector=False)
     label = sitk.GetImageFromArray(scaled_label, isVector=False)
 
     matcher = sitk.HistogramMatchingImageFilter()
-    matcher.SetNumberOfHistogramLevels(2048)
+    matcher.SetNumberOfHistogramLevels(1024)
     matcher.SetNumberOfMatchPoints(7)
     matcher.ThresholdAtMeanIntensityOn()
     moving = matcher.Execute(moving, fixed)
 
-    # The basic Demons Registration Filter
-    # Note there is a whole family of Demons Registration algorithms included in
-    # SimpleITK
-    demons = sitk.DemonsRegistrationFilter()
-    demons.SetNumberOfIterations(2000)
-    demons.SetStandardDeviations(2.0)
+    def stopping_rule(registration_method):
+        """Stop the process when the change in error between two iterations is below a threshold"""
+        if registration_method.GetElapsedIterations() <= 1:
+            pass
+        elif registration_method.GetMetric() < 2:
+            registration_method.StopRegistration()
 
+    demons = sitk.DemonsRegistrationFilter()
+    demons.SetNumberOfIterations(500000)
+    demons.SetStandardDeviations(2.0)
+    demons.AddCommand(sitk.sitkIterationEvent, lambda: stopping_rule(demons))
     displacement_field = demons.Execute(fixed, moving)
 
     transformation = sitk.DisplacementFieldTransform(displacement_field)
@@ -111,7 +105,7 @@ if __name__ == "__main__":
     def command_iteration(filter):
         print(f"{filter.GetElapsedIterations():3} = {filter.GetMetric():10.5f}")
 
-        if filter.GetMetric() < 0.1:
+        if filter.GetMetric() < 10:
             filter.StopRegistration()
 
     fixed = sitk.ReadImage(dapi_image_path, sitk.sitkFloat32)
@@ -131,7 +125,7 @@ if __name__ == "__main__":
     demons = sitk.DemonsRegistrationFilter()
     # Standard deviation for Gaussian smoothing of displacement field
     demons.SetStandardDeviations(2.0)
-    demons.SetNumberOfIterations(100000)
+    demons.SetNumberOfIterations(500000)
     demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
 
     displacementField = demons.Execute(fixed, moving)
