@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import pickle
 from pathlib import Path
+from demons import register_to_atlas
 from trainAE import makePredictions
 import nrrd
 import csv
@@ -32,10 +33,7 @@ parser.add_argument(
     help="structures file",
     default="../csv/structure_tree_safe_2017.csv",
 )
-
 args = parser.parse_args()
-
-print(args.angle)
 
 
 def orderPoints(pts):
@@ -294,6 +292,7 @@ if __name__ == "__main__":
     viewer.dims.set_point(0, predictions[fileList[0]])
     # Track the current section
     currentSection = 0
+    isProcessing = False
     # Setup  the napari contorls
     # Button callbacks
 
@@ -348,8 +347,11 @@ if __name__ == "__main__":
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        print("Writing output...", flush=True)
-        global currentSection, separatedCheckbox
+        print("Warping output...", flush=True)
+        global currentSection, separatedCheckbox, isProcessing
+        if isProcessing:
+            return
+        isProcessing = True
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         if separatedCheckbox.isChecked():
             separated[fileList[currentSection]] = True
@@ -358,32 +360,48 @@ if __name__ == "__main__":
         # Write the predictions to a file
         for i in range(len(images)):
             imageName = fileList[i]
-            print(separated[imageName])
-            atlasWarp, annoWarp = warpToDAPI(
-                (
-                    atlas[
-                        predictions[imageName], :, : atlas.shape[2] // selectionModifier
-                    ]
-                    / 256
-                ).astype("uint8"),
-                images[i],
-                (
-                    annotation[
-                        predictions[imageName],
-                        :,
-                        : annotation.shape[2] // selectionModifier,
-                    ]
-                ).astype("int32"),
-                separated[imageName],
+            # print(separated[imageName])
+            label = annotation[
+                predictions[imageName],
+                :,
+                : annotation.shape[2] // selectionModifier,
+            ].astype(np.uint32)
+            section = atlas[
+                predictions[imageName], :, : atlas.shape[2] // selectionModifier
+            ]
+            tissue = images[i]
+            # atlasWarp, annoWarp = warpToDAPI(
+            #     (
+            #         atlas[
+            #             predictions[imageName], :, : atlas.shape[2] // selectionModifier
+            #         ]
+            #         / 256
+            #     ).astype("uint8"),
+            #     images[i],
+            #     (
+            #         annotation[
+            #             predictions[imageName],
+            #             :,
+            #             : annotation.shape[2] // selectionModifier,
+            #         ]
+            #     ).astype("int32"),
+            #     separated[imageName],
+            # )
+            warped_labels, warped_atlas, color_label = register_to_atlas(
+                tissue, section, label, "./csv/class_map.pkl"
             )
             cv2.imwrite(
-                str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), atlasWarp
+                str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), warped_atlas
+            )
+            # write label
+            cv2.imwrite(
+                str(outputPath / f"Label_{imageName.split('.')[0]}.png"), color_label
             )
 
             with open(
                 str(outputPath / f"Annotation_{imageName.split('.')[0]}.pkl"), "wb"
             ) as annoOut:
-                pickle.dump(annoWarp, annoOut)
+                pickle.dump(warped_labels, annoOut)
 
             # Prep regions for saving
             regions = {}
@@ -417,76 +435,8 @@ if __name__ == "__main__":
                         "points": [],
                     }
                     nameToRegion[row[2]] = int(row[0])
-
-            # Write the atlas borders ontop of dapi image
-            # dapi = images[i]
-            y, x = annoWarp.shape
-            mapImage = np.zeros((y - 200, x - 200, 3), dtype="uint8")
-            for (j, i), area in np.ndenumerate(annoWarp):
-                if j > 0 and j < y - 1 and i > 0 and i < x - 1:
-                    surroundingPoints = [
-                        annoWarp[j, i + 1],
-                        annoWarp[j + 1, i + 1],
-                        annoWarp[j + 1, i - 1],
-                        annoWarp[j - 1, i + 1],
-                        annoWarp[j + 1, i],
-                        annoWarp[j, i - 1],
-                        annoWarp[j - 1, i - 1],
-                        annoWarp[j - 1, i],
-                    ]
-                    if not all(x == area for x in surroundingPoints) and not all(
-                        x == 0 for x in surroundingPoints
-                    ):
-                        try:
-                            if not all(
-                                regions[x]["parent"] == regions[area]["parent"]
-                                for x in surroundingPoints
-                            ):
-                                # We are accounting for the padding in the rotation process here
-                                # Additonally write this pixel as white
-                                mapImage[j - 101, i - 101] = [255, 255, 255]
-                        except:
-                            pass
-                    try:
-                        if all(x == area for x in surroundingPoints):
-                            if "layer" in regions[area]["name"].lower():
-                                regions[regions[area]["parent"]]["points"].append(
-                                    (j - 101, i - 101)
-                                )
-                            else:
-                                regions[area]["points"].append((j - 101, i - 101))
-                    except:
-                        pass
-
-            # Write the region names
-            for region, info in regions.items():
-                if info["points"] != [] and region not in [997, 688, 1009, 0]:
-                    # if wholebrain, we should only take the mean of the left side points
-                    m = 0
-                    if eval(args.whole):
-                        m = np.mean(
-                            [p for p in info["points"] if p[1] < (x - 200) // 2], axis=0
-                        ).astype(np.int32)
-                    else:
-                        m = np.mean(info["points"], axis=0).astype(np.int32)
-                    try:
-                        cv2.putText(
-                            mapImage,
-                            regions[region]["acronym"],
-                            (m[1] - 2, m[0]),
-                            cv2.FONT_HERSHEY_PLAIN,
-                            1,
-                            (255, 0, 0),
-                            1,
-                        )
-                    except Exception as e:
-                        pass
-
-            cv2.imwrite(
-                str(outputPath / f"Map_{imageName.split('.')[0]}.png"), mapImage
-            )
-
         viewer.close()
+
         print("Done!", flush=True)
 
     # Button objects

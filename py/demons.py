@@ -5,6 +5,80 @@ import nrrd
 from PIL import Image
 import pickle
 
+
+def register_to_atlas(tissue, section, label, class_map_path):
+    """Uses demons registration to register a tissue section to the atlas"""
+    with open(class_map_path, "rb") as f:
+        classMap = pickle.load(f)
+        classMap[997] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}
+        classMap[0] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
+
+    scaled_atlas = Image.fromarray(section)
+    scaled_atlas = scaled_atlas.resize((tissue.shape[1], tissue.shape[0]))
+    scaled_atlas = np.array(scaled_atlas)
+    # pad 100 pixels on each side
+    scaled_atlas = np.pad(
+        scaled_atlas, ((100, 100), (100, 100)), "constant", constant_values=0
+    )
+    scaled_label = Image.fromarray(label)
+    scaled_label = scaled_label.resize(
+        (tissue.shape[1], tissue.shape[0]), resample=Image.Resampling.NEAREST
+    )
+    scaled_label = np.array(scaled_label)
+    scaled_label = np.pad(
+        scaled_label, ((100, 100), (100, 100)), "constant", constant_values=0
+    )
+
+    tissue = np.pad(
+        tissue, ((100, 100), (100, 100)), "constant", constant_values=0
+    ).astype(np.float32)
+
+    fixed = sitk.GetImageFromArray(tissue, isVector=False)
+    moving = sitk.GetImageFromArray(scaled_atlas, isVector=False)
+    label = sitk.GetImageFromArray(scaled_label, isVector=False)
+
+    matcher = sitk.HistogramMatchingImageFilter()
+    matcher.SetNumberOfHistogramLevels(2048)
+    matcher.SetNumberOfMatchPoints(7)
+    matcher.ThresholdAtMeanIntensityOn()
+    moving = matcher.Execute(moving, fixed)
+
+    # The basic Demons Registration Filter
+    # Note there is a whole family of Demons Registration algorithms included in
+    # SimpleITK
+    demons = sitk.DemonsRegistrationFilter()
+    demons.SetNumberOfIterations(2000)
+    demons.SetStandardDeviations(2.0)
+
+    displacement_field = demons.Execute(fixed, moving)
+
+    transformation = sitk.DisplacementFieldTransform(displacement_field)
+
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(fixed)
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    resampler.SetTransform(transformation)
+    resampler.SetOutputPixelType(sitk.sitkUInt32)
+    resampler.SetDefaultPixelValue(0)
+
+    resampled_label = resampler.Execute(label)
+    resampled_atlas = resampler.Execute(moving)
+
+    color_label = np.zeros(
+        (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3)
+    )
+    for i in range(resampled_label.GetSize()[1]):
+        for j in range(resampled_label.GetSize()[0]):
+            try:
+                color_label[i, j, :] = classMap[resampled_label.GetPixel(j, i)]["color"]
+            except:
+                pass
+
+    resampled_label = sitk.GetArrayFromImage(resampled_label).astype(np.uint32)
+    resampled_atlas = sitk.GetArrayFromImage(resampled_atlas).astype(np.uint8)
+    return resampled_label, resampled_atlas, color_label
+
+
 if __name__ == "__main__":
     nrrd_path = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
     classMap_path = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw\\classMap.pkl"
@@ -53,13 +127,13 @@ if __name__ == "__main__":
     # Standard deviation for Gaussian smoothing of displacement field
     demons.SetStandardDeviations(4.0)
 
-    demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
+    # demons.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(demons))
 
     displacementField = demons.Execute(fixed, moving)
 
-    print("-------")
-    print(f"Number Of Iterations: {demons.GetElapsedIterations()}")
-    print(f" RMS: {demons.GetRMSChange()}")
+    # print("-------")
+    # print(f"Number Of Iterations: {demons.GetElapsedIterations()}")
+    # print(f" RMS: {demons.GetRMSChange()}")
 
     outTx = sitk.DisplacementFieldTransform(displacementField)
 
