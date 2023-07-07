@@ -8,7 +8,11 @@ Bell Jar is a tool for neurohistology analysis of the mouse brain. It is still u
 
 # Compatability
 
-Bell Jar's goal is be built on any platform, however, due to current dependency issues within the python enviornment it is not possible to build on arm64 based machines. We're working to resolve the issue but in the meantime know that the install will fail in that case. Prebuilt binaries are also only available for windows. All other users run from source for the time being.
+Bell Jar's goal is be built on any platform, as such we provide release binaries for all platforms we can test. If you do not see your OS then please build from source using the provided instructions.
+
+# Usage
+
+See the belljar_guide.pdf included in the repository for a detailed set of instructions on how to run the program with our sample dataset. It also includes a guide to each individual tool.
 
 # Install
 
