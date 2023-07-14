@@ -51,7 +51,10 @@ function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
     const requestedFileName = url.split("/").pop();
     const progress = (receivedBytes: number, totalBytes: number) => {
       const percentage = (receivedBytes * 100) / totalBytes;
-      win.webContents.send("updateStatus", `Downloading ${requestedFileName}... ${percentage.toFixed(0)}%`);
+      win.webContents.send(
+        "updateStatus",
+        `Downloading ${requestedFileName}... ${percentage.toFixed(0)}%`
+      );
     };
     const request = https.get(url, (response: any) => {
       // create a dummy stream so we can update the user on progress
@@ -67,7 +70,10 @@ function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
       response.pipe(file);
       file.on("finish", () => {
         file.close();
-        win.webContents.send("updateStatus", `Extracting ${requestedFileName}...`);
+        win.webContents.send(
+          "updateStatus",
+          `Extracting ${requestedFileName}...`
+        );
         resolve(true);
       });
     });
@@ -86,7 +92,6 @@ function getVersion() {
   // get version from package.json
   const packageJson = require(path.join(appDir, "package.json"));
   return packageJson.version;
-
 }
 
 function setupPython(win: typeof BrowserWindow) {
@@ -101,9 +106,16 @@ function setupPython(win: typeof BrowserWindow) {
       switch (process.platform) {
         case "win32":
           // Download and extract python to the home directory
-          downloadFile(winURL, path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"), win)
+          downloadFile(
+            winURL,
+            path.join(
+              homeDir,
+              "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"
+            ),
+            win
+          )
             .then(() => {
-              // Extract the tarball  
+              // Extract the tarball
               tar
                 .x({
                   cwd: homeDir,
@@ -123,15 +135,47 @@ function setupPython(win: typeof BrowserWindow) {
             });
           break;
         case "linux":
-          downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win)
-            .then(() => {
+          downloadFile(
+            linuxURL,
+            path.join(
+              homeDir,
+              "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+            ),
+            win
+          ).then(() => {
+            tar
+              .x({
+                cwd: homeDir,
+                preservePaths: true,
+                file: path.join(
+                  homeDir,
+                  "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+                ),
+              })
+              .then(() => {
+                win.webContents.send("updateStatus", "Extracted python...");
+                resolve(true);
+              });
+          });
+          break;
+        case "darwin":
+          // Check if we are on intel or arm
+          if (process.arch === "x64") {
+            downloadFile(
+              osxIntelURL,
+              path.join(
+                homeDir,
+                "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
+              ),
+              win
+            ).then(() => {
               tar
                 .x({
                   cwd: homeDir,
                   preservePaths: true,
                   file: path.join(
                     homeDir,
-                    "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+                    "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
                   ),
                 })
                 .then(() => {
@@ -139,43 +183,29 @@ function setupPython(win: typeof BrowserWindow) {
                   resolve(true);
                 });
             });
-          break;
-        case "darwin":
-          // Check if we are on intel or arm
-          if (process.arch === "x64") {
-            downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
-                .then(() => {
-                  tar
-                    .x({
-                      cwd: homeDir,
-                      preservePaths: true,
-                      file: path.join(
-                        homeDir,
-                        "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
-                      ),
-                    })
-                    .then(() => {
-                      win.webContents.send("updateStatus", "Extracted python...");
-                      resolve(true);
-                    });
-                });
           } else {
-            downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
-              .then(() => {
-                tar
-                  .x({
-                    cwd: homeDir,
-                    preservePaths: true,
-                    file: path.join(
-                      homeDir,
-                      "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
-                    ),
-                  })
-                  .then(() => {
-                    win.webContents.send("updateStatus", "Extracted python...");
-                    resolve(true);
-                  });
-              });
+            downloadFile(
+              osxURL,
+              path.join(
+                homeDir,
+                "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+              ),
+              win
+            ).then(() => {
+              tar
+                .x({
+                  cwd: homeDir,
+                  preservePaths: true,
+                  file: path.join(
+                    homeDir,
+                    "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+                  ),
+                })
+                .then(() => {
+                  win.webContents.send("updateStatus", "Extracted python...");
+                  resolve(true);
+                });
+            });
           }
           break;
         default:
@@ -195,7 +225,7 @@ function setupPython(win: typeof BrowserWindow) {
 }
 
 // Download the required tar files from the bucket
-function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
+function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
@@ -210,34 +240,50 @@ function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
       // Just check if each directory exists and its not empty
       for (let i = 0; i < requiredDirs.length; i++) {
         const dir = requiredDirs[i];
-        if (!fs.existsSync(path.join(homeDir, dir)) || fs.readdirSync(path.join(homeDir, dir)).length === 0) {
+        if (
+          !fs.existsSync(path.join(homeDir, dir)) ||
+          fs.readdirSync(path.join(homeDir, dir)).length === 0
+        ) {
           downloading.push(dir);
         }
       }
 
       for (let i = 0; i < downloading.length; i++) {
         const dir = downloading[i];
-        win.webContents.send("updateStatus", `Redownloading ${dir}...this may take a while`);
+        win.webContents.send(
+          "updateStatus",
+          `Redownloading ${dir}...this may take a while`
+        );
         // Remove the directory if it exists, download tar and extract
         if (fs.existsSync(path.join(homeDir, dir))) {
           fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
         }
         // Download the tar file
-        downloadFile(`${bucketParentPath}/${dir}.tar.gz`, path.join(homeDir, `${dir}.tar.gz`), win).then(() => {
+        downloadFile(
+          `${bucketParentPath}/${dir}.tar.gz`,
+          path.join(homeDir, `${dir}.tar.gz`),
+          win
+        ).then(() => {
           // Extract the tar file
-          tar.x({ cwd: homeDir, preservePaths: true, file: path.join(homeDir, `${dir}.tar.gz`) }).then(() => {
-            // Delete the tar file
-            deleteFile(path.join(homeDir, `${dir}.tar.gz`)).then(() => {
-              win.webContents.send("updateStatus", `Downloaded ${dir}`);
-              total++;
-              if (downloading.length === total) {
-                resolve(true);
-              }
+          tar
+            .x({
+              cwd: homeDir,
+              preservePaths: true,
+              file: path.join(homeDir, `${dir}.tar.gz`),
+            })
+            .then(() => {
+              // Delete the tar file
+              deleteFile(path.join(homeDir, `${dir}.tar.gz`)).then(() => {
+                win.webContents.send("updateStatus", `Downloaded ${dir}`);
+                total++;
+                if (downloading.length === total) {
+                  resolve(true);
+                }
+              });
             });
-          });
         });
       }
-      
+
       if (downloading.length === 0) {
         resolve(true);
       }
@@ -255,86 +301,88 @@ function downloadResources(win : typeof BrowserWindow, fresh: boolean) {
     if (!allDirsExist) {
       // Something is missing, delete everything and download again
       requiredDirs.forEach((dir) => {
-        if (fs.existsSync(path.join
-          (homeDir, dir))) {
+        if (fs.existsSync(path.join(homeDir, dir))) {
           fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
         }
       });
 
       // Download the embeddings
-      downloadFile(embeddingsLink, path.join(homeDir, "embeddings.tar.gz"), win).then(
-        () => {
-          // Extract the embeddings
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(homeDir, "embeddings.tar.gz"),
-            })
-            .then(() => {
-              // Delete the tar file
-              deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
-                // Download the models
-                downloadFile(modelsLink, path.join(homeDir, "models.tar.gz"), win).then(
-                  () => {
-                    // Extract the models
-                    tar
-                      .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(homeDir, "models.tar.gz"),
-                      })
-                      .then(() => {
-                        // Delete the tar file
-                        deleteFile(path.join(homeDir, "models.tar.gz")).then(
-                          () => {
-                            // Download the nrrd
-                            downloadFile(
-                              nrrdLink,
-                              path.join(homeDir, "nrrd.tar.gz"),
-                              win
-                            ).then(() => {
-                              // Extract the nrrd
-                              tar
+      downloadFile(
+        embeddingsLink,
+        path.join(homeDir, "embeddings.tar.gz"),
+        win
+      ).then(() => {
+        // Extract the embeddings
+        tar
+          .x({
+            cwd: homeDir,
+            preservePaths: true,
+            file: path.join(homeDir, "embeddings.tar.gz"),
+          })
+          .then(() => {
+            // Delete the tar file
+            deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
+              // Download the models
+              downloadFile(
+                modelsLink,
+                path.join(homeDir, "models.tar.gz"),
+                win
+              ).then(() => {
+                // Extract the models
+                tar
+                  .x({
+                    cwd: homeDir,
+                    preservePaths: true,
+                    file: path.join(homeDir, "models.tar.gz"),
+                  })
+                  .then(() => {
+                    // Delete the tar file
+                    deleteFile(path.join(homeDir, "models.tar.gz")).then(() => {
+                      // Download the nrrd
+                      downloadFile(
+                        nrrdLink,
+                        path.join(homeDir, "nrrd.tar.gz"),
+                        win
+                      ).then(() => {
+                        // Extract the nrrd
+                        tar
 
-                                .x({
-                                  cwd: homeDir,
-                                  preservePaths: true,
-                                  file: path.join(homeDir, "nrrd.tar.gz"),
-                                })
-                                .then(() => {
-                                  // Delete the tar file
-                                  deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(
-                                    () => {
-                                      resolve(true);
-                                    }
-                                  );
-                                });
-                            });
-                          }
-                        );
+                          .x({
+                            cwd: homeDir,
+                            preservePaths: true,
+                            file: path.join(homeDir, "nrrd.tar.gz"),
+                          })
+                          .then(() => {
+                            // Delete the tar file
+                            deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(
+                              () => {
+                                resolve(true);
+                              }
+                            );
+                          });
                       });
-                  }
-                );
+                    });
+                  });
               });
             });
-        }
-      );
+          });
+      });
     } else {
       //TODO: Error handling for unsupported platforms
       resolve(true);
     }
   });
 }
-            
-
 
 // Creates the venv and installs the dependencies
 function setupEnvironment(win: typeof BrowserWindow) {
   if (!fs.existsSync(envPath)) {
     // We have not created the venv yet, so we probably don't have the models, etc. either
     // Download the required files, checking if their directories exist
-    win.webContents.send("updateStatus", "Preparing to download require files...");
+    win.webContents.send(
+      "updateStatus",
+      "Preparing to download require files..."
+    );
     downloadResources(win, true).then(() => {
       // Promise chain to setup the python enviornment
       win.webContents.send("updateStatus", "Installing venv...");
@@ -364,7 +412,6 @@ function setupEnvironment(win: typeof BrowserWindow) {
           console.log(error);
         });
     });
-
 
     // Install venv package
     async function installVenv() {
@@ -400,19 +447,20 @@ function setupEnvironment(win: typeof BrowserWindow) {
 function updatePythonDependencies(win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
     win.webContents.send("updateStatus", "Updating packages...");
-   // Run pip install -r requirements.txt --no-cache-dir to update the packages
-    exec(`${
-      pyCommand
-    } -m pip install -r ${path.join(
-      appDir,
-      "py/requirements.txt"
-    )} --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
-      .then(({ stdout, stderr } : {stdout: string, stderr: string}) => {
+    // Run pip install -r requirements.txt --no-cache-dir to update the packages
+    exec(
+      `${pyCommand} -m pip install -r ${path.join(
+        appDir,
+        "py/requirements.txt"
+      )} --no-cache-dir  --use-pep517`,
+      { cwd: envPythonPath }
+    )
+      .then(({ stdout, stderr }: { stdout: string; stderr: string }) => {
         console.log(stdout);
         win.webContents.send("updateStatus", "Update complete!");
         resolve(true);
-      }
-      ).catch((error: any) => {
+      })
+      .catch((error: any) => {
         console.log(error);
         createLogFile(error);
         createLogFile("Failed to update python dependencies");
@@ -431,7 +479,6 @@ function fixMissingDirectories(win: typeof BrowserWindow) {
     });
   });
 }
-
 
 // Makes the local user writable folder
 // TODO: Version checking to see if we need to update the files
@@ -494,7 +541,7 @@ app.on("ready", () => {
             fixMissingDirectories(win).then(() => {
               win.loadFile("pages/index.html");
             });
-        });
+          });
         }
       })
       .catch((error) => {
@@ -597,10 +644,7 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
 
 // Adjust
 ipcMain.on("runAdjust", function (event: any, data: any[]) {
-  var structPath = path.join(
-    appDir,
-    "csv/structure_tree_safe_2017.csv"
-  );
+  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
 
   let options = {
     mode: "text",
@@ -649,12 +693,9 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
     data[2] == "False"
       ? path.join(homeDir, "embeddings/hemisphere_embeddings.pkl")
       : path.join(homeDir, "embeddings/whole_embeddings.pkl");
-  const nrrdPath = path.join(homeDir, "nrrd"); 
-  const structPath = path.join(
-    appDir,
-    "csv/structure_tree_safe_2017.csv"
-  );
-
+  const nrrdPath = path.join(homeDir, "nrrd");
+  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  const mapPath = path.join(appDir, "csv/class_map.pkl");
 
   let options = {
     mode: "text",
@@ -669,6 +710,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
       `-e ${embedPath}`,
       `-n ${nrrdPath}`,
       `-s ${structPath}`,
+      `-c ${mapPath}`,
     ],
   };
   let pyshell = new PythonShell("mapToAtlas.py", options);
@@ -708,10 +750,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
 // Intensity by Region
 
 ipcMain.on("runIntensity", function (event: any, data: any[]) {
-  const structPath = path.join(
-    appDir,
-    "csv/structure_tree_safe_2017.csv"
-  );
+  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
 
   let options = {
     mode: "text",
@@ -759,10 +798,7 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
 
 // Counting
 ipcMain.on("runCount", function (event: any, data: any[]) {
-  var structPath = path.join(
-    appDir,
-    "csv/structure_tree_safe_2017.csv"
-  );
+  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
 
   let options = {
     mode: "text",
@@ -862,10 +898,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
       String.raw`-o ${data[1]}`,
       String.raw`-i ${data[0]}`,
       `-r ${data[2]}`,
-      String.raw`-s ${path.join(
-        appDir,
-        "csv/structure_tree_safe_2017.csv"
-      )}`,
+      String.raw`-s ${path.join(appDir, "csv/structure_tree_safe_2017.csv")}`,
       "-g False",
     ],
   };

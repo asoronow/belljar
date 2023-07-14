@@ -28,8 +28,8 @@ def register_to_atlas(tissue, section, label, class_map_path):
     label = sitk.GetImageFromArray(scaled_label, isVector=False)
 
     matcher = sitk.HistogramMatchingImageFilter()
-    matcher.SetNumberOfHistogramLevels(1024)
-    matcher.SetNumberOfMatchPoints(7)
+    matcher.SetNumberOfHistogramLevels(2048)
+    matcher.SetNumberOfMatchPoints(10)
     matcher.ThresholdAtMeanIntensityOn()
     moving = matcher.Execute(moving, fixed)
 
@@ -41,9 +41,9 @@ def register_to_atlas(tissue, section, label, class_map_path):
             registration_method.StopRegistration()
 
     demons = sitk.DiffeomorphicDemonsRegistrationFilter()
-    demons.SetNumberOfIterations(10000)
+    demons.SetNumberOfIterations(2500)
     demons.SetSmoothDisplacementField(True)
-    demons.SetStandardDeviations(1.0)
+    demons.SetStandardDeviations(2.0)
     demons.AddCommand(sitk.sitkIterationEvent, lambda: stopping_rule(demons))
     displacement_field = demons.Execute(fixed, moving)
 

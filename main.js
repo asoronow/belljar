@@ -104,7 +104,7 @@ function setupPython(win) {
                     // Download and extract python to the home directory
                     downloadFile(winURL, path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"), win)
                         .then(() => {
-                        // Extract the tarball  
+                        // Extract the tarball
                         tar
                             .x({
                             cwd: homeDir,
@@ -121,8 +121,7 @@ function setupPython(win) {
                     });
                     break;
                 case "linux":
-                    downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win)
-                        .then(() => {
+                    downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win).then(() => {
                         tar
                             .x({
                             cwd: homeDir,
@@ -138,8 +137,7 @@ function setupPython(win) {
                 case "darwin":
                     // Check if we are on intel or arm
                     if (process.arch === "x64") {
-                        downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
-                            .then(() => {
+                        downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"), win).then(() => {
                             tar
                                 .x({
                                 cwd: homeDir,
@@ -153,8 +151,7 @@ function setupPython(win) {
                         });
                     }
                     else {
-                        downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win)
-                            .then(() => {
+                        downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win).then(() => {
                             tar
                                 .x({
                                 cwd: homeDir,
@@ -200,7 +197,8 @@ function downloadResources(win, fresh) {
             // Just check if each directory exists and its not empty
             for (let i = 0; i < requiredDirs.length; i++) {
                 const dir = requiredDirs[i];
-                if (!fs.existsSync(path.join(homeDir, dir)) || fs.readdirSync(path.join(homeDir, dir)).length === 0) {
+                if (!fs.existsSync(path.join(homeDir, dir)) ||
+                    fs.readdirSync(path.join(homeDir, dir)).length === 0) {
                     downloading.push(dir);
                 }
             }
@@ -214,7 +212,13 @@ function downloadResources(win, fresh) {
                 // Download the tar file
                 downloadFile(`${bucketParentPath}/${dir}.tar.gz`, path.join(homeDir, `${dir}.tar.gz`), win).then(() => {
                     // Extract the tar file
-                    tar.x({ cwd: homeDir, preservePaths: true, file: path.join(homeDir, `${dir}.tar.gz`) }).then(() => {
+                    tar
+                        .x({
+                        cwd: homeDir,
+                        preservePaths: true,
+                        file: path.join(homeDir, `${dir}.tar.gz`),
+                    })
+                        .then(() => {
                         // Delete the tar file
                         deleteFile(path.join(homeDir, `${dir}.tar.gz`)).then(() => {
                             win.webContents.send("updateStatus", `Downloaded ${dir}`);
@@ -370,7 +374,8 @@ function updatePythonDependencies(win) {
             console.log(stdout);
             win.webContents.send("updateStatus", "Update complete!");
             resolve(true);
-        }).catch((error) => {
+        })
+            .catch((error) => {
             console.log(error);
             createLogFile(error);
             createLogFile("Failed to update python dependencies");
@@ -591,6 +596,7 @@ ipcMain.on("runAlign", function (event, data) {
         : path.join(homeDir, "embeddings/whole_embeddings.pkl");
     const nrrdPath = path.join(homeDir, "nrrd");
     const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+    const mapPath = path.join(appDir, "csv/class_map.pkl");
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
@@ -604,6 +610,7 @@ ipcMain.on("runAlign", function (event, data) {
             `-e ${embedPath}`,
             `-n ${nrrdPath}`,
             `-s ${structPath}`,
+            `-c ${mapPath}`,
         ],
     };
     let pyshell = new PythonShell("mapToAtlas.py", options);

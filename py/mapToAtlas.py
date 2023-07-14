@@ -33,157 +33,52 @@ parser.add_argument(
     help="structures file",
     default="../csv/structure_tree_safe_2017.csv",
 )
+parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
 args = parser.parse_args()
 
 
-def orderPoints(pts):
-    # sort the points based on their x-coordinates
-    xSorted = pts[np.argsort(pts[:, 0]), :]
-    # grab the left-most and right-most points from the sorted
-    # x-roodinate points
-    leftMost = xSorted[:2, :]
-    rightMost = xSorted[2:, :]
-    # now, sort the left-most coordinates according to their
-    # y-coordinates so we can grab the top-left and bottom-left
-    # points, respectively
-    leftMost = leftMost[np.argsort(leftMost[:, 1]), :]
-    (tl, bl) = leftMost
-    # now that we have the top-left coordinate, use it as an
-    # anchor to calculate the Euclidean distance between the
-    # top-left and right-most points; by the Pythagorean
-    # theorem, the point with the largest distance will be
-    # our bottom-right point
-    D = dist.cdist(tl[np.newaxis], rightMost, "euclidean")[0]
-    (br, tr) = rightMost[np.argsort(D)[::-1], :]
-    # return the coordinates in top-left, top-right,
-    # bottom-right, and bottom-left order
-    return np.array([tl, tr, br, bl], dtype="int64")
+def get_max_contour(image):
+    """Apply a gaussian blur and otsu threshold to the image, then find the largest contour"""
+    # Check if image is 8 bit
+    if image.dtype != np.uint8:
+        image = (image / 256).astype(np.uint8)
+
+    blurry = cv2.GaussianBlur(image, (5, 5), 0)
+    _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    return largest_contour
 
 
-# Warp atlas image roughly onto the DAPI section
-def warpToDAPI(atlasImage, dapiImage, annotation, shouldDilate=False):
-    """
-    Takes in a DAPI image and its atlas prediction and warps the atlas to match the section
-    Basis for warp protocol from Ann Zen on Stackoverflow.
-    """
-    # Open the image files.
-    # Pad the dapi images to ensure no negaitve bounds issues with rotated rects
-    dapiImage = np.pad(dapiImage, [(100, 100)], "constant")
-    atlasImage = cv2.resize(atlasImage, dapiImage.shape)
-    annotation = cv2.resize(
-        annotation, dapiImage.shape, interpolation=cv2.INTER_NEAREST
+def get_transformed_image(tissue_contour, atlas_contour, atlas_image, atlas_labels):
+    # Compute the minimum bounding rectangles for the tissue and atlas contours
+    tissue_rect = cv2.minAreaRect(tissue_contour)
+    atlas_rect = cv2.minAreaRect(atlas_contour)
+
+    # Extract the corner points from the minimum bounding rectangles
+    tissue_pts = cv2.boxPoints(tissue_rect).astype(np.float32)
+    atlas_pts = cv2.boxPoints(atlas_rect).astype(np.float32)
+
+    # Calculate the affine transform matrix
+    transform_matrix = cv2.getAffineTransform(atlas_pts[:3], tissue_pts[:3])
+
+    # Apply the affine transform to the atlas image
+    transformed_atlas_image = cv2.warpAffine(
+        atlas_image, transform_matrix, (atlas_image.shape[1], atlas_image.shape[0])
     )
 
-    def dilate(image, kernelSize=21, iterations=3):
-        """Dilate an image"""
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernelSize, kernelSize))
-        return cv2.dilate(image, kernel, iterations=iterations)
-
-    def getMaxContour(image, shouldDilate=False):
-        """Returns the largest contour in an image and its bounding points"""
-        if shouldDilate:
-            image = dilate(image)
-
-        blur = cv2.GaussianBlur(image, (11, 11), 0)
-        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
-        maxC = max(contours, key=cv2.contourArea)
-        xL, yL, wL, hL = cv2.boundingRect(maxC)
-
-        return maxC, xL, yL, wL, hL
-
-    def triangles(points):
-        """Subdivide a given set of points into triangles"""
-        points = np.where(points, points, 1)
-        subdiv = cv2.Subdiv2D((*points.min(0), *points.max(0)))
-        for pt in points:
-            subdiv.insert(tuple(map(int, pt)))
-        for pts in subdiv.getTriangleList().reshape(-1, 3, 2):
-            yield [np.where(np.all(points == pt, 1))[0][0] for pt in pts]
-
-    def crop(img, pts):
-        """Take just the region of intrest for warping"""
-        x, y, w, h = cv2.boundingRect(pts)
-        img_cropped = img[y : y + h, x : x + w]
-        pts[:, 0] -= x
-        pts[:, 1] -= y
-        return img_cropped, pts
-
-    def warp(img1, img2, pts1, pts2):
-        """Preform the actual warp by iterating the polygon and warping each triangle"""
-        img2 = img2.copy()
-        for indices in triangles(pts1):
-            img1_cropped, triangle1 = crop(img1, pts1[indices])
-            img2_cropped, triangle2 = crop(img2, pts2[indices])
-            transform = cv2.getAffineTransform(
-                np.float32(triangle1), np.float32(triangle2)
-            )
-            img2_warped = cv2.warpAffine(
-                img1_cropped,
-                transform,
-                img2_cropped.shape[:2][::-1],
-                None,
-                cv2.INTER_NEAREST,
-                cv2.BORDER_TRANSPARENT,
-            )
-            mask = np.zeros_like(img2_cropped)
-            cv2.fillConvexPoly(mask, np.int32(triangle2), (1, 1, 1), 16, 0)
-            img2_cropped *= 1 - mask
-            img2_cropped += img2_warped * mask
-        return img2
-
-
-    dapiContour, dapiX, dapiY, dapiW, dapiH = getMaxContour(dapiImage, shouldDilate)
-    atlasContour, atlasX, atlasY, atlasW, atlasH = getMaxContour(atlasImage)
-
-    center, shape, angle = cv2.minAreaRect(dapiContour)
-    dapiBox = np.int0(cv2.boxPoints(cv2.minAreaRect(dapiContour)))
-
-    atlasRect = np.array(
-        [
-            [atlasX, atlasY],
-            [atlasX + atlasW, atlasY],
-            [atlasX + atlasW, atlasY + atlasH],
-            [atlasX, atlasY + atlasH],
-        ]
-    )
-    dapiRect = np.array(
-        [
-            [dapiX, dapiY],
-            [dapiX + dapiW, dapiY],
-            [dapiX + dapiW, dapiY + dapiH],
-            [dapiX, dapiY + dapiH],
-        ]
+    # Apply the affine transform to the atlas labels
+    transformed_atlas_labels = cv2.warpAffine(
+        atlas_labels,
+        transform_matrix,
+        (atlas_labels.shape[1], atlas_labels.shape[0]),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
     )
 
-    atlasResult, annotationResult = np.empty(dapiImage.shape), np.empty(dapiImage.shape)
-
-    try:
-        atlasResult = warp(
-            atlasImage,
-            np.zeros(dapiImage.shape),
-            orderPoints(atlasRect),
-            orderPoints(dapiBox),
-        )
-    except Exception as e:
-        pass
-        # print("\n Could not warp atlas image!")
-        # print(e)
-
-    try:
-        annotationResult = warp(
-            annotation,
-            np.zeros(dapiImage.shape, dtype="int32"),
-            orderPoints(atlasRect),
-            orderPoints(dapiBox),
-        )
-    except Exception as e:
-        pass
-        # print("\n Could not warp annotations!")
-        # print(e)
-
-    return atlasResult, annotationResult
+    return transformed_atlas_image, transformed_atlas_labels.astype(np.int32)
 
 
 if __name__ == "__main__":
@@ -336,10 +231,10 @@ if __name__ == "__main__":
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        print("Warping output...", flush=True)
         global currentSection, separatedCheckbox, isProcessing
         if isProcessing:
             return
+        print("Warping output...", flush=True)
         isProcessing = True
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         if separatedCheckbox.isChecked():
@@ -351,34 +246,46 @@ if __name__ == "__main__":
             imageName = fileList[i]
             # print(separated[imageName])
             if selectionModifier == 2:
-                x_val = (annotation.shape[2] // 2)
-                pre_label = annotation[
-                    int(predictions[imageName]), :, : x_val
-                ]
-                pre_section = atlas[
-                    int(predictions[imageName]), :, : x_val
-                ] 
+                x_val = annotation.shape[2] // 2
+                pre_label = annotation[int(predictions[imageName]), :, :x_val]
+                pre_section = atlas[int(predictions[imageName]), :, :x_val]
 
                 label = np.zeros((pre_label.shape[0], x_val), dtype=np.uint32)
-                label[:, :pre_label.shape[1] - 50]  = pre_label[:, 50:x_val]
+                label[:, : pre_label.shape[1] - 50] = pre_label[:, 50:x_val]
 
                 section = np.zeros((pre_section.shape[0], x_val))
-                section[:, :pre_section.shape[1] - 50]  = pre_section[:, 50:x_val]
+                section[:, : pre_section.shape[1] - 50] = pre_section[:, 50:x_val]
 
             else:
                 x_val = annotation.shape[2]
-                label = annotation[
-                    int(predictions[imageName]), :, : x_val
-                ]
+                label = annotation[int(predictions[imageName]), :, :x_val]
 
-                section = atlas[
-                    int(predictions[imageName]), :, : x_val
-                ]   
+                section = atlas[int(predictions[imageName]), :, :x_val]
 
             tissue = images[i]
-            warped_labels, warped_atlas, color_label = register_to_atlas(
-                tissue, section, label, "./csv/class_map.pkl"
+
+            # resize atlas and label to match tissue
+            section = cv2.resize(section, (tissue.shape[1], tissue.shape[0]))
+            label = cv2.resize(
+                label.astype(np.float64),
+                (tissue.shape[1], tissue.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
             )
+
+            tissue_contour = get_max_contour(tissue)
+            atlas_contour = get_max_contour(section)
+
+            transformed_atlas_image, transformed_atlas_labels = get_transformed_image(
+                tissue_contour, atlas_contour, section, label.astype(np.float64)
+            )
+
+            warped_labels, warped_atlas, color_label = register_to_atlas(
+                tissue,
+                transformed_atlas_image,
+                transformed_atlas_labels,
+                args.map.strip(),
+            )
+
             cv2.imwrite(
                 str(outputPath / f"Atlas_{imageName.split('.')[0]}.png"), warped_atlas
             )
