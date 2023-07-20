@@ -41,7 +41,7 @@ def register_to_atlas(tissue, section, label, class_map_path):
             registration_method.StopRegistration()
 
     demons = sitk.DiffeomorphicDemonsRegistrationFilter()
-    demons.SetNumberOfIterations(2500)
+    demons.SetNumberOfIterations(100000)
     demons.SetSmoothDisplacementField(True)
     demons.SetStandardDeviations(2.0)
     demons.AddCommand(sitk.sitkIterationEvent, lambda: stopping_rule(demons))

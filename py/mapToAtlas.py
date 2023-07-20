@@ -43,7 +43,7 @@ def get_max_contour(image):
     if image.dtype != np.uint8:
         image = (image / 256).astype(np.uint8)
 
-    blurry = cv2.GaussianBlur(image, (5, 5), 0)
+    blurry = cv2.GaussianBlur(image, (11, 11), 0)
     _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     largest_contour = max(contours, key=cv2.contourArea)
@@ -51,17 +51,34 @@ def get_max_contour(image):
     return largest_contour
 
 
+def get_affine_transform(src_bbox, dst_bbox):
+    # Get the center and dimensions of the src and dst bounding rectangles
+    src_center_x, src_center_y, src_width, src_height = src_bbox
+    dst_center_x, dst_center_y, dst_width, dst_height = dst_bbox
+
+    # Calculate the scaling factors along both axes
+    scale_x = src_width / dst_width
+    scale_y = src_height / dst_height
+
+    # Calculate the translation vector
+    translate_x = src_center_x - (dst_center_x * scale_x)
+    translate_y = src_center_y - (dst_center_y * scale_y)
+
+    # Construct the affine transformation matrix
+    transform_matrix = np.array(
+        [[scale_x, 0, translate_x + 0.05], [0, scale_y, translate_y - 0.05]]
+    )
+
+    return transform_matrix
+
+
 def get_transformed_image(tissue_contour, atlas_contour, atlas_image, atlas_labels):
     # Compute the minimum bounding rectangles for the tissue and atlas contours
-    tissue_rect = cv2.minAreaRect(tissue_contour)
-    atlas_rect = cv2.minAreaRect(atlas_contour)
-
-    # Extract the corner points from the minimum bounding rectangles
-    tissue_pts = cv2.boxPoints(tissue_rect).astype(np.float32)
-    atlas_pts = cv2.boxPoints(atlas_rect).astype(np.float32)
+    tissue_rect = cv2.boundingRect(tissue_contour)
+    atlas_rect = cv2.boundingRect(atlas_contour)
 
     # Calculate the affine transform matrix
-    transform_matrix = cv2.getAffineTransform(atlas_pts[:3], tissue_pts[:3])
+    transform_matrix = get_affine_transform(tissue_rect, atlas_rect)
 
     # Apply the affine transform to the atlas image
     transformed_atlas_image = cv2.warpAffine(
