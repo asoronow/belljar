@@ -45,7 +45,7 @@ def get_max_contour(image):
 
     blurry = cv2.GaussianBlur(image, (11, 11), 0)
     _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     largest_contour = max(contours, key=cv2.contourArea)
 
     return largest_contour
@@ -65,9 +65,7 @@ def get_affine_transform(src_bbox, dst_bbox):
     translate_y = src_center_y - (dst_center_y * scale_y)
 
     # Construct the affine transformation matrix
-    transform_matrix = np.array(
-        [[scale_x, 0, translate_x + 0.05], [0, scale_y, translate_y - 0.05]]
-    )
+    transform_matrix = np.array([[scale_x, 0, translate_x], [0, scale_y, translate_y]])
 
     return transform_matrix
 
@@ -119,7 +117,7 @@ if __name__ == "__main__":
     absolutePaths = [str(inputPath / p) for p in fileList]
 
     # Update the user, next steps are coming
-    print(3, flush=True)
+    print(3 + len(absolutePaths), flush=True)
 
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
@@ -261,7 +259,7 @@ if __name__ == "__main__":
         # Write the predictions to a file
         for i in range(len(images)):
             imageName = fileList[i]
-            # print(separated[imageName])
+            print(f"Warping {imageName}...", flush=True)
             if selectionModifier == 2:
                 x_val = annotation.shape[2] // 2
                 pre_label = annotation[int(predictions[imageName]), :, :x_val]

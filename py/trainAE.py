@@ -248,7 +248,6 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
     # Correcting rotation helps predictions
     normalizedImages = []
     for image in dapiImages:
-        image = cv2.normalize(image, None, 0, 85, cv2.NORM_MINMAX)
         dilated = dilate(image)
         maxC, xL, yL, wL, hL = getMaxContour(dilated)
 
