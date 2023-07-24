@@ -614,7 +614,7 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
     args: [`-o ${data[1]}`, `-i ${data[0]}`, "-g False"],
   };
 
-  let pyshell = new PythonShell("batchMaxProjection.py", options);
+  let pyshell = new PythonShell("max.py", options);
   var total: number = 0;
   var current: number = 0;
   pyshell.on("message", (message: string) => {
@@ -653,7 +653,7 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
     args: [`-i ${data[0]}`, `-s ${structPath}`, `-m ${data[1]}`],
   };
 
-  let pyshell = new PythonShell("adjustAlignment.py", options);
+  let pyshell = new PythonShell("adjust.py", options);
   var total: number = 0;
   var current: number = 0;
   pyshell.on("stderr", function (stderr: string) {
@@ -713,7 +713,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
       `-c ${mapPath}`,
     ],
   };
-  let pyshell = new PythonShell("mapToAtlas.py", options);
+  let pyshell = new PythonShell("map.py", options);
   var total: number = 0;
   var current: number = 0;
 
@@ -765,7 +765,7 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
     ],
   };
 
-  let pyshell = new PythonShell("intensityByRegion.py", options);
+  let pyshell = new PythonShell("region.py", options);
   var total: number = 0;
   var current: number = 0;
   pyshell.on("stderr", function (stderr: string) {
@@ -811,7 +811,7 @@ ipcMain.on("runCount", function (event: any, data: any[]) {
       `-s ${structPath}`,
     ],
   };
-  let pyshell = new PythonShell("countBrain.py", options);
+  let pyshell = new PythonShell("count.py", options);
   var total: number = 0;
   var current: number = 0;
 
@@ -860,7 +860,7 @@ ipcMain.on("runTopHat", function (event: any, data: any[]) {
     ],
   };
 
-  let pyshell = new PythonShell("topHat.py", options);
+  let pyshell = new PythonShell("top_hat.py", options);
   var total: number = 0;
   var current: number = 0;
   pyshell.on("message", (message: string) => {
@@ -902,7 +902,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
       "-g False",
     ],
   };
-  let pyshell = new PythonShell("collateCounts.py", options);
+  let pyshell = new PythonShell("collate.py", options);
 
   pyshell.end((err: string, code: any, signal: string) => {
     if (err) throw err;
@@ -939,7 +939,7 @@ ipcMain.on("runDetection", function (event: any, data: any[]) {
     ],
   };
 
-  let pyshell = new PythonShell("findNeurons.py", options);
+  let pyshell = new PythonShell("find_neurons.py", options);
   var total: number = 0;
   var current: number = 0;
   pyshell.on("message", (message: string) => {

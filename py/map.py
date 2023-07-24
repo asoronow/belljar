@@ -4,7 +4,7 @@ import cv2
 import pickle
 from pathlib import Path
 from demons import register_to_atlas
-from trainAE import makePredictions
+from ae_tools import makePredictions
 import nrrd
 import csv
 import napari
@@ -37,16 +37,23 @@ parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pk
 args = parser.parse_args()
 
 
-def get_max_contour(image):
+def get_max_contour(image, separated=False):
     """Apply a gaussian blur and otsu threshold to the image, then find the largest contour"""
     # Check if image is 8 bit
     if image.dtype != np.uint8:
         image = (image / 256).astype(np.uint8)
+    
 
     blurry = cv2.GaussianBlur(image, (11, 11), 0)
     _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    largest_contour = max(contours, key=cv2.contourArea)
+
+    if separated:
+        # if tissue is far apart we should take the two largest and combine them
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
+        largest_contour = np.concatenate((sorted_contours[0], sorted_contours[1]))
+    else:
+        largest_contour = max(contours, key=cv2.contourArea)
 
     return largest_contour
 
@@ -287,7 +294,7 @@ if __name__ == "__main__":
                 interpolation=cv2.INTER_NEAREST,
             )
 
-            tissue_contour = get_max_contour(tissue)
+            tissue_contour = get_max_contour(tissue, separated=separated[fileList[i]])
             atlas_contour = get_max_contour(section)
 
             transformed_atlas_image, transformed_atlas_labels = get_transformed_image(

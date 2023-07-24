@@ -81,28 +81,23 @@ if __name__ == "__main__":
     for i, iName in enumerate(intensityFiles):
         intensities = {}
         verticies = {}
-
-        # image size in gb
-        imageSize = os.path.getsize(intensityPath + "/" + iName) / 1e9
-
+        
         # load the image
-        if imageSize > 1:
+        try:
             intensity = tifffile.imread(intensityPath + "/" + iName)
-        else:
-            intensity = cv2.imread(intensityPath + "/" + iName, cv2.IMREAD_GRAYSCALE)
-        # get the image width and height
-        height, width = intensity.shape
-
+            # get the image width and height
+            height, width = intensity.shape
+        except:
+            continue
         # load the annotation
         with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
-            print(annotation)
+            # print(annotation)
             # get the annotation width and height
             aHeight, aWidth = annotation.shape
-            # calculate the scaling factor, minus 200px for annotation padding
-            scaleX = width / (aWidth - 200)
-            scaleY = height / (aHeight - 200)
+            scaleX = width / (aWidth)
+            scaleY = height / (aHeight)
 
             requiredRegions = [
                 "VISa",
@@ -119,6 +114,8 @@ if __name__ == "__main__":
                 "RSPagl",
                 "RSPd",
                 "RSPv",
+                "ACA",
+                "STR"
             ]
 
             requiredIds = [nameToRegion[region] for region in requiredRegions]
@@ -137,8 +134,8 @@ if __name__ == "__main__":
                         # Get the region name
                         regionName = regions[regionId]["acronym"]
                         # Get the region verts
-                        imageX = int((j - 100) * scaleX)
-                        imageY = int((i - 100) * scaleY)
+                        imageX = int(j * scaleX)
+                        imageY = int(i * scaleY)
 
                         if not verticies.get(regionName, False):
                             verticies[regionName] = []
