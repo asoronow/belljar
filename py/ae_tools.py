@@ -341,7 +341,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
     for sectionName, matchName in best.items():
         best[sectionName] = int(matchName.split("_")[3].split(".")[0])
 
-    return best, idealAngle, normalizedImages
+    return best, idealAngle
 
 
 def runTraining(nrrdPath):

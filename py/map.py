@@ -102,6 +102,37 @@ def get_transformed_image(tissue_contour, atlas_contour, atlas_image, atlas_labe
 
     return transformed_atlas_image, transformed_atlas_labels.astype(np.int32)
 
+def save_alignment(selected_sections, angle, input_dir):
+    '''Writes the selected atlas section for each tissue section to a simple text file'''
+    with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
+        f.write(f"{angle}\n")
+        for s in selected_sections:
+            f.write(f"{s}\n")
+
+def load_alignment(input_dir, num_sections):
+    '''Load prior alignments if any from the input directory'''
+    alignments = []
+    angle = 0
+    try:
+        with open(Path(input_dir.strip()) / "alignment.txt", "r") as f:
+            lines = f.readlines()
+
+            # we missed sections or order messed up, should not use this
+            if ( len( lines ) - 1 ) != num_sections:
+                return alignments, angle
+            
+            angle = int( lines[0] )
+            for line in lines[1:]:
+                alignments.append( int( line ) )
+
+            return alignments, angle
+    except:
+        # bad file or no file, just give no alignments 
+        alignments = []
+        angle = 0
+    finally:
+        return alignments, angle
+
 
 if __name__ == "__main__":
     # Check if we have the nrrd files
@@ -132,13 +163,22 @@ if __name__ == "__main__":
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
     print("Making predictions...", flush=True)
-    predictions, angle, normalizedImages = makePredictions(
-        resizedImages,
-        fileList,
-        args.model.strip(),
-        args.embeds.strip(),
-        hemisphere=eval(args.whole),
-    )
+
+    prior_alignment, prior_angle = load_alignment(args.input, len(fileList))
+
+    if len(prior_alignment) > 0:
+        predictions = {}
+        angle = prior_angle
+        for i, image in enumerate(fileList):
+            predictions[image] =  prior_alignment[i]
+    else:
+        predictions, angle = makePredictions(
+            resizedImages,
+            fileList,
+            args.model.strip(),
+            args.embeds.strip(),
+            hemisphere=eval(args.whole),
+        )
 
     # Create a dict to track which sections are seperated
     separated = {}
@@ -187,7 +227,7 @@ if __name__ == "__main__":
     # Add each layer
     sectionLayer = viewer.add_image(
         cv2.resize(
-            normalizedImages[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])
+            images[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])
         ),
         name="section",
     )
@@ -205,7 +245,7 @@ if __name__ == "__main__":
     def nextSection():
         """Move one section forward by crawling file paths"""
         global currentSection, progressBar, separatedCheckbox
-        if not currentSection == len(normalizedImages) - 1:
+        if not currentSection == len(images) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
             if separatedCheckbox.isChecked():
@@ -218,10 +258,10 @@ if __name__ == "__main__":
                 separatedCheckbox.setChecked(True)
             else:
                 separatedCheckbox.setChecked(False)
-            progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             sectionLayer.data = cv2.resize(
-                normalizedImages[currentSection],
+                images[currentSection],
                 (atlas.shape[2] // selectionModifier, atlas.shape[1]),
             )
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
@@ -242,28 +282,35 @@ if __name__ == "__main__":
                 separatedCheckbox.setChecked(True)
             else:
                 separatedCheckbox.setChecked(False)
-            progressBar.setFormat(f"{currentSection + 1}/{len(normalizedImages)}")
+            progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
             sectionLayer.data = cv2.resize(
-                normalizedImages[currentSection],
+                images[currentSection],
                 (atlas.shape[2] // selectionModifier, atlas.shape[1]),
             )
             viewer.dims.set_point(0, predictions[fileList[currentSection]])
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        global currentSection, separatedCheckbox, isProcessing
+        global currentSection, separatedCheckbox, isProcessing, angle
         if isProcessing:
             return
         print("Warping output...", flush=True)
         isProcessing = True
+        
+        # Get the final section details wherever we stopped
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         if separatedCheckbox.isChecked():
             separated[fileList[currentSection]] = True
         else:
             separated[fileList[currentSection]] = False
-        # Write the predictions to a file
+
+
+        # Save the seleceted sections
+        save_alignment(list(predictions.values()), angle, args.input)
+
+        # Warp the predictions on the tissue and save the results
         for i in range(len(images)):
             imageName = fileList[i]
             print(f"Warping {imageName}...", flush=True)
