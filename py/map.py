@@ -179,7 +179,7 @@ if __name__ == "__main__":
         if len(new_sections) > 0:
             print("Making predictions for new sections...", flush=True)
         new_images = [
-            cv2.cvtColor(cv2.imread(inputPath / p), cv2.COLOR_BGR2GRAY)
+            cv2.cvtColor(cv2.imread(os.path.join(inputPath, p)), cv2.COLOR_BGR2GRAY)
             for p in new_sections
         ]
         new_resized_images = [cv2.resize(im, (512, 512)) for im in new_images]
