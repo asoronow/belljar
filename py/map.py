@@ -42,7 +42,6 @@ def get_max_contour(image, separated=False):
     # Check if image is 8 bit
     if image.dtype != np.uint8:
         image = (image / 256).astype(np.uint8)
-    
 
     blurry = cv2.GaussianBlur(image, (11, 11), 0)
     _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -102,33 +101,37 @@ def get_transformed_image(tissue_contour, atlas_contour, atlas_image, atlas_labe
 
     return transformed_atlas_image, transformed_atlas_labels.astype(np.int32)
 
-def save_alignment(selected_sections, angle, input_dir):
-    '''Writes the selected atlas section for each tissue section to a simple text file'''
+
+def save_alignment(selected_sections, file_list, angle, input_dir):
+    """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
         f.write(f"{angle}\n")
-        for s in selected_sections:
-            f.write(f"{s}\n")
+        for i, s in enumerate(selected_sections):
+            f.write(f"{file_list[i]}-{s}\n")
 
-def load_alignment(input_dir, num_sections):
-    '''Load prior alignments if any from the input directory'''
-    alignments = []
+
+def load_alignment(input_dir, file_list):
+    """Load prior alignments if any from the input directory"""
+    alignments = {}
     angle = 0
     try:
+        print("Loading prior alignments...", flush=True)
         with open(Path(input_dir.strip()) / "alignment.txt", "r") as f:
             lines = f.readlines()
 
-            # we missed sections or order messed up, should not use this
-            if ( len( lines ) - 1 ) != num_sections:
-                return alignments, angle
-            
-            angle = int( lines[0] )
+            angle = int(lines[0])
             for line in lines[1:]:
-                alignments.append( int( line ) )
+                file_name, section = line.split("-")
+                section = section.strip()
+                file_name = file_name.strip()
+                if file_name in file_list:
+                    alignments[file_name] = int(section)
 
             return alignments, angle
     except:
-        # bad file or no file, just give no alignments 
-        alignments = []
+        # bad file or no file, just give no alignments
+        print("No prior alignments found...", flush=True)
+        alignments = {}
         angle = 0
     finally:
         return alignments, angle
@@ -155,23 +158,46 @@ if __name__ == "__main__":
     absolutePaths = [str(inputPath / p) for p in fileList]
 
     # Update the user, next steps are coming
-    print(3 + len(absolutePaths), flush=True)
+    print(4 + len(absolutePaths), flush=True)
 
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (512, 512)) for im in images]
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
-    print("Making predictions...", flush=True)
 
-    prior_alignment, prior_angle = load_alignment(args.input, len(fileList))
+    prior_alignment, prior_angle = load_alignment(args.input, fileList)
+    did_load_alignment = len(prior_alignment) > 0
 
     if len(prior_alignment) > 0:
-        predictions = {}
+        # load in any old values
+        predictions = prior_alignment
         angle = prior_angle
-        for i, image in enumerate(fileList):
-            predictions[image] =  prior_alignment[i]
+
+        # get any new sections
+        new_sections = [x for x in fileList if x not in prior_alignment.keys()]
+        if len(new_sections) > 0:
+            print("Making predictions for new sections...", flush=True)
+        new_images = [
+            cv2.cvtColor(cv2.imread(inputPath / p), cv2.COLOR_BGR2GRAY)
+            for p in new_sections
+        ]
+        new_resized_images = [cv2.resize(im, (512, 512)) for im in new_images]
+
+        new_predictions, _ = makePredictions(
+            new_resized_images,
+            new_sections,
+            args.model.strip(),
+            args.embeds.strip(),
+            hemisphere=eval(args.whole),
+        )
+
+        for i, image in enumerate(new_sections):
+            predictions[image] = new_predictions[image]
+
     else:
+        print("Making predictions...", flush=True)
+        # no saved values, make a fresh prediction
         predictions, angle = makePredictions(
             resizedImages,
             fileList,
@@ -226,9 +252,7 @@ if __name__ == "__main__":
     viewer = napari.Viewer()
     # Add each layer
     sectionLayer = viewer.add_image(
-        cv2.resize(
-            images[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])
-        ),
+        cv2.resize(images[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])),
         name="section",
     )
     atlasLayer = viewer.add_image(
@@ -252,7 +276,9 @@ if __name__ == "__main__":
                 separated[fileList[currentSection]] = True
             else:
                 separated[fileList[currentSection]] = False
-            adjustPredictions(predictions, visited, fileList)
+
+            if not did_load_alignment:
+                adjustPredictions(predictions, visited, fileList)
             currentSection += 1
             if separated[fileList[currentSection]]:
                 separatedCheckbox.setChecked(True)
@@ -276,7 +302,8 @@ if __name__ == "__main__":
                 separated[fileList[currentSection]] = True
             else:
                 separated[fileList[currentSection]] = False
-            adjustPredictions(predictions, visited, fileList)
+            if not did_load_alignment:
+                adjustPredictions(predictions, visited, fileList)
             currentSection -= 1
             if separated[fileList[currentSection]]:
                 separatedCheckbox.setChecked(True)
@@ -298,7 +325,7 @@ if __name__ == "__main__":
             return
         print("Warping output...", flush=True)
         isProcessing = True
-        
+
         # Get the final section details wherever we stopped
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
         if separatedCheckbox.isChecked():
@@ -306,9 +333,8 @@ if __name__ == "__main__":
         else:
             separated[fileList[currentSection]] = False
 
-
         # Save the seleceted sections
-        save_alignment(list(predictions.values()), angle, args.input)
+        save_alignment(list(predictions.values()), fileList, angle, args.input)
 
         # Warp the predictions on the tissue and save the results
         for i in range(len(images)):
