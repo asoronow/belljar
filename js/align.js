@@ -12,13 +12,13 @@ var alignmentMethod = "True";
 var methods = document.querySelector("#methods");
 
 whole.addEventListener("click", function () {
-	methods.textContent = "Whole Slice";
+	methods.textContent = "Both Hemispheres";
 	alignmentMethod = "True";
 	console.log(alignmentMethod);
 });
 
 half.addEventListener("click", function () {
-	methods.textContent = "Hemisphere Only";
+	methods.textContent = "Single Hemisphere";
 	alignmentMethod = "False";
 	console.log(alignmentMethod);
 });
