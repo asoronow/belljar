@@ -5,7 +5,7 @@ from PIL import Image
 from math import pi
 import pickle
 
-def exhaustive_search(fixed, moving):
+def multi_stage_registration(fixed, moving):
     """Uses exhaustive search to find the best transformation"""
 
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
@@ -36,6 +36,13 @@ def exhaustive_search(fixed, moving):
 
     outTx1 = R.Execute(fixed, moving)
 
+    # Mean Squares
+    R.SetMetricAsMeanSquares()
+
+    R.SetInitialTransform(outTx1)
+
+    outTx2 = R.Execute(fixed, moving)
+
 
     displacementField = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
     displacementField.CopyInformation(fixed)
@@ -45,7 +52,7 @@ def exhaustive_search(fixed, moving):
         varianceForUpdateField=0.0, varianceForTotalField=1.5
     )
 
-    R.SetMovingInitialTransform(outTx1)
+    R.SetMovingInitialTransform(outTx2)
     R.SetInitialTransform(displacementTx, inPlace=True)
 
     R.SetMetricAsANTSNeighborhoodCorrelation(4)
@@ -55,15 +62,25 @@ def exhaustive_search(fixed, moving):
     R.SetSmoothingSigmasPerLevel([2, 1, 1])
 
     R.SetOptimizerScalesFromPhysicalShift()
-    R.SetOptimizerAsGradientDescent(
-        learningRate=1,
-        numberOfIterations=500,
-        estimateLearningRate=R.EachIteration,
-    )
 
     R.Execute(fixed, moving)
 
-    compositeTx = sitk.CompositeTransform([outTx1, displacementTx])
+    # Demons
+
+    R.SetMetricAsDemons()    
+    
+    
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=200,
+        estimateLearningRate=R.EachIteration,
+    )
+
+
+    R.Execute(fixed, moving)
+
+    compositeTx = sitk.CompositeTransform([outTx2, displacementTx])
+
 
     return compositeTx
 
@@ -102,24 +119,12 @@ def register_to_atlas(tissue, section, label, class_map_path):
 
     moving = match_histograms(moving, fixed)
 
-    transformation = exhaustive_search(fixed, moving)
-
-    to_displacement_filter = sitk.TransformToDisplacementFieldFilter()
-    to_displacement_filter.SetReferenceImage(fixed)
-
-    demons = sitk.FastSymmetricForcesDemonsRegistrationFilter()
-    demons.SetNumberOfIterations(200)
-    demons.SetStandardDeviations(1.0)
-    
-    field = to_displacement_filter.Execute(transformation)
-    field = demons.Execute(fixed, moving, field)
-
-    final_tx = sitk.DisplacementFieldTransform(field)
+    transformation = multi_stage_registration(fixed, moving)
 
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)
     resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-    resampler.SetTransform(final_tx)
+    resampler.SetTransform(transformation)
     resampler.SetOutputPixelType(sitk.sitkUInt32)
     resampler.SetDefaultPixelValue(0)
 

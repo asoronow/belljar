@@ -84,11 +84,10 @@ if __name__ == "__main__":
             for p in prediction:
                 x, y, mX, mY = p.bbox.minx, p.bbox.miny, p.bbox.maxx, p.bbox.maxy
                 xPos = (
-                    int((mX - (mX - x) // 2) * ((width - 200) / predictedSize[1])) + 100
+                    int((mX - (mX - x) // 2) * ((width) / predictedSize[1]))
                 )
                 yPos = (
-                    int((mY - (mY - y) // 2) * ((height - 200) / predictedSize[0]))
-                    + 100
+                    int((mY - (mY - y) // 2) * ((height) / predictedSize[0]))
                 )
                 atlasId = int(annotation[yPos, xPos])
                 name = regions[atlasId]["name"]
