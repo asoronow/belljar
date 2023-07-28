@@ -202,7 +202,7 @@ def plot_ae_outputs(encoder, decoder, images, n=10):
     plt.show()
 
 
-def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=True):
+def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=True):
     """Use the encoded sections and atlas embeddings to register brain regions"""
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -226,7 +226,7 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
         blur = cv2.GaussianBlur(image, (11, 11), 0)
         ret, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # Find the countours in the image, fast method
-        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Contours alone
         contours = contours[0]
         # Start with the first in the list compare subsequentW
@@ -240,16 +240,11 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
 
         return maxC, xL, yL, wL, hL
 
-    def dilate(image, kernelSize=4, iterations=1):
-        """Dilate an image"""
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernelSize, kernelSize))
-        return cv2.dilate(image, kernel, iterations=iterations)
 
     # Correcting rotation helps predictions
     normalizedImages = []
     for image in dapiImages:
-        dilated = dilate(image)
-        maxC, xL, yL, wL, hL = getMaxContour(dilated)
+        maxC, xL, yL, wL, hL = getMaxContour(image)
 
         # Now isolate the section using its contour and place it on blank image
         template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
@@ -296,20 +291,9 @@ def makePredictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=Tr
                     out, e
                 )
 
-    # Find the consensus angle
-    consensus = {i: 0 for i in range(-10, 11, 1)}
-    for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get)
-        angles = []
-        for result in ordered[:3]:
-            # print(name, result, scores[result])
-            v = result.split("_")
-            angles.append(int(v[2]))
-        consensus[stats.mode(angles, keepdims=True)[0][0]] += 1
-
     # Select the best sections along that angle
     best = {}
-    idealAngle = max(consensus, key=consensus.get)
+    idealAngle = 0
     for name, scores in similarity.items():
         ordered = sorted(scores, key=scores.get)
         section = None

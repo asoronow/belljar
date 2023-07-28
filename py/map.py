@@ -4,7 +4,7 @@ import cv2
 import pickle
 from pathlib import Path
 from demons import register_to_atlas
-from ae_tools import makePredictions
+from ae_tools import make_predictions
 import nrrd
 import csv
 import napari
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         ]
         new_resized_images = [cv2.resize(im, (512, 512)) for im in new_images]
 
-        new_predictions, _ = makePredictions(
+        new_predictions, _ = make_predictions(
             new_resized_images,
             new_sections,
             args.model.strip(),
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     else:
         print("Making predictions...", flush=True)
         # no saved values, make a fresh prediction
-        predictions, angle = makePredictions(
+        predictions, angle = make_predictions(
             resizedImages,
             fileList,
             args.model.strip(),

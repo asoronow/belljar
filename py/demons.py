@@ -1,53 +1,86 @@
 import SimpleITK as sitk
 import numpy as np
 import matplotlib.pyplot as plt
-import nrrd
 from PIL import Image
+from math import pi
 import pickle
 
+def exhaustive_search(fixed, moving):
+    """Uses exhaustive search to find the best transformation"""
 
-def b_spline_registration(fixed, moving):
-    """Register two images using a B-Spline transformation. Returns the displacement field."""
-    # Create a B-Spline transform
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.Cast(moving, sitk.sitkFloat32)
 
-    sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(8)
-
-    transform_domain_mesh_size = [2] * fixed.GetDimension()
-
-    tx = sitk.BSplineTransformInitializer(
-        fixed,
-        transform_domain_mesh_size,
+    initialTx = sitk.CenteredTransformInitializer(
+        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
     )
 
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsJointHistogramMutualInformation()
 
-    # Use GD to optimize the BSpline coefficients.
-    R.SetOptimizerAsGradientDescentLineSearch(
-        5.0,
-        200,
-        convergenceMinimumValue=1e-7,
-        convergenceWindowSize=5,
+    R.SetShrinkFactorsPerLevel([3, 2, 1])
+    R.SetSmoothingSigmasPerLevel([2, 1, 1])
+
+    R.SetMetricAsJointHistogramMutualInformation(20)
+    R.MetricUseFixedImageGradientFilterOff()
+
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=500,
+        estimateLearningRate=R.EachIteration,
     )
+    R.SetOptimizerScalesFromPhysicalShift()
+
+    R.SetInitialTransform(initialTx)
 
     R.SetInterpolator(sitk.sitkLinear)
 
-    # Initialize registration with identity transform
-    R.SetInitialTransformAsBSpline(tx, inPlace=True, scaleFactors=[1, 2, 5])
+    outTx1 = R.Execute(fixed, moving)
 
-    # Shrink levels for faster computation
-    R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[4, 2, 1])
 
-    out = R.Execute(fixed, moving)
+    displacementField = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
+    displacementField.CopyInformation(fixed)
+    displacementTx = sitk.DisplacementFieldTransform(displacementField)
+    del displacementField
+    displacementTx.SetSmoothingGaussianOnUpdate(
+        varianceForUpdateField=0.0, varianceForTotalField=1.5
+    )
 
-    filter = sitk.TransformToDisplacementFieldFilter()
-    filter.SetReferenceImage(fixed)
-    displacement_field = filter.Execute(out)
+    R.SetMovingInitialTransform(outTx1)
+    R.SetInitialTransform(displacementTx, inPlace=True)
 
-    return displacement_field
+    R.SetMetricAsANTSNeighborhoodCorrelation(4)
+    R.MetricUseFixedImageGradientFilterOff()
+
+    R.SetShrinkFactorsPerLevel([3, 2, 1])
+    R.SetSmoothingSigmasPerLevel([2, 1, 1])
+
+    R.SetOptimizerScalesFromPhysicalShift()
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1,
+        numberOfIterations=500,
+        estimateLearningRate=R.EachIteration,
+    )
+
+    R.Execute(fixed, moving)
+
+    compositeTx = sitk.CompositeTransform([outTx1, displacementTx])
+
+    return compositeTx
+
+
+def match_histograms(src, target):
+    '''Match the src histogram to the target using sitk'''
+
+    matcher = sitk.HistogramMatchingImageFilter()
+
+    if src.GetPixelID() in (sitk.sitkUInt8, sitk.sitkInt8):
+        matcher.SetNumberOfHistogramLevels(128)
+    else:
+        matcher.SetNumberOfHistogramLevels(1024)
+
+    matcher.SetNumberOfMatchPoints(10)
+    matcher.ThresholdAtMeanIntensityOn()
+    return matcher.Execute(src, target)
 
 
 def register_to_atlas(tissue, section, label, class_map_path):
@@ -67,32 +100,32 @@ def register_to_atlas(tissue, section, label, class_map_path):
     moving = sitk.GetImageFromArray(scaled_atlas, isVector=False)
     label = sitk.GetImageFromArray(scaled_label, isVector=False)
 
-    matcher = sitk.HistogramMatchingImageFilter()
-    if fixed.GetPixelID() in (sitk.sitkUInt8, sitk.sitkInt8):
-        matcher.SetNumberOfHistogramLevels(128)
-    else:
-        matcher.SetNumberOfHistogramLevels(1024)
-    matcher.SetNumberOfMatchPoints(7)
-    matcher.ThresholdAtMeanIntensityOn()
-    moving = matcher.Execute(moving, fixed)
+    moving = match_histograms(moving, fixed)
+
+    transformation = exhaustive_search(fixed, moving)
+
+    to_displacement_filter = sitk.TransformToDisplacementFieldFilter()
+    to_displacement_filter.SetReferenceImage(fixed)
 
     demons = sitk.FastSymmetricForcesDemonsRegistrationFilter()
-    demons.SetNumberOfIterations(2000)
-    demons.SetSmoothDisplacementField(True)
-    demons.SetStandardDeviations(1.5)
-    displacement_field = demons.Execute(fixed, moving)
+    demons.SetNumberOfIterations(200)
+    demons.SetStandardDeviations(1.0)
+    
+    field = to_displacement_filter.Execute(transformation)
+    field = demons.Execute(fixed, moving, field)
 
-    transformation = sitk.DisplacementFieldTransform(displacement_field)
+    final_tx = sitk.DisplacementFieldTransform(field)
 
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)
     resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-    resampler.SetTransform(transformation)
+    resampler.SetTransform(final_tx)
     resampler.SetOutputPixelType(sitk.sitkUInt32)
     resampler.SetDefaultPixelValue(0)
 
-    resampled_label = resampler.Execute(label)
     resampled_atlas = resampler.Execute(moving)
+    resampled_label = resampler.Execute(label)
+
 
     color_label = np.zeros(
         (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3)
