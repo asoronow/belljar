@@ -234,8 +234,8 @@ if __name__ == "__main__":
             # Adjust the predictions of the unvisted sections
             for i in range(len(fileList)):
                 if not visited[fileList[i]]:
-                    predictions[fileList[i]] = (
-                        predictions[fileList[i - 1]] + averageIncrease
+                    predictions[fileList[i]] = predictions[fileList[i - 1]] + int(
+                        averageIncrease
                     )
 
         return predictions
@@ -251,15 +251,25 @@ if __name__ == "__main__":
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
+
+    if images[0].dtype == np.uint8:
+        contrast_limits = [0, images[0].max()]
+    elif images[0].dtype == np.uint16:
+        contrast_limits = [0, images[0].max()]
+
     sectionLayer = viewer.add_image(
         cv2.resize(images[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])),
         name="section",
+        colormap="cyan",
+        contrast_limits=contrast_limits,
     )
     atlasLayer = viewer.add_image(
-        atlas[:, :, : atlas.shape[2] // selectionModifier], name="atlas", opacity=0.30
+        atlas[:, :, : atlas.shape[2] // selectionModifier],
+        name="atlas",
     )
     # Set the initial slider position
     viewer.dims.set_point(0, predictions[fileList[0]])
+    viewer.grid.enabled = True
     # Track the current section
     currentSection = 0
     isProcessing = False
@@ -272,6 +282,7 @@ if __name__ == "__main__":
         if not currentSection == len(images) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
+
             if separatedCheckbox.isChecked():
                 separated[fileList[currentSection]] = True
             else:
@@ -284,6 +295,7 @@ if __name__ == "__main__":
                 separatedCheckbox.setChecked(True)
             else:
                 separatedCheckbox.setChecked(False)
+
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             sectionLayer.data = cv2.resize(
