@@ -5,6 +5,7 @@ from PIL import Image
 from math import pi
 import pickle
 
+
 def multi_stage_registration(fixed, moving):
     """Uses exhaustive search to find the best transformation"""
 
@@ -20,12 +21,12 @@ def multi_stage_registration(fixed, moving):
     R.SetShrinkFactorsPerLevel([3, 2, 1])
     R.SetSmoothingSigmasPerLevel([2, 1, 1])
 
-    R.SetMetricAsJointHistogramMutualInformation(20)
+    R.SetMetricAsJointHistogramMutualInformation(5)
     R.MetricUseFixedImageGradientFilterOff()
 
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=500,
+        numberOfIterations=250,
         estimateLearningRate=R.EachIteration,
     )
     R.SetOptimizerScalesFromPhysicalShift()
@@ -41,8 +42,12 @@ def multi_stage_registration(fixed, moving):
 
     R.SetInitialTransform(outTx1)
 
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=100,
+        estimateLearningRate=R.EachIteration,
+    )
     outTx2 = R.Execute(fixed, moving)
-
 
     displacementField = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
     displacementField.CopyInformation(fixed)
@@ -67,26 +72,18 @@ def multi_stage_registration(fixed, moving):
 
     # Demons
 
-    R.SetMetricAsDemons()    
-    
-    
-    R.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=200,
-        estimateLearningRate=R.EachIteration,
-    )
-
+    R.SetMetricAsDemons()
+    R.SetMetricSamplingPercentage(0.50)
 
     R.Execute(fixed, moving)
 
     compositeTx = sitk.CompositeTransform([outTx2, displacementTx])
 
-
     return compositeTx
 
 
 def match_histograms(src, target):
-    '''Match the src histogram to the target using sitk'''
+    """Match the src histogram to the target using sitk"""
 
     matcher = sitk.HistogramMatchingImageFilter()
 
@@ -130,7 +127,6 @@ def register_to_atlas(tissue, section, label, class_map_path):
 
     resampled_atlas = resampler.Execute(moving)
     resampled_label = resampler.Execute(label)
-
 
     color_label = np.zeros(
         (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3)

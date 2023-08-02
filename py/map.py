@@ -155,8 +155,8 @@ if __name__ == "__main__":
         and not name.startswith(".")
         and name.endswith(".png")
     ]
+    fileList.sort()
     absolutePaths = [str(inputPath / p) for p in fileList]
-
     # Update the user, next steps are coming
     print(4 + len(absolutePaths), flush=True)
 
@@ -378,18 +378,10 @@ if __name__ == "__main__":
                 (tissue.shape[1], tissue.shape[0]),
                 interpolation=cv2.INTER_NEAREST,
             )
-
-            tissue_contour = get_max_contour(tissue, separated=separated[fileList[i]])
-            atlas_contour = get_max_contour(section)
-
-            transformed_atlas_image, transformed_atlas_labels = get_transformed_image(
-                tissue_contour, atlas_contour, section, label.astype(np.float64)
-            )
-
             warped_labels, warped_atlas, color_label = register_to_atlas(
                 tissue,
-                transformed_atlas_image,
-                transformed_atlas_labels,
+                section,
+                label.astype(np.uint32),
                 args.map.strip(),
             )
 
