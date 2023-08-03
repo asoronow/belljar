@@ -155,7 +155,6 @@ if __name__ == "__main__":
         and not name.startswith(".")
         and name.endswith(".png")
     ]
-    fileList.sort()
     absolutePaths = [str(inputPath / p) for p in fileList]
     # Update the user, next steps are coming
     print(4 + len(absolutePaths), flush=True)
