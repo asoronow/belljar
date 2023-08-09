@@ -188,6 +188,7 @@ if __name__ == "__main__":
             new_sections,
             args.model.strip(),
             args.embeds.strip(),
+            nrrdPath,
             hemisphere=eval(args.whole),
         )
 
@@ -202,6 +203,7 @@ if __name__ == "__main__":
             fileList,
             args.model.strip(),
             args.embeds.strip(),
+            nrrdPath,
             hemisphere=eval(args.whole),
         )
 

@@ -145,9 +145,7 @@ def demons_registration(fixed, moving, current_tx=None):
 
 def match_histograms(src, target):
     """Match the src histogram to the target using sitk"""
-
     matcher = sitk.HistogramMatchingImageFilter()
-
     if src.GetPixelID() in (sitk.sitkUInt8, sitk.sitkInt8):
         matcher.SetNumberOfHistogramLevels(128)
     else:

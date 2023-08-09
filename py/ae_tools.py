@@ -1,22 +1,19 @@
 from re import T
-from venv import create
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset
 from torch.utils import tensorboard
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import minmax_scale
-from scipy.ndimage.interpolation import rotate
-
 from torch import nn
 import cv2
 import os, pickle
 from scipy import spatial
-from scipy import stats
 from datetime import datetime
-
+from demons import match_histograms
+import nrrd
+import SimpleITK as sitk
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -202,7 +199,7 @@ def plot_ae_outputs(encoder, decoder, images, n=10):
     plt.show()
 
 
-def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=True):
+def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, hemisphere=True):
     """Use the encoded sections and atlas embeddings to register brain regions"""
     # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -219,54 +216,29 @@ def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, hemisphere=T
             embeddings[name] = e
 
     # Normalize the dapi images to atlas range
+    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_0.nrrd"))
+    x, y, z = atlas.shape
+    if hemisphere:
+        sample = atlas[800, : , :z//2]
+    else: 
+        sample = atlas[800, : , :]
 
-    def getMaxContour(image):
-        """Returns the largest contour in an image and its bounding points"""
-        # Get the gaussian threshold, otsu method (best automatic results)
-        blur = cv2.GaussianBlur(image, (11, 11), 0)
-        ret, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        # Find the countours in the image, fast method
-        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Contours alone
-        contours = contours[0]
-        # Start with the first in the list compare subsequentW
-        xL, yL, wL, hL = cv2.boundingRect(contours[0])
-        maxC = contours[0]
-        for c in contours[1:]:
-            x, y, w, h = cv2.boundingRect(c)
-            if (w * h) > (wL * hL):
-                maxC = c
-                xL, yL, wL, hL = x, y, w, h
-
-        return maxC, xL, yL, wL, hL
-
-
-    # Correcting rotation helps predictions
-    normalizedImages = []
-    for image in dapiImages:
-        maxC, xL, yL, wL, hL = getMaxContour(image)
-
-        # Now isolate the section using its contour and place it on blank image
-        template = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-        normalImage = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-        cv2.rectangle(template, (xL, yL), (xL + wL, yL + hL), 255, -1)
-        selection = np.where(template == 255)
-
-        if hemisphere:
-            # get the largest x value from selection
-            x = np.max(selection[1])
-            xShift = 511 - x
-        else:
-            xShift = 0
-
-        for i, j in zip(selection[0], selection[1]):
-            normalImage[i, j + xShift] = image[i, j]
-
-        normalizedImages.append(normalImage)
-
+    # convert atlas to sitk
+    sample = sitk.GetImageFromArray(sample)
+    # convert data type
+    sample = sitk.Cast(sample, sitk.sitkUInt8)
+    matched = []
+    for i in range(len(dapiImages)):
+        # convert to sitk
+        dapi = sitk.GetImageFromArray(dapiImages[i])
+        matched_dapi = match_histograms(dapi, sample)
+        # convert back to numpy from sitk
+        matched_dapi = sitk.GetArrayFromImage(matched_dapi)
+        matched.append(matched_dapi)
+  
     # Load the images
     t = transforms.Compose([transforms.ToTensor()])
-    dataset = Nissl(normalizedImages, transform=t, labels=dapiLabels)
+    dataset = Nissl(matched, transform=t, labels=dapiLabels)
 
     # Create a dataloader
     # We use a batch size of 1 to make sure that the images are loaded in memory
