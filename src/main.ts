@@ -12,6 +12,42 @@ const https = require("https");
 
 var appDir = app.getAppPath();
 
+var win: typeof BrowserWindow = null;
+var logWin: typeof BrowserWindow = null;
+
+// override console log
+var log = console.log;
+console.log = function () {
+    var args = Array.from(arguments);
+    let timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    let prefix = `[${timestamp}] `;
+
+    // for every new line, add the prefix again at the start
+    args = args.map((arg: any) => {
+        if (typeof arg === 'string') {
+            // Check if there is any content other than spaces
+            if (arg.trim().length > 0) {
+              return arg.split('\n').map((line: any) => {
+                  if (line.trim().length > 0) {
+                    return prefix + line;
+                  } else {
+                    return line;
+                  }
+              }).join('\n');
+            }
+        } else {
+            return arg;
+        }
+    });
+
+
+    log.apply(console, args);
+    if (logWin) {
+      logWin.webContents.send("log", args.join(" "));
+    }
+}
+
+
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath("home"), ".belljar");
 // Mod is the proper path to the python/pip binary
@@ -25,6 +61,8 @@ const envPythonPath = path.join(envPath, envMod);
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
 const pyScriptsPath = path.join(appDir, "/py");
+
+
 
 // Promise version of file moving
 function move(o: string, t: string) {
@@ -505,10 +543,23 @@ function createWindow() {
   return win;
 }
 
-let win: typeof BrowserWindow = null;
+function createLogWindow() {
+  const logWin = new BrowserWindow({
+    width: 500,
+    height: 250,
+    resizable: true,
+    autoHideMenuBar: true,
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+
+  logWin.loadFile("pages/log.html");
+
+  return logWin;
+}
 
 app.on("ready", () => {
-  const win = createWindow();
+  win = createWindow();
+  logWin = createLogWindow();
   // Uncomment if you want tools on launch
   // win.webContents.toggleDevTools()
   win.on("close", function (e: any) {

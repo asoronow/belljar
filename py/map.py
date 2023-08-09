@@ -331,7 +331,7 @@ if __name__ == "__main__":
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        global currentSection, separatedCheckbox, isProcessing, angle
+        global currentSection, separatedCheckbox, isProcessing, angle, predictions
         if isProcessing:
             return
         print("Warping output...", flush=True)
@@ -390,6 +390,17 @@ if __name__ == "__main__":
             # write label
             cv2.imwrite(
                 str(outputPath / f"Label_{imageName.split('.')[0]}.png"), color_label
+            )  
+
+            # composite the warped labels onto the tissue
+            tissue = cv2.cvtColor(tissue, cv2.COLOR_GRAY2BGR)
+            # convert color_label to 8 bit
+            color_label = (color_label).astype(np.uint8)
+            color_label = cv2.cvtColor(color_label, cv2.COLOR_RGB2BGR)
+            tissue = cv2.addWeighted(tissue, 0.5, color_label, 0.5, 0)
+
+            cv2.imwrite(
+                str(outputPath / f"Composite_{imageName.split('.')[0]}.png"), tissue
             )
 
             with open(

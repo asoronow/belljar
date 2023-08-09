@@ -1,86 +1,147 @@
 import SimpleITK as sitk
 import numpy as np
-import matplotlib.pyplot as plt
 from PIL import Image
-from math import pi
 import pickle
+# Check number of cores available
+import multiprocessing
+# Set sitk to use cores - 2
+sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() - 2)
+
+def log_progress(registration_method):
+    print(f'Level: {registration_method.GetCurrentLevel()}', flush=True)
+    print(f'Metric value: {registration_method.GetMetricValue()}', flush=True)
+    print(f'Learning rate: {registration_method.GetOptimizerLearningRate()}', flush=True)
 
 
-def multi_stage_registration(fixed, moving):
-    """Uses exhaustive search to find the best transformation"""
+def mean_squares_registration(fixed, moving, current_tx=None):
+    '''Performs mean squares registration between two images, captures size dynamics well for initial registration'''
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+
+    if current_tx is None:
+        initial_tx = sitk.CenteredTransformInitializer(
+            fixed, moving, sitk.AffineTransform(fixed.GetDimension())
+        )
+    else:
+        initial_tx = current_tx
+
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetMetricAsMeanSquares()
+    registration_method.SetInitialTransform(initial_tx, inPlace=True)
+    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
+    
+    registration_method.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=500,
+        estimateLearningRate=registration_method.EachIteration,
+    )
+
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+    #  registration_method.AddCommand(sitk.sitkIterationEvent, lambda: log_progress(registration_method))
+
+    final_tx = registration_method.Execute(fixed, moving)
+
+    return final_tx
+
+def mutual_information_registration(fixed, moving, current_tx=None):
+    '''Sequentially performs JMHI registration, captures shape dynamics well for final registration'''
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+    if current_tx is None:
+        initial_tx = sitk.CenteredTransformInitializer(
+            fixed, moving, sitk.AffineTransform(fixed.GetDimension())
+        )
+    else:
+        initial_tx = current_tx
+
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetMetricAsJointHistogramMutualInformation()
+    registration_method.SetInitialTransform(initial_tx, inPlace=True)
+    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
+
+    registration_method.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=500,
+        estimateLearningRate=registration_method.EachIteration,
+    )
+
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+    # registration_method.AddCommand(sitk.sitkIterationEvent, lambda: log_progress(registration_method))
+
+    final_tx = registration_method.Execute(fixed, moving)
+
+    return final_tx
+
+def ants_registration(fixed, moving, current_tx=None):
+    ''' 
+    Performs ANTS registration between two images, captures size dynamics well for initial registration
+
+    Intialzed as a displacement field transform, uses the following parameters
+    '''
 
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.Cast(moving, sitk.sitkFloat32)
 
-    initialTx = sitk.CenteredTransformInitializer(
-        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
-    )
+    if current_tx is None:
+        displacement_field = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
+        displacement_field.CopyInformation(fixed)
+        initial_tx = sitk.DisplacementFieldTransform(displacement_field)
+        del displacement_field
+        initial_tx.SetSmoothingGaussianOnUpdate(
+            varianceForUpdateField=0.0, varianceForTotalField=1.5
+        )
+    else:
+        # convert current transform to displacement field
+        field_filter = sitk.TransformToDisplacementFieldFilter()
+        field_filter.SetReferenceImage(fixed)
+        curr_field = field_filter.Execute(current_tx)
+        initial_tx = sitk.DisplacementFieldTransform(curr_field)
 
-    R = sitk.ImageRegistrationMethod()
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetInitialTransform(initial_tx, inPlace=True)
+    registration_method.SetMetricAsANTSNeighborhoodCorrelation(5)
+    
+    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
 
-    R.SetShrinkFactorsPerLevel([3, 2, 1])
-    R.SetSmoothingSigmasPerLevel([2, 1, 1])
-
-    R.SetMetricAsJointHistogramMutualInformation(5)
-    R.MetricUseFixedImageGradientFilterOff()
-
-    R.SetOptimizerAsGradientDescent(
+    registration_method.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=250,
-        estimateLearningRate=R.EachIteration,
-    )
-    R.SetOptimizerScalesFromPhysicalShift()
-
-    R.SetInitialTransform(initialTx)
-
-    R.SetInterpolator(sitk.sitkLinear)
-
-    outTx1 = R.Execute(fixed, moving)
-
-    # Mean Squares
-    R.SetMetricAsMeanSquares()
-
-    R.SetInitialTransform(outTx1)
-
-    R.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=100,
-        estimateLearningRate=R.EachIteration,
-    )
-    outTx2 = R.Execute(fixed, moving)
-
-    displacementField = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
-    displacementField.CopyInformation(fixed)
-    displacementTx = sitk.DisplacementFieldTransform(displacementField)
-    del displacementField
-    displacementTx.SetSmoothingGaussianOnUpdate(
-        varianceForUpdateField=0.0, varianceForTotalField=1.5
+        numberOfIterations=1500,
+        estimateLearningRate=registration_method.EachIteration,
     )
 
-    R.SetMovingInitialTransform(outTx2)
-    R.SetInitialTransform(displacementTx, inPlace=True)
+    registration_method.SetOptimizerScalesFromPhysicalShift()
 
-    R.SetMetricAsANTSNeighborhoodCorrelation(4)
-    R.MetricUseFixedImageGradientFilterOff()
+    registration_method.Execute(fixed, moving)
 
-    R.SetShrinkFactorsPerLevel([3, 2, 1])
-    R.SetSmoothingSigmasPerLevel([2, 1, 1])
+    return initial_tx
 
-    R.SetOptimizerScalesFromPhysicalShift()
+def demons_registration(fixed, moving, current_tx=None):
+    '''Performs demons registration between two images, captures shape dynamics well for final registration'''
 
-    R.Execute(fixed, moving)
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
 
-    # Demons
+    demons = sitk.FastSymmetricForcesDemonsRegistrationFilter()
 
-    R.SetMetricAsDemons()
-    R.SetMetricSamplingPercentage(0.50)
+    demons.SetNumberOfIterations(250)
+    demons.SetSmoothDisplacementField(True)
+    demons.SetStandardDeviations(1.5)
 
-    R.Execute(fixed, moving)
+    if current_tx is None:
+        final_field = demons.Execute(fixed, moving)
+    else:
+        # convert current transform to displacement field
+        field_filter = sitk.TransformToDisplacementFieldFilter()
+        field_filter.SetReferenceImage(fixed)
+        curr_field = field_filter.Execute(current_tx)
+        final_field = demons.Execute(fixed, moving, curr_field)
+    # convert deformation field to displacement field
+    tx = sitk.DisplacementFieldTransform(final_field)
 
-    compositeTx = sitk.CompositeTransform([outTx2, displacementTx])
-
-    return compositeTx
-
+    return tx
 
 def match_histograms(src, target):
     """Match the src histogram to the target using sitk"""
@@ -116,12 +177,15 @@ def register_to_atlas(tissue, section, label, class_map_path):
 
     moving = match_histograms(moving, fixed)
 
-    transformation = multi_stage_registration(fixed, moving)
+    tx_initial = mean_squares_registration(fixed, moving)
+    tx_middle = mutual_information_registration(fixed, moving, tx_initial)
+    tx_final = ants_registration(fixed, moving, tx_middle)
+    tx_demons = demons_registration(fixed, moving, tx_final)
 
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)
     resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-    resampler.SetTransform(transformation)
+    resampler.SetTransform(tx_demons)
     resampler.SetOutputPixelType(sitk.sitkUInt32)
     resampler.SetDefaultPixelValue(0)
 

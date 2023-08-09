@@ -20,6 +20,38 @@ const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
 var appDir = app.getAppPath();
+var win = null;
+var logWin = null;
+// override console log
+var log = console.log;
+console.log = function () {
+    var args = Array.from(arguments);
+    let timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    let prefix = `[${timestamp}] `;
+    // for every new line, add the prefix again at the start
+    args = args.map((arg) => {
+        if (typeof arg === 'string') {
+            // Check if there is any content other than spaces
+            if (arg.trim().length > 0) {
+                return arg.split('\n').map((line) => {
+                    if (line.trim().length > 0) {
+                        return prefix + line;
+                    }
+                    else {
+                        return line;
+                    }
+                }).join('\n');
+            }
+        }
+        else {
+            return arg;
+        }
+    });
+    log.apply(console, args);
+    if (logWin) {
+        logWin.webContents.send("log", args.join(" "));
+    }
+};
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath("home"), ".belljar");
 // Mod is the proper path to the python/pip binary
@@ -414,9 +446,20 @@ function createWindow() {
     win.loadFile("pages/loading.html");
     return win;
 }
-let win = null;
+function createLogWindow() {
+    const logWin = new BrowserWindow({
+        width: 500,
+        height: 250,
+        resizable: true,
+        autoHideMenuBar: true,
+        webPreferences: { nodeIntegration: true, contextIsolation: false },
+    });
+    logWin.loadFile("pages/log.html");
+    return logWin;
+}
 app.on("ready", () => {
-    const win = createWindow();
+    win = createWindow();
+    logWin = createLogWindow();
     // Uncomment if you want tools on launch
     // win.webContents.toggleDevTools()
     win.on("close", function (e) {
