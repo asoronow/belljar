@@ -1,19 +1,18 @@
-from re import T
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
-from torch.utils import tensorboard
-from sklearn.model_selection import train_test_split
 from torch import nn
 import cv2
 import os, pickle
 from scipy import spatial
-from datetime import datetime
 from demons import match_histograms
 import nrrd
 import SimpleITK as sitk
+from pathlib import Path
+from scipy.ndimage import rotate
+import time
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -216,13 +215,10 @@ def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, he
             embeddings[name] = e
 
     # Normalize the dapi images to atlas range
-    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_0.nrrd"))
+    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C")
     x, y, z = atlas.shape
-    if hemisphere:
-        sample = atlas[800, : , :z//2]
-    else: 
-        sample = atlas[800, : , :]
 
+    sample = atlas[800, : , :]
     # convert atlas to sitk
     sample = sitk.GetImageFromArray(sample)
     # convert data type
@@ -239,7 +235,6 @@ def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, he
     # Load the images
     t = transforms.Compose([transforms.ToTensor()])
     dataset = Nissl(matched, transform=t, labels=dapiLabels)
-
     # Create a dataloader
     # We use a batch size of 1 to make sure that the images are loaded in memory
     # This is necessary for the dataloader to work properly on single GPUs
@@ -300,110 +295,6 @@ def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, he
     return best, idealAngle
 
 
-def runTraining(nrrdPath):
-    """Loads the models and executes training in dataparallel fashion, not recommended to run the training on a single gpu"""
-    # Get device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Load models
-    encoder = Encoder()
-    decoder = Decoder()
-
-    encoder = nn.DataParallel(encoder)
-    decoder = nn.DataParallel(decoder)
-
-    encoder.to(device)
-    decoder.to(device)
-
-    # Setup params
-    paramsToOptimize = [
-        {"params": encoder.parameters()},
-        {"params": decoder.parameters()},
-    ]
-    # Optimizer and Loss
-    optimizer = torch.optim.Adam(paramsToOptimize, lr=1e-3)
-    loss_fn = torch.nn.MSELoss()
-    # Transformations on images
-    t = transforms.Compose([transforms.ToTensor()])
-
-    fileList = os.listdir(nrrdPath)  # path to flat pngs
-    absolutePaths = [nrrdPath + p for p in fileList]
-    # Load all the images into memory
-    allSlices = [
-        cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY)
-        for p in absolutePaths[: int(len(absolutePaths) * 0.01)]
-    ]  # [:int(len(absolutePaths)*0.05)]
-    # Split this up into t and v
-    trainingAtlasImages, validationAtlasImages = train_test_split(
-        allSlices, test_size=0.2
-    )
-
-    trainingDataset, validationDataset = Nissl(trainingAtlasImages, transform=t), Nissl(
-        validationAtlasImages, transform=t
-    )
-    # Now construct data loaders for batch training
-    trainingLoader, validationLoader = DataLoader(
-        trainingDataset, batch_size=4, shuffle=True
-    ), DataLoader(validationDataset, batch_size=4, shuffle=True)
-
-    # Initializing in a separate cell so we can easily add more epochs to the same run
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    writer = tensorboard.SummaryWriter("runs/fashion_trainer_{}".format(timestamp))
-    epoch_number = 0
-
-    EPOCHS = 900
-
-    best_vloss = float("inf")
-
-    for epoch in range(EPOCHS):
-        print("EPOCH {}:".format(epoch_number + 1))
-
-        # Make sure gradient tracking is on, and do a pass over the data
-        encoder.train()
-        decoder.train()
-        avg_loss = trainEpoch(
-            epoch_number,
-            writer,
-            trainingLoader,
-            optimizer,
-            device,
-            encoder,
-            decoder,
-            loss_fn,
-        )
-        # We don't need gradients on to do reporting
-        encoder.eval()
-        decoder.eval()
-        running_vloss = 0.0
-        with torch.no_grad():
-            for i, vdata in enumerate(validationLoader):
-                vinputs = vdata.to(device)
-                encoded = encoder(vinputs)
-                decoded = decoder(encoded)
-                vloss = loss_fn(decoded, vinputs)
-                running_vloss += vloss
-
-        avg_vloss = running_vloss / (i + 1)
-        print("LOSS train {} valid {}".format(avg_loss, avg_vloss))
-
-        # Log the running loss averaged per batch
-        # for both training and validation
-        writer.add_scalars(
-            "Training vs. Validation Loss",
-            {"Training": avg_loss, "Validation": avg_vloss},
-            epoch_number + 1,
-        )
-        writer.flush()
-
-        # Track best performance, and save the model's state
-        if avg_vloss < best_vloss:
-            # plot_ae_outputs(encoder, decoder)
-            best_vloss = avg_vloss
-            model_path = "../models/predictor_full"
-            torch.save(encoder.state_dict(), model_path + "_encoder.pt")
-            torch.save(decoder.state_dict(), model_path + "_decoder.pt")
-
-        epoch_number += 1
-
 
 def createEmbeddings(pngFolder, embeddingFileName, modelPath):
     """
@@ -432,21 +323,14 @@ def createEmbeddings(pngFolder, embeddingFileName, modelPath):
     with open(embeddingFileName, "wb") as f:
         pickle.dump(embeddings, f)
 
-
-if __name__ == "__main__":
-    # TODO: Implement argparse for use with electron
-    # PNG locations, change these for running fresh training
-    # Training pngs can be generated with the sliceAtlas.py file
-    # DAPI images should be at least 200 images, otherwise the model will not do well on DAPI sections
-    # nrrdPath = "C:/Users/Alec/.belljar/nrrd/png/"
-    # runTraining(nrrdPath)
-    createEmbeddings(
-        "C:/Users/Alec/.belljar/nrrd/png_hemisphere/",
-        "hemisphere_embeddings.pkl",
-        "../models/predictor_encoder.pt",
-    )
-    createEmbeddings(
-        "C:/Users/Alec/.belljar/nrrd/png/",
-        "whole_embeddings.pkl",
-        "../models/predictor_full_encoder.pt",
-    )
+def rotate_atlas(atlas, angle_deg):
+    '''
+    Uses scipy to quickly rotate the atlas volume to simulate a cut at a specific angle
+    
+    Parameters:
+        atlas (np.ndarray): the atlas volume
+        angle_deg (float): the angle to cut the atlas at
+    Returns:
+        np.ndarray: the rotated atlas volume
+    '''
+    return rotate(atlas, angle_deg, axes=(0, 1), order=0, reshape=False)

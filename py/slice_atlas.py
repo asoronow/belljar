@@ -1,12 +1,12 @@
+from pathlib import Path
 import nrrd
 import csv
 import numpy as np
 import pickle, os
-import tifffile
+import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
 from scipy.ndimage import interpolation
-import nibabel as nib
 
 # Path to nrrd
 nrrdPath = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
@@ -72,25 +72,6 @@ def makeAtlasMap():
             pickle.dump(classMap, f, pickle.HIGHEST_PROTOCOL)
 
 
-def buildRotatedAtlases(nisslPath, annotationPath, outputPath):
-    """Constructions the rotated (z-x) atlases for the most common cutting angles"""
-    nData, nHead = nrrd.read(nisslPath)
-    aData, aHead = nrrd.read(annotationPath)
-
-    for r in range(-10, 11, 1):
-        print(f"Rotating atlas to angle {0}", flush=True)
-        nissl_rotatedX = interpolation.rotate(
-            nData[:, :, :], angle=r, axes=(0, 2), order=0
-        )
-        annotation_rotatedX = interpolation.rotate(
-            aData[:, :, :], angle=r, axes=(0, 2), order=0
-        )
-        nrrd.write(str(outputPath) + f"/r_nissl_{r}.nrrd", nissl_rotatedX, nHead)
-        nrrd.write(
-            str(outputPath) + f"/r_annotation_{r}.nrrd", annotation_rotatedX, aHead
-        )
-
-
 def createTrainingSet():
     """Make the set of all pngs to train the autoencoder"""
     for r in range(-10, 11, 1):
@@ -138,145 +119,76 @@ def createTrainingSet():
             imageW.save(writePathW)
 
 
-def createDAPITrainingSet(atlasPath, labelPath):
-    dapiAtlas = nib.load(atlasPath)
-    dapiAtlas = dapiAtlas.get_fdata()
-    dapiLabels = nib.load(labelPath)
-    dapiLabels = dapiLabels.get_fdata()
-    # print header
-    x, z, y = dapiLabels.shape
-    for section in range(z):
-        image = Image.fromarray((dapiAtlas[:, section, :] * 30) + 13.21)
-        image = image.convert("L")
-        image = image.resize((256, 256), Image.Resampling.NEAREST)
-        image = image.rotate(90)
-        image.save(
-            f"C:\\Users\\Alec\\Projects\\dapi-atlas\\image\\whole\\{section}.png"
-        )
+def make_cerebrum_atlas():
+    '''Using the atlas and annotations create a new atlas that only has cerebrum regions.'''
+    # Load the class map
+    classMap = {}
+    with open(Path(r"C:\Users\imageprocessing\Documents\belljar\csv\class_map.pkl"), "rb") as f:
+        classMap = pickle.load(f)
+        # add cerebral cortex
 
-        labels = dapiLabels[:, section, :]
-        labels = labels.astype(np.int32)
-        image = Image.fromarray(labels)
-        image = image.resize((256, 256), Image.Resampling.NEAREST)
-        image = image.rotate(90)
-        image.save(f"C:\\Users\\Alec\\Projects\\dapi-atlas\\map\\whole\\{section}.tif")
+    # Load the atlas
+    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10.nrrd"))
+    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10.nrrd"))
 
+    # Get the unique labels
+    z, y, x = annotation.shape
+    
+    new_atlas = np.zeros((z, y, x//2))
+    new_annotation = np.zeros((z, y, x//2)).astype(np.uint32)
+    for i in range(z):
+        label = annotation[i, :, :x//2]
+        section = atlas[i, :, :x//2]
 
-def createAdjacencyMatrix():
-    r = 0
-    data, _ = nrrd.read(nrrdPath + f"/r_annotation_{r}.nrrd")
-    z, x, y = data.shape
-    matrix = np.zeros((1328, 1328))
-    with open("mappickle.pkl", "rb") as p:
-        classMap = pickle.load(p)
-        classMap["997"] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}
-        classMap["0"] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
+        # Convert section to 8 bit from float 32
+        section = cv2.normalize(section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
-    for slice in range(0, z, 1):
-        section = data[slice, :, :]
-        print("\nProcessing slice " + str(slice), flush=True)
-        # for each pixel check its adjacent pixels
-        for i in range(1, x - 1):
-            for j in range(1, y - 1):
-                # if the pixel is not background
-                if section[i, j] != 0:
-                    # check the adjacent pixels
-                    for k in range(-1, 2):
-                        for l in range(-1, 2):
-                            # add an edge between the two
-                            matrix[
-                                int(classMap[str(section[i, j])]["index"]),
-                                int(classMap[str(section[i + k, j + l])]["index"]),
-                            ] = 1
+        out_section = np.zeros((section.shape[0], section.shape[1])).astype(np.uint8)
+        out_label = np.zeros((label.shape[0], label.shape[1])).astype(np.uint32)
 
-    with open("adjacency.pkl", "wb") as p:
-        pickle.dump(matrix, p)
+        out_label = label
+        out_section = section
 
+        # for k in range(label.shape[0]):
+        #     for j in range(label.shape[1]):
+        #         id_path = classMap[label[k, j]]["id_path"].split("/")
+        #         # parents = ["567", "776", "896", "768", "484682512"]
+        #         parents = ["343", "512", "73", "967", "960", "784","1000", "824"]
+        #         for parent in parents:
+        #             if parent in id_path:
+        #                 out_section[k, j] = section[k, j]
+        #                 out_label[k, j] = label[k, j]
+        #                 break
+        # cv2.imshow("section", out_section)
+        # cv2.waitKey(1)
+        new_atlas[i, :, :] = out_section
+        new_annotation[i, :, :] = out_label
+
+    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd", new_atlas, index_order="C", compression_level=1)
+    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd", new_annotation, index_order="C", compression_level=1)
 
 if __name__ == "__main__":
-    with open("C:\\Users\\Alec\\Projects\\aba-nrrd\\raw\\classMap.pkl", "rb") as p:
-        classMap = pickle.load(p)
-        for file in os.listdir("C:\\Users\\Alec\\Downloads\\M511-Alignment"):
-            if file.endswith(".pkl"):
-                # reisze to 256x256
-                annotation = pickle.load(
-                    open("C:\\Users\\Alec\\Downloads\\M511-Alignment\\" + file, "rb")
-                )
-                annotation = annotation.astype(np.uint32)
-                annotation = Image.fromarray(annotation)
-                annotation = annotation.resize((256, 256), Image.NEAREST)
-                annotation = np.array(annotation)
-                tifffile.imsave(
-                    "C:\\Users\\Alec\\Downloads\\M511-Alignment\\" + file[:-4] + ".tif",
-                    annotation,
-                )
-                blank = np.zeros((annotation.shape[0], annotation.shape[1], 3))
-                # add color to blank
-                print("Processing " + file)
-                for i in range(0, blank.shape[0]):
-                    for j in range(0, blank.shape[1]):
-                        if annotation[i, j] != 0:
-                            try:
-                                blank[i, j] = classMap[np.int32(annotation[i, j])][
-                                    "color"
-                                ]
-                            except:
-                                print("Missing color for " + str(annotation[i, j]))
+    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C")
+    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C")
 
-                blank = blank.astype(np.uint8)
-                blank = Image.fromarray(blank)
-                blank = blank.resize((256, 256), Image.NEAREST)
-                blank.save(
-                    "C:\\Users\\Alec\\Downloads\\M511-Alignment\\color\\"
-                    + file[:-4]
-                    + ".png"
-                )
+    left_label = annotation[800, :, :]
+    left_section = atlas[800, :, :]
 
-    # usedColors = []
+    right_label = annotation[800, :, ::-1]
+    right_section = atlas[800, :, ::-1]
 
-    # def getColor():
-    #     color = np.random.randint(0, 255, (3)).tolist()
-    #     while color in usedColors:
-    #         color = np.random.randint(0, 255, (3)).tolist()
+    # normalize
+    left_section = cv2.normalize(left_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+    right_section = cv2.normalize(right_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
-    #     usedColors.append(color)
-    #     return color
+    section = np.zeros((left_section.shape[0], left_section.shape[1] * 2), dtype=np.uint8)
+    section[:, : left_section.shape[1]] = left_section
+    section[:, left_section.shape[1] :] = right_section
 
-    # with open("../csv/structure_tree_safe_2017.csv", "r") as f:
-    #     reader = csv.reader(f, delimiter=",")
-    #     header = next(reader)
-    #     itemid = header.index("id")
-    #     id_path = header.index("structure_id_path")
-    #     acronym_idx = header.index("acronym")
-    #     itemname = header.index("name")
+    label = np.zeros((left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32)
+    label[:, : left_label.shape[1]] = left_label
+    label[:, left_label.shape[1] :] = right_label
 
-    #     classMap = {}
-    #     classMap["997"] = {
-    #         "name": "Root",
-    #         "acronym": "root",
-    #         "parent_id": "997",
-    #         "color": [0, 0, 0],
-    #     }
-    #     classMap["0"] = {
-    #         "name": "Background",
-    #         "acronym": "bkg",
-    #         "parent_id": "0",
-    #         "color": [0, 0, 0],
-    #     }
-    #     for index, row in enumerate(reader):
-    #         unique_id = row[itemid]
-    #         name = row[itemname]
-    #         path = row[id_path]
-    #         acronym = row[acronym_idx]
-    #         parent_ids = path.split("/")[1:-1]  # Extract the parent IDs from the path
-    #         if len(parent_ids) > 1:
-    #             parent = parent_ids[-2]
-    #         else:
-    #             parent = "997"
-    #         if unique_id not in classMap.keys():
-    #             classMap[unique_id] = {
-    #                 "name": name,
-    #                 "color": getColor(),
-    #                 "acronym": acronym,
-    #                 "parent_id": parent,
-    #             }
+    cv2.imshow("section", section)
+    cv2.waitKey(0)
+

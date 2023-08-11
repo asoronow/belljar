@@ -3,15 +3,15 @@ import numpy as np
 import cv2
 import pickle
 from pathlib import Path
-from demons import register_to_atlas
+from demons import register_to_atlas, match_histograms
 from ae_tools import make_predictions
 import nrrd
+import SimpleITK as sitk
 import csv
 import napari
 import argparse
-import SimpleITK as sitk
-from scipy.spatial import distance as dist
-from qtpy.QtWidgets import QPushButton, QProgressBar, QCheckBox
+from skimage.metrics import structural_similarity as ssim
+from qtpy.QtWidgets import QPushButton, QProgressBar, QLabel, QCheckBox
 from qtpy.QtCore import Qt
 
 
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     nrrdPath = Path(args.nrrd.strip())
 
     # Set if we are using whole or half the brain
-    selectionModifier = 2 if not eval(args.whole) else 1
+    is_whole = eval(args.whole)
 
     # Setup path objects
     inputPath = Path(args.input.strip())
@@ -206,12 +206,6 @@ if __name__ == "__main__":
             nrrdPath,
             hemisphere=eval(args.whole),
         )
-
-    # Create a dict to track which sections are seperated
-    separated = {}
-    for f in fileList:
-        separated[f] = False
-
     # Create a dict to track which sections have been visted
     visited = {}
     for f in fileList:
@@ -243,10 +237,10 @@ if __name__ == "__main__":
 
     # Load the appropriate atlas
     # Override the angle if needed
-    angle = int(args.angle.strip()) if not int(args.angle.strip()) == 99 else angle
-    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"r_nissl_{angle}.nrrd"))
+    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C")
     annotation, annotationHeader = nrrd.read(
-        str(nrrdPath / f"r_annotation_{angle}.nrrd")
+        str(nrrdPath / f"annotation_10_all.nrrd"),
+        index_order="C",
     )
     print("Awaiting fine tuning...", flush=True)
     # Setup the viewer
@@ -258,82 +252,107 @@ if __name__ == "__main__":
     elif images[0].dtype == np.uint16:
         contrast_limits = [0, images[0].max()]
 
-    sectionLayer = viewer.add_image(
-        cv2.resize(images[0], (atlas.shape[2] // selectionModifier, atlas.shape[1])),
-        name="section",
-        colormap="cyan",
-        contrast_limits=contrast_limits,
-    )
-    atlasLayer = viewer.add_image(
-        atlas[:, :, : atlas.shape[2] // selectionModifier],
-        name="atlas",
-    )
+
+
+    if is_whole:
+        left_atlas = atlas.copy()
+        right_atlas = atlas.copy()[:, :, ::-1]
+        # expand the dim of the right atlas
+        # swap the 1st and 0th axis
+
+        right_atlas_layer = viewer.add_image(
+            right_atlas,
+            name="right atlas",
+        )
+        left_atlas_layer = viewer.add_image(
+            left_atlas,
+            name="left atlas",
+        )
+        sectionLayer = viewer.add_image(
+            cv2.resize(images[0], (atlas.shape[2], atlas.shape[1])),
+            name="section",
+            colormap="cyan",
+            contrast_limits=contrast_limits,
+        )
+
+        # set grid witdth to 3
+        viewer.grid.shape = (2, 3)
+
+
+    else:
+        atlasLayer = viewer.add_image(
+            atlas,
+            name="atlas",
+        )
+
+        sectionLayer = viewer.add_image(
+            cv2.resize(images[0], (atlas.shape[2], atlas.shape[1])),
+            name="section",
+            colormap="cyan",
+            contrast_limits=contrast_limits,
+        )
+
     # Set the initial slider position
-    viewer.dims.set_point(0, predictions[fileList[0]])
-    viewer.grid.enabled = True
+    if is_whole:
+        viewer.dims.set_point(1, predictions[fileList[0]])
+        viewer.dims.set_point(0, predictions[fileList[0]])    
+
+    else:
+        viewer.dims.set_point(0, predictions[fileList[0]])    
+
     # Track the current section
     currentSection = 0
     isProcessing = False
+    viewer.grid.enabled = True
+
     # Setup  the napari contorls
     # Button callbacks
 
     def nextSection():
         """Move one section forward by crawling file paths"""
-        global currentSection, progressBar, separatedCheckbox
+        global currentSection, progressBar
         if not currentSection == len(images) - 1:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
 
-            if separatedCheckbox.isChecked():
-                separated[fileList[currentSection]] = True
-            else:
-                separated[fileList[currentSection]] = False
-
             if not did_load_alignment:
                 adjustPredictions(predictions, visited, fileList)
-            currentSection += 1
-            if separated[fileList[currentSection]]:
-                separatedCheckbox.setChecked(True)
-            else:
-                separatedCheckbox.setChecked(False)
 
+            currentSection += 1
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
+
             sectionLayer.data = cv2.resize(
                 images[currentSection],
-                (atlas.shape[2] // selectionModifier, atlas.shape[1]),
+                (atlas.shape[2], atlas.shape[1]),
             )
-            viewer.dims.set_point(0, predictions[fileList[currentSection]])
+
+            viewer.dims.set_point(1, predictions[fileList[currentSection]])
 
     def prevSection():
         """Move one section backward by crawling file paths"""
-        global currentSection, progressBar, separatedCheckbox
+        global currentSection, progressBar
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
-            if separatedCheckbox.isChecked():
-                separated[fileList[currentSection]] = True
-            else:
-                separated[fileList[currentSection]] = False
+ 
             if not did_load_alignment:
                 adjustPredictions(predictions, visited, fileList)
+
             currentSection -= 1
-            if separated[fileList[currentSection]]:
-                separatedCheckbox.setChecked(True)
-            else:
-                separatedCheckbox.setChecked(False)
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
             progressBar.setValue(currentSection + 1)
             progressBar.setValue(currentSection)
+
             sectionLayer.data = cv2.resize(
                 images[currentSection],
-                (atlas.shape[2] // selectionModifier, atlas.shape[1]),
+                (atlas.shape[2], atlas.shape[1]),
             )
-            viewer.dims.set_point(0, predictions[fileList[currentSection]])
+            viewer.dims.set_point(1, predictions[fileList[currentSection]])
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        global currentSection, separatedCheckbox, isProcessing, angle, predictions
+        global currentSection, isProcessing, angle, predictions
         if isProcessing:
             return
         print("Warping output...", flush=True)
@@ -341,10 +360,6 @@ if __name__ == "__main__":
 
         # Get the final section details wherever we stopped
         predictions[fileList[currentSection]] = viewer.dims.current_step[0]
-        if separatedCheckbox.isChecked():
-            separated[fileList[currentSection]] = True
-        else:
-            separated[fileList[currentSection]] = False
 
         # Save the seleceted sections
         save_alignment(list(predictions.values()), fileList, angle, args.input)
@@ -353,22 +368,23 @@ if __name__ == "__main__":
         for i in range(len(images)):
             imageName = fileList[i]
             print(f"Warping {imageName}...", flush=True)
-            if selectionModifier == 2:
-                x_val = annotation.shape[2] // 2
-                pre_label = annotation[int(predictions[imageName]), :, :x_val]
-                pre_section = atlas[int(predictions[imageName]), :, :x_val]
+            if is_whole:
+                left_label = annotation[int(predictions[imageName]), :, :]
+                left_section = atlas[int(predictions[imageName]), :, :]
 
-                label = np.zeros((pre_label.shape[0], x_val), dtype=np.uint32)
-                label[:, : pre_label.shape[1] - 50] = pre_label[:, 50:x_val]
+                right_label = annotation[int(predictions[imageName]), :, ::-1]
+                right_section = atlas[int(predictions[imageName]), :, ::-1]
 
-                section = np.zeros((pre_section.shape[0], x_val))
-                section[:, : pre_section.shape[1] - 50] = pre_section[:, 50:x_val]
+                section = np.zeros((left_section.shape[0], left_section.shape[1] * 2))
+                section[:, : left_section.shape[1]] = left_section
+                section[:, left_section.shape[1] :] = right_section
 
+                label = np.zeros((left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32)
+                label[:, : left_label.shape[1]] = left_label
+                label[:, left_label.shape[1] :] = right_label
             else:
-                x_val = annotation.shape[2]
-                label = annotation[int(predictions[imageName]), :, :x_val]
-
-                section = atlas[int(predictions[imageName]), :, :x_val]
+                label = annotation[int(predictions[imageName]), :, :]
+                section = atlas[int(predictions[imageName]), :, :]
 
             tissue = images[i]
 
@@ -446,12 +462,68 @@ if __name__ == "__main__":
 
         print("Done!", flush=True)
 
+    # update on viewer dims
+    @viewer.dims.events.current_step.connect
+    def predict_alignment_accuracy():
+        '''Uses SSIM to get a metric of alignment accuracy in realtime'''
+        global currentSection
+        if isProcessing:
+            return
+        # Get the current section
+        # Get the current image
+        section_image = images[currentSection]
+        atlas_pos = viewer.dims.current_step[0]
+
+        if is_whole:
+            left_atlas = atlas[atlas_pos, :, :]
+            right_atlas = atlas[atlas_pos, :, ::-1]
+
+            atlas_image = np.zeros((left_atlas.shape[0], left_atlas.shape[1] * 2))
+            atlas_image[:, : left_atlas.shape[1]] = left_atlas
+            atlas_image[:, left_atlas.shape[1] :] = right_atlas
+        else:
+            atlas_image = atlas[atlas_pos, :, :]
+        
+        atlas_image = cv2.normalize(atlas_image, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        atlas_image = cv2.resize(atlas_image, (section_image.shape[1], section_image.shape[0]))
+
+        # histograms
+        section_image = sitk.GetImageFromArray(section_image)
+        atlas_image = sitk.GetImageFromArray(atlas_image)
+
+        atlas_image = match_histograms(atlas_image, section_image)
+
+        atlas_image = sitk.GetArrayFromImage(atlas_image)
+        section_image = sitk.GetArrayFromImage(section_image)
+
+        # Get percent similarity
+        result = ssim(section_image, atlas_image)
+        
+        # Update the label
+        acc_label.setText(f"Structural Similarity: {100*result:.2f}%")
+        # Make the label red if the accuracy is below 80%
+        if result < 0.25:
+            acc_label.setStyleSheet("font: 12px; color: red")
+        elif result < 0.5:
+            acc_label.setStyleSheet("font: 12px; color: yellow")
+        else:
+            acc_label.setStyleSheet("font: 12px; color: green")
+
+    def link_hemispheres():
+        '''Link/Unlink hemispheres during whole brain alignment'''
+        pass
+    
+    # Labels
+    acc_label = QLabel("Alignment Accuracy: ")
+    acc_label.setAlignment(Qt.AlignLeft)
+    acc_label.setStyleSheet("font: 12px;")
+
+
     # Button objects
     nextButton = QPushButton("Next Section")
     backButton = QPushButton("Previous Section")
     doneButton = QPushButton("Done")
-    # Add checkbox for seperated
-    separatedCheckbox = QCheckBox("Seperated?")
+
     progressBar = QProgressBar(minimum=1, maximum=len(images))
     progressBar.setFormat(f"1/{len(images)}")
     progressBar.setValue(1)
@@ -460,10 +532,24 @@ if __name__ == "__main__":
     nextButton.clicked.connect(nextSection)
     backButton.clicked.connect(prevSection)
     doneButton.clicked.connect(finishAlignment)
+
+    widgets = [progressBar, nextButton, backButton, doneButton]
+    if is_whole:
+        # Link left and right hemispheres
+        is_linked = QCheckBox("Link Hemispheres")
+        is_linked.setChecked(True)
+        is_linked.stateChanged.connect(link_hemispheres)
+        widgets.append(is_linked)
+    viewer.window.add_dock_widget(
+        acc_label,
+        name="metrics",
+        area="left",
+    )
+
     # Add them to the dock
     viewer.window.add_dock_widget(
-        [progressBar, nextButton, backButton, separatedCheckbox, doneButton],
-        name="Bell Jar Controls",
+        widgets,
+        name="controls",
         area="left",
     )
     # Start event loop to keep viewer open
