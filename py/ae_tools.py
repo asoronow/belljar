@@ -1,336 +1,213 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset
 from torch import nn
 import cv2
+import numpy as np
 import os, pickle
 from scipy import spatial
 from demons import match_histograms
 import nrrd
 import SimpleITK as sitk
 from pathlib import Path
-from scipy.ndimage import rotate
-import time
-
-class Encoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        # Initial cnn w/ batch norm
-        self.stageOneCNN = nn.Sequential(
-            nn.Conv2d(1, 32, (3, 3), 2, 1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(),
-            nn.Conv2d(32, 32, (3, 3)),
-            nn.LeakyReLU(),
-        )
-
-        self.stageTwoCNN = nn.Sequential(
-            nn.Conv2d(32, 64, (3, 3), 2, 1),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(),
-            nn.Conv2d(64, 64, (3, 3)),
-            nn.LeakyReLU(),
-        )
-
-        self.stageThreeCNN = nn.Sequential(
-            nn.Conv2d(64, 128, (3, 3), 2, 1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(),
-            nn.Conv2d(128, 128, (3, 3)),
-            nn.LeakyReLU(),
-        )
-
-        self.stageFourCNN = nn.Sequential(
-            nn.Conv2d(128, 256, (3, 3), 2),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(),
-            nn.Conv2d(256, 256, (3, 3)),
-            nn.LeakyReLU(),
-        )
-
-        self.flatten = nn.Flatten(start_dim=1)
-
-        self.linearMap = nn.Sequential(nn.Linear(256 * 28 * 28, 2048), nn.LeakyReLU())
-
-    def forward(self, x):
-        x = self.stageOneCNN(x)
-        x = self.stageTwoCNN(x)
-        x = self.stageThreeCNN(x)
-        x = self.stageFourCNN(x)
-        x = self.flatten(x)
-        x = self.linearMap(x)
-        return x
+from model import TissueAutoencoder
 
 
-class Decoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.linearMap = nn.Sequential(nn.Linear(2048, 256 * 28 * 28), nn.LeakyReLU())
-
-        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(256, 28, 28))
-
-        self.stageFourDeconv = nn.Sequential(
-            nn.ConvTranspose2d(256, 256, (3, 3)),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(256, 128, (3, 3), 2),
-            nn.LeakyReLU(),
-        )
-
-        self.stageThreeDeconv = nn.Sequential(
-            nn.ConvTranspose2d(128, 128, (3, 3)),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(128, 64, (3, 3), 2, 1),
-            nn.LeakyReLU(),
-        )
-
-        self.stageTwoDeconv = nn.Sequential(
-            nn.ConvTranspose2d(64, 64, (3, 3)), nn.BatchNorm2d(64), nn.LeakyReLU()
-        )
-
-        self.stageTwoOutput = nn.ConvTranspose2d(64, 32, (3, 3), 2, 1)
-
-        self.stageOneDeconv = nn.Sequential(
-            nn.ConvTranspose2d(32, 32, (3, 3)), nn.BatchNorm2d(32), nn.LeakyReLU()
-        )
-
-        self.stageOneOutput = nn.ConvTranspose2d(32, 1, (3, 3), 2, 1)
-
-    def forward(self, x):
-        x = self.linearMap(x)
-        x = self.unflatten(x)
-        x = self.stageFourDeconv(x)
-        x = self.stageThreeDeconv(x)
-        x = self.stageTwoDeconv(x)
-        x = self.stageTwoOutput(x, output_size=(254, 254))
-        x = torch.nn.functional.leaky_relu(x)
-        x = self.stageOneDeconv(x)
-        x = self.stageOneOutput(x, output_size=(512, 512))
-        x = torch.nn.functional.leaky_relu(x)
-        return x
-
-
-class Nissl(Dataset):
-    def __init__(self, images, labels=None, transform=None, target_transform=None):
+class Nissl:
+    def __init__(self, images, transform=None, labels=None):
         self.images = images
         self.transform = transform
-        self.target_transform = target_transform
         self.labels = labels
 
     def __len__(self):
         return len(self.images)
 
-    def __getitem__(self, idx):
-        image = self.images[idx]
+    def getPath(self, index):
+        return self.labels[index]
+
+    def __getitem__(self, index):
+        img = self.images[index]
         if self.transform:
-            image = self.transform(image)
-        return image
-
-    def getPath(self, idx):
-        label = self.labels[idx]
-        return label
+            img = self.transform(img)
+        return img
 
 
-def trainEpoch(
-    epoch_index, tb_writer, trainingLoader, optimizer, device, encoder, decoder, loss_fn
+def make_predictions(
+    dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, hemisphere=True
 ):
-    running_loss = 0.0
-    last_loss = 0.0
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(trainingLoader):
-        # Every data instance is an input + label pair
-        inputs = data.to(device)
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
-
-        # Make predictions for this batch
-        encoded = encoder(inputs)
-        decoded = decoder(encoded)
-        # Compute the loss and its gradients
-        loss = loss_fn(decoded, inputs)
-        loss.backward()
-
-        # Adjust learning weights
-        optimizer.step()
-        # Gather data and report
-        running_loss += loss.item()
-        if i % 100 == 99:
-            last_loss = running_loss / 50  # loss per batch
-            print("  batch {} loss: {}".format(i + 1, last_loss))
-            tb_x = epoch_index * len(trainingLoader) + i + 1
-            tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-            running_loss = 0.0
-
-    return last_loss
-
-
-def plot_ae_outputs(encoder, decoder, images, n=10):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    plt.figure(figsize=(16, 4.5))
-    for i in range(n):
-        ax = plt.subplot(2, n, i + 1)
-        validationDataset = Nissl(images, transform=t)
-        img = validationDataset[i].to(device)
-        img = img[None, :]
-        encoder.eval()
-        decoder.eval()
-        with torch.no_grad():
-            out = encoder(img)
-            rec_img = decoder(out)
-        plt.imshow(img.cpu().squeeze().numpy(), cmap="gist_gray")
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        if i == n // 2:
-            ax.set_title("Original images")
-        ax = plt.subplot(2, n, i + 1 + n)
-        plt.imshow(rec_img.cpu().squeeze().numpy(), cmap="gist_gray")
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        if i == n // 2:
-            ax.set_title("Reconstructed images")
-    plt.show()
-
-
-def make_predictions(dapiImages, dapiLabels, modelPath, embeddPath, nrrdPath, hemisphere=True):
     """Use the encoded sections and atlas embeddings to register brain regions"""
-    # Get device
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Load models
-    encoder = nn.DataParallel(Encoder())
-    encoder.load_state_dict(torch.load(modelPath, map_location=device))
-    encoder.eval()
+
+    # Load encoder model
+    encoder = TissueAutoencoder()
+    checkpoint = torch.load(modelPath)
+    encoder.load_state_dict(checkpoint)
     encoder.to(device)
-    # load the atlas embeddings
-    embeddings = {}
+    encoder.eval()
+
+    # Load the atlas embeddings
     with open(embeddPath, "rb") as f:
         embeddings = pickle.load(f)
-        for name, e in embeddings.items():
-            embeddings[name] = e
 
-    # Normalize the dapi images to atlas range
-    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C")
-    x, y, z = atlas.shape
+        # Normalize the dapi images to atlas range
+        atlas, atlasHeader = nrrd.read(
+            str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
+        )
+        sample = atlas[800, :, :]
+        sample = sitk.GetImageFromArray(sample)
+        sample = sitk.Cast(sample, sitk.sitkUInt8)
 
-    sample = atlas[800, : , :]
-    # convert atlas to sitk
-    sample = sitk.GetImageFromArray(sample)
-    # convert data type
-    sample = sitk.Cast(sample, sitk.sitkUInt8)
-    matched = []
-    for i in range(len(dapiImages)):
-        # convert to sitk
-        dapi = sitk.GetImageFromArray(dapiImages[i])
-        matched_dapi = match_histograms(dapi, sample)
-        # convert back to numpy from sitk
-        matched_dapi = sitk.GetArrayFromImage(matched_dapi)
-        matched.append(matched_dapi)
-  
-    # Load the images
-    t = transforms.Compose([transforms.ToTensor()])
-    dataset = Nissl(matched, transform=t, labels=dapiLabels)
-    # Create a dataloader
-    # We use a batch size of 1 to make sure that the images are loaded in memory
-    # This is necessary for the dataloader to work properly on single GPUs
-    similarity = {}
-    for i in range(len(dataset)):
-        img = dataset[i].to(device)
-        img = img[None, :]
-        with torch.no_grad():
-            out = encoder(img).cpu().numpy()
-            out = out.reshape(
-                out.shape[1],
-            )
+        matched = []
+        for image in dapiImages:
+            dapi = sitk.GetImageFromArray(image)
+            matched_dapi = match_histograms(dapi, sample)
+            matched_dapi = sitk.GetArrayFromImage(matched_dapi)
+            matched.append(matched_dapi)
 
-            similarity[dataset.getPath(i)] = {}
-            for name, e in embeddings.items():
-                e = e.reshape(
-                    e.shape[1],
-                )
+        t = transforms.Compose([transforms.ToTensor()])
+        dataset = Nissl(matched, transform=t, labels=dapiLabels)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-                similarity[dataset.getPath(i)][name] = spatial.distance.euclidean(
-                    out, e
-                )
+        most_accurate_predictions = {}
 
-    # Select the best sections along that angle
-    best = {}
-    idealAngle = 0
-    for name, scores in similarity.items():
-        ordered = sorted(scores, key=scores.get)
-        section = None
-        for result in ordered[:5]:
-            v = result.split("_")
-            s = int(v[3].split(".")[0])
-            if int(v[2]) == idealAngle:
-                section = result
-                break
-
-        if section == None:
-            sectionEmbedding = embeddings[ordered[0]]
-            sectionEmbedding = sectionEmbedding.reshape(
-                sectionEmbedding.shape[1],
-            )
-            matches = {}
-            for atlasName, e in embeddings.items():
-                v = atlasName.split("_")
-                if int(v[2]) == idealAngle:
-                    e = e.reshape(
-                        e.shape[1],
+        for i, sample in enumerate(loader):
+            sample = sample.to(device)
+            with torch.no_grad():
+                latent_representation = encoder.encode_to_latent(sample)
+                latent_representation = (
+                    latent_representation.cpu()
+                    .numpy()
+                    .reshape(
+                        latent_representation.shape[1],
                     )
-                    matches[atlasName] = spatial.distance.euclidean(sectionEmbedding, e)
-            best[name] = min(matches, key=matches.get)
-        else:
-            best[name] = section
+                )
 
-    # Prep for alignment by converting to integer slices
-    for sectionName, matchName in best.items():
-        best[sectionName] = int(matchName.split("_")[3].split(".")[0])
+            # Find the atlas embedding with the smallest cosine distance to the image's latent representation
+            max_similarity = float("-inf")
+            best_match = None
+            for name, embedding in embeddings.items():
+                similarity = 1 - spatial.distance.cosine(
+                    latent_representation, embedding
+                )
+                if similarity > max_similarity:
+                    max_similarity = similarity
+                    best_match = name
 
-    return best, idealAngle
+            # Store the best match for this image
+            most_accurate_predictions[dataset.getPath(i)] = int(
+                best_match.split(".")[0].split("_")[1]
+            )
+
+        return most_accurate_predictions
 
 
-
-def createEmbeddings(pngFolder, embeddingFileName, modelPath):
+def create_png_dataset():
     """
-    Create a pkl with embeddings from a folder of section slices
+    Make a dataset of PNGs from the NRRD files to utilize in training
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder = nn.DataParallel(Encoder())
-    encoder.load_state_dict(torch.load(modelPath, map_location=device))
-    encoder.eval()
-    encoder.to(device)
-    files = os.listdir(pngFolder)
-    absolutePaths = [pngFolder + p for p in files]
-    allSlices = [
-        cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths
-    ]  # [:int(len(absolutePaths)*0.05)]
-    allLabels = [p for p in files]
-    t = transforms.Compose([transforms.ToTensor()])
-    dataset = Nissl(allSlices, transform=t, labels=allLabels)
-    loader = DataLoader(dataset, batch_size=1, shuffle=True)
+
+    def rotate_image(img):
+        """Rotate a random amount between -10 and 10 degrees"""
+        angle = np.random.randint(-10, 10)
+        rows, cols = img.shape
+        M = cv2.getRotationMatrix2D((cols / 2, rows / 2), angle, 1)
+        dst = cv2.warpAffine(img, M, (cols, rows))
+        return dst
+
+    dataset_path = Path(r"C:\Users\Alec\.belljar\dataset")
+    # Load the atlas
+    atlas, _ = nrrd.read(
+        Path(r"C:\Users\Alec\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C"
+    )
+    z, y, x = atlas.shape
+
+    right_atlas = atlas[:, :, ::-1]
+    left_atlas = atlas[:, :, :]
+
+    while len(os.listdir(dataset_path)) < 5000:
+        for i in range(50, z - 50, 1):
+            # Pad 100 pixels on each side
+            right = right_atlas[i, :, :]
+            left = left_atlas[i, :, :]
+            right = np.pad(right, 25, "constant", constant_values=0)
+            left = np.pad(left, 25, "constant", constant_values=0)
+
+            # Roate each image a random amount
+            right = rotate_image(right)
+            left = rotate_image(left)
+
+            # Resize the images to 256x256
+            right = cv2.resize(right, (256, 256))
+            left = cv2.resize(left, (256, 256))
+
+            # Random string to make sure that the images are not overwritten
+            rand = np.random.randint(0, 1000000)
+            rand2 = np.random.randint(0, 1000000)
+            # Save the images
+            cv2.imwrite(str(dataset_path / f"right_{rand}.png"), right)
+            cv2.imwrite(str(dataset_path / f"left_{rand2}.png"), left)
+
+    # Then just add the straight on images
+    for i in range(50, z - 50, 1):
+        # Pad 100 pixels on each side
+        right = right_atlas[i, :, :]
+        left = left_atlas[i, :, :]
+        right = np.pad(right, 25, "constant", constant_values=0)
+        left = np.pad(left, 25, "constant", constant_values=0)
+
+        # Resize the images to 256x256
+        right = cv2.resize(right, (256, 256))
+        left = cv2.resize(left, (256, 256))
+
+        # Random string to make sure that the images are not overwritten
+        rand = np.random.randint(0, 1000000)
+        rand2 = np.random.randint(0, 1000000)
+        # Save the images
+        cv2.imwrite(str(dataset_path / f"right_{rand})_normal.png"), right)
+        cv2.imwrite(str(dataset_path / f"left_{rand2}_normal.png"), left)
+
+
+def clean_junk(dataset_path):
+    """Removes all images where there is less than 10% of the image that is not zero"""
+    files = os.listdir(dataset_path)
+    for file in files:
+        if file.endswith(".png"):
+            img = cv2.imread(str(dataset_path / file), cv2.IMREAD_GRAYSCALE)
+            if np.count_nonzero(img) < 0.1 * img.size:
+                os.remove(str(dataset_path / file))
+
+
+def make_embeddings(dataset_path):
     embeddings = {}
-    for i, data in enumerate(loader):
-        inputs = data.to(device)
-        encoded = encoder(inputs)
-        embeddings[dataset.getPath(i)] = encoded.cpu().detach().numpy()
 
-    with open(embeddingFileName, "wb") as f:
+    model = TissueAutoencoder()
+    checkpoint = torch.load(Path(r"C:\Users\Alec\Projects\belljar\best_model.pt"))
+    model.load_state_dict(checkpoint)
+    model.to("cuda:0")
+    model.eval()
+
+    with torch.no_grad():
+        for file in os.listdir(dataset_path):
+            if file.endswith(".png"):
+                img = cv2.imread(str(dataset_path / file), cv2.IMREAD_GRAYSCALE)
+
+                # Normalize the image to [0, 1]
+                img = img / 255.0
+
+                # Convert to tensor, add batch and channel dimensions, and send to device
+                img_tensor = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).float()
+                img_tensor = img_tensor.to("cuda:0")
+
+                out = model.encode_to_latent(img_tensor)
+                out = out.cpu().numpy().squeeze()  # Remove singleton dimensions
+                embeddings[file] = out
+
+    with open(Path(r"C:\Users\Alec\.belljar\embeddings\embeddings.pkl"), "wb") as f:
         pickle.dump(embeddings, f)
 
-def rotate_atlas(atlas, angle_deg):
-    '''
-    Uses scipy to quickly rotate the atlas volume to simulate a cut at a specific angle
-    
-    Parameters:
-        atlas (np.ndarray): the atlas volume
-        angle_deg (float): the angle to cut the atlas at
-    Returns:
-        np.ndarray: the rotated atlas volume
-    '''
-    return rotate(atlas, angle_deg, axes=(0, 1), order=0, reshape=False)
+    print(f"Saved embeddings for {len(embeddings)} images.")
+
+
+if __name__ == "__main__":
+    # create_png_dataset()
+    make_embeddings(Path(r"C:\Users\Alec\.belljar\solo-dataset"))

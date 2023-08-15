@@ -12,7 +12,7 @@ import napari
 import argparse
 from skimage.metrics import structural_similarity as ssim
 from qtpy.QtWidgets import QPushButton, QProgressBar, QLabel, QCheckBox
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QTimer
 
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
@@ -76,32 +76,6 @@ def get_affine_transform(src_bbox, dst_bbox):
     return transform_matrix
 
 
-def get_transformed_image(tissue_contour, atlas_contour, atlas_image, atlas_labels):
-    # Compute the minimum bounding rectangles for the tissue and atlas contours
-    tissue_rect = cv2.boundingRect(tissue_contour)
-    atlas_rect = cv2.boundingRect(atlas_contour)
-
-    # Calculate the affine transform matrix
-    transform_matrix = get_affine_transform(tissue_rect, atlas_rect)
-
-    # Apply the affine transform to the atlas image
-    transformed_atlas_image = cv2.warpAffine(
-        atlas_image, transform_matrix, (atlas_image.shape[1], atlas_image.shape[0])
-    )
-
-    # Apply the affine transform to the atlas labels
-    transformed_atlas_labels = cv2.warpAffine(
-        atlas_labels,
-        transform_matrix,
-        (atlas_labels.shape[1], atlas_labels.shape[0]),
-        flags=cv2.INTER_NEAREST,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=0,
-    )
-
-    return transformed_atlas_image, transformed_atlas_labels.astype(np.int32)
-
-
 def save_alignment(selected_sections, file_list, angle, input_dir):
     """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
@@ -161,7 +135,7 @@ if __name__ == "__main__":
 
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
-    resizedImages = [cv2.resize(im, (512, 512)) for im in images]
+    resizedImages = [cv2.resize(im, (256, 256)) for im in images]
     # Calculate and get the predictions
     # Predictions dict holds the section numbers for atlas
 
@@ -181,9 +155,9 @@ if __name__ == "__main__":
             cv2.cvtColor(cv2.imread(os.path.join(inputPath, p)), cv2.COLOR_BGR2GRAY)
             for p in new_sections
         ]
-        new_resized_images = [cv2.resize(im, (512, 512)) for im in new_images]
+        new_resized_images = [cv2.resize(im, (256, 256)) for im in new_images]
 
-        new_predictions, _ = make_predictions(
+        new_predictions = make_predictions(
             new_resized_images,
             new_sections,
             args.model.strip(),
@@ -198,7 +172,8 @@ if __name__ == "__main__":
     else:
         print("Making predictions...", flush=True)
         # no saved values, make a fresh prediction
-        predictions, angle = make_predictions(
+        angle = 0
+        predictions = make_predictions(
             resizedImages,
             fileList,
             args.model.strip(),
@@ -211,33 +186,40 @@ if __name__ == "__main__":
     for f in fileList:
         visited[f] = False
 
-    # Helper function to adjust predictions of the unvisted sections based on current settings
-    def adjustPredictions(predictions, visited, fileList):
-        # if any other sections are visited, get the average increase between visted sections
-        # and adjust the predictions of the unvisted sections
-        # this is to prevent the predictions from being too far off from the visted sections
+    def best_fit_line(x, y):
+        n = len(x)
 
-        if sum([1 for x in visited.values() if x == True]) > 1:
-            # Get the average increase between visted sections
-            averageIncrease = 0
-            for i in range(1, len(fileList)):
-                if visited[fileList[i]]:
-                    averageIncrease += (
-                        predictions[fileList[i]] - predictions[fileList[i - 1]]
-                    )
-            averageIncrease /= sum(visited.values())
-            # Adjust the predictions of the unvisted sections
-            for i in range(len(fileList)):
-                if not visited[fileList[i]]:
-                    predictions[fileList[i]] = predictions[fileList[i - 1]] + int(
-                        averageIncrease
-                    )
+        denominator = n * sum(i**2 for i in x) - sum(x) ** 2
+
+        # Ensure we're not dividing by zero
+        if denominator == 0:
+            return None, None
+
+        m = (n * sum(i * j for i, j in zip(x, y)) - sum(x) * sum(y)) / denominator
+        c = (sum(y) - m * sum(x)) / n
+        return m, c
+
+    def adjustPredictions(predictions, visited, fileList):
+        x_visited = [i for i, v in enumerate(visited.values()) if v]
+        y_visited = [predictions[fileList[i]] for i in x_visited]
+
+        if len(x_visited) < 2:
+            # Not enough points to compute a line
+            return predictions
+
+        m, c = best_fit_line(x_visited, y_visited)
+
+        for i in range(len(fileList)):
+            if not visited[fileList[i]]:
+                predictions[fileList[i]] = int(m * i + c)
 
         return predictions
 
     # Load the appropriate atlas
     # Override the angle if needed
-    atlas, atlasHeader = nrrd.read(str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C")
+    atlas, atlasHeader = nrrd.read(
+        str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
+    )
     annotation, annotationHeader = nrrd.read(
         str(nrrdPath / f"annotation_10_all.nrrd"),
         index_order="C",
@@ -251,8 +233,6 @@ if __name__ == "__main__":
         contrast_limits = [0, images[0].max()]
     elif images[0].dtype == np.uint16:
         contrast_limits = [0, images[0].max()]
-
-
 
     if is_whole:
         left_atlas = atlas.copy()
@@ -278,7 +258,6 @@ if __name__ == "__main__":
         # set grid witdth to 3
         viewer.grid.shape = (2, 3)
 
-
     else:
         atlasLayer = viewer.add_image(
             atlas,
@@ -293,12 +272,7 @@ if __name__ == "__main__":
         )
 
     # Set the initial slider position
-    if is_whole:
-        viewer.dims.set_point(1, predictions[fileList[0]])
-        viewer.dims.set_point(0, predictions[fileList[0]])    
-
-    else:
-        viewer.dims.set_point(0, predictions[fileList[0]])    
+    viewer.dims.set_point(0, predictions[fileList[0]])
 
     # Track the current section
     currentSection = 0
@@ -327,7 +301,7 @@ if __name__ == "__main__":
                 (atlas.shape[2], atlas.shape[1]),
             )
 
-            viewer.dims.set_point(1, predictions[fileList[currentSection]])
+            viewer.dims.set_point(0, predictions[fileList[currentSection]])
 
     def prevSection():
         """Move one section backward by crawling file paths"""
@@ -335,7 +309,7 @@ if __name__ == "__main__":
         if not currentSection == 0:
             predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
- 
+
             if not did_load_alignment:
                 adjustPredictions(predictions, visited, fileList)
 
@@ -348,7 +322,8 @@ if __name__ == "__main__":
                 images[currentSection],
                 (atlas.shape[2], atlas.shape[1]),
             )
-            viewer.dims.set_point(1, predictions[fileList[currentSection]])
+
+            viewer.dims.set_point(0, predictions[fileList[currentSection]])
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
@@ -379,7 +354,9 @@ if __name__ == "__main__":
                 section[:, : left_section.shape[1]] = left_section
                 section[:, left_section.shape[1] :] = right_section
 
-                label = np.zeros((left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32)
+                label = np.zeros(
+                    (left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32
+                )
                 label[:, : left_label.shape[1]] = left_label
                 label[:, left_label.shape[1] :] = right_label
             else:
@@ -408,7 +385,7 @@ if __name__ == "__main__":
             # write label
             cv2.imwrite(
                 str(outputPath / f"Label_{imageName.split('.')[0]}.png"), color_label
-            )  
+            )
 
             # composite the warped labels onto the tissue
             tissue = cv2.cvtColor(tissue, cv2.COLOR_GRAY2BGR)
@@ -462,13 +439,12 @@ if __name__ == "__main__":
 
         print("Done!", flush=True)
 
-    # update on viewer dims
-    @viewer.dims.events.current_step.connect
     def predict_alignment_accuracy():
-        '''Uses SSIM to get a metric of alignment accuracy in realtime'''
+        """Uses SSIM to get a metric of alignment accuracy in realtime"""
         global currentSection
         if isProcessing:
             return
+
         # Get the current section
         # Get the current image
         section_image = images[currentSection]
@@ -483,9 +459,13 @@ if __name__ == "__main__":
             atlas_image[:, left_atlas.shape[1] :] = right_atlas
         else:
             atlas_image = atlas[atlas_pos, :, :]
-        
-        atlas_image = cv2.normalize(atlas_image, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        atlas_image = cv2.resize(atlas_image, (section_image.shape[1], section_image.shape[0]))
+
+        atlas_image = cv2.normalize(
+            atlas_image, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
+        )
+        atlas_image = cv2.resize(
+            atlas_image, (section_image.shape[1], section_image.shape[0])
+        )
 
         # histograms
         section_image = sitk.GetImageFromArray(section_image)
@@ -498,7 +478,7 @@ if __name__ == "__main__":
 
         # Get percent similarity
         result = ssim(section_image, atlas_image)
-        
+
         # Update the label
         acc_label.setText(f"Structural Similarity: {100*result:.2f}%")
         # Make the label red if the accuracy is below 80%
@@ -510,14 +490,13 @@ if __name__ == "__main__":
             acc_label.setStyleSheet("font: 12px; color: green")
 
     def link_hemispheres():
-        '''Link/Unlink hemispheres during whole brain alignment'''
+        """Link/Unlink hemispheres during whole brain alignment"""
         pass
-    
+
     # Labels
     acc_label = QLabel("Alignment Accuracy: ")
     acc_label.setAlignment(Qt.AlignLeft)
     acc_label.setStyleSheet("font: 12px;")
-
 
     # Button objects
     nextButton = QPushButton("Next Section")

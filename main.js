@@ -26,21 +26,27 @@ var logWin = null;
 var log = console.log;
 console.log = function () {
     var args = Array.from(arguments);
-    let timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    let timestamp = new Date()
+        .toISOString()
+        .replace(/T/, " ")
+        .replace(/\..+/, "");
     let prefix = `[${timestamp}] `;
     // for every new line, add the prefix again at the start
     args = args.map((arg) => {
-        if (typeof arg === 'string') {
+        if (typeof arg === "string") {
             // Check if there is any content other than spaces
             if (arg.trim().length > 0) {
-                return arg.split('\n').map((line) => {
+                return arg
+                    .split("\n")
+                    .map((line) => {
                     if (line.trim().length > 0) {
                         return prefix + line;
                     }
                     else {
                         return line;
                     }
-                }).join('\n');
+                })
+                    .join("\n");
             }
         }
         else {
@@ -631,12 +637,8 @@ ipcMain.on("runAdjust", function (event, data) {
 });
 // Alignment
 ipcMain.on("runAlign", function (event, data) {
-    const modelPath = data[2] == "False"
-        ? path.join(homeDir, "models/predictor_encoder.pt")
-        : path.join(homeDir, "models/predictor_full_encoder.pt");
-    const embedPath = data[2] == "False"
-        ? path.join(homeDir, "embeddings/hemisphere_embeddings.pkl")
-        : path.join(homeDir, "embeddings/whole_embeddings.pkl");
+    const modelPath = path.join(homeDir, "models/predictor.pt");
+    const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
     const nrrdPath = path.join(homeDir, "nrrd");
     const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
     const mapPath = path.join(appDir, "csv/class_map.pkl");

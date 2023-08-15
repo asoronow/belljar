@@ -2,52 +2,24 @@ import SimpleITK as sitk
 import numpy as np
 from PIL import Image
 import pickle
+
 # Check number of cores available
 import multiprocessing
+
 # Set sitk to use cores - 2
 sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() - 2)
 
+
 def log_progress(registration_method):
-    print(f'Level: {registration_method.GetCurrentLevel()}', flush=True)
-    print(f'Metric value: {registration_method.GetMetricValue()}', flush=True)
-    print(f'Learning rate: {registration_method.GetOptimizerLearningRate()}', flush=True)
-
-
-def mean_squares_registration(fixed, moving, current_tx=None):
-    '''Performs mean squares registration between two images, captures size dynamics well for initial registration'''
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
-
-    if current_tx is None:
-        initial_tx = sitk.CenteredTransformInitializer(
-            fixed, moving, sitk.AffineTransform(fixed.GetDimension())
-        )
-    else:
-        initial_tx = current_tx
-
-    registration_method = sitk.ImageRegistrationMethod()
-    registration_method.SetMetricAsMeanSquares()
-    registration_method.SetInitialTransform(initial_tx, inPlace=True)
-    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
-    
-    registration_method.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=500,
-        estimateLearningRate=registration_method.EachIteration,
+    print(f"Level: {registration_method.GetCurrentLevel()}", flush=True)
+    print(f"Metric value: {registration_method.GetMetricValue()}", flush=True)
+    print(
+        f"Learning rate: {registration_method.GetOptimizerLearningRate()}", flush=True
     )
 
-    registration_method.SetOptimizerScalesFromPhysicalShift()
-    #  registration_method.AddCommand(sitk.sitkIterationEvent, lambda: log_progress(registration_method))
-
-    final_tx = registration_method.Execute(fixed, moving)
-
-    return final_tx
 
 def mutual_information_registration(fixed, moving, current_tx=None):
-    '''Sequentially performs JMHI registration, captures shape dynamics well for final registration'''
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
+    """Sequentially performs JMHI registration, captures shape dynamics well for final registration"""
     if current_tx is None:
         initial_tx = sitk.CenteredTransformInitializer(
             fixed, moving, sitk.AffineTransform(fixed.GetDimension())
@@ -63,7 +35,7 @@ def mutual_information_registration(fixed, moving, current_tx=None):
 
     registration_method.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=500,
+        numberOfIterations=1500,
         estimateLearningRate=registration_method.EachIteration,
     )
 
@@ -74,24 +46,18 @@ def mutual_information_registration(fixed, moving, current_tx=None):
 
     return final_tx
 
+
 def ants_registration(fixed, moving, current_tx=None):
-    ''' 
+    """
     Performs ANTS registration between two images, captures size dynamics well for initial registration
 
     Intialzed as a displacement field transform, uses the following parameters
-    '''
-
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
-
+    """
     if current_tx is None:
         displacement_field = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
         displacement_field.CopyInformation(fixed)
         initial_tx = sitk.DisplacementFieldTransform(displacement_field)
         del displacement_field
-        initial_tx.SetSmoothingGaussianOnUpdate(
-            varianceForUpdateField=0.0, varianceForTotalField=1.5
-        )
     else:
         # convert current transform to displacement field
         field_filter = sitk.TransformToDisplacementFieldFilter()
@@ -102,7 +68,7 @@ def ants_registration(fixed, moving, current_tx=None):
     registration_method = sitk.ImageRegistrationMethod()
     registration_method.SetInitialTransform(initial_tx, inPlace=True)
     registration_method.SetMetricAsANTSNeighborhoodCorrelation(5)
-    
+
     registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
     registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
 
@@ -118,15 +84,12 @@ def ants_registration(fixed, moving, current_tx=None):
 
     return initial_tx
 
+
 def demons_registration(fixed, moving, current_tx=None):
-    '''Performs demons registration between two images, captures shape dynamics well for final registration'''
-
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
-
+    """Performs demons registration between two images, captures shape dynamics well for final registration"""
     demons = sitk.FastSymmetricForcesDemonsRegistrationFilter()
 
-    demons.SetNumberOfIterations(250)
+    demons.SetNumberOfIterations(500)
     demons.SetSmoothDisplacementField(True)
     demons.SetStandardDeviations(1.5)
 
@@ -142,6 +105,7 @@ def demons_registration(fixed, moving, current_tx=None):
     tx = sitk.DisplacementFieldTransform(final_field)
 
     return tx
+
 
 def match_histograms(src, target):
     """Match the src histogram to the target using sitk"""
@@ -163,20 +127,16 @@ def register_to_atlas(tissue, section, label, class_map_path):
         classMap[997] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}
         classMap[0] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
 
-    scaled_atlas = Image.fromarray(section)
-    scaled_atlas = np.array(scaled_atlas)
-    scaled_atlas = (scaled_atlas / 256).astype(np.uint8)
-    scaled_label = Image.fromarray(label)
-    scaled_label = np.array(scaled_label)
-
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
-    moving = sitk.GetImageFromArray(scaled_atlas, isVector=False)
-    label = sitk.GetImageFromArray(scaled_label, isVector=False)
+    moving = sitk.GetImageFromArray(section, isVector=False)
+    label = sitk.GetImageFromArray(label, isVector=False)
+
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
 
     moving = match_histograms(moving, fixed)
 
-    tx_initial = mean_squares_registration(fixed, moving)
-    tx_middle = mutual_information_registration(fixed, moving, tx_initial)
+    tx_middle = mutual_information_registration(fixed, moving)
     tx_final = ants_registration(fixed, moving, tx_middle)
     tx_demons = demons_registration(fixed, moving, tx_final)
 

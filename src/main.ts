@@ -18,35 +18,39 @@ var logWin: typeof BrowserWindow = null;
 // override console log
 var log = console.log;
 console.log = function () {
-    var args = Array.from(arguments);
-    let timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
-    let prefix = `[${timestamp}] `;
+  var args = Array.from(arguments);
+  let timestamp = new Date()
+    .toISOString()
+    .replace(/T/, " ")
+    .replace(/\..+/, "");
+  let prefix = `[${timestamp}] `;
 
-    // for every new line, add the prefix again at the start
-    args = args.map((arg: any) => {
-        if (typeof arg === 'string') {
-            // Check if there is any content other than spaces
-            if (arg.trim().length > 0) {
-              return arg.split('\n').map((line: any) => {
-                  if (line.trim().length > 0) {
-                    return prefix + line;
-                  } else {
-                    return line;
-                  }
-              }).join('\n');
+  // for every new line, add the prefix again at the start
+  args = args.map((arg: any) => {
+    if (typeof arg === "string") {
+      // Check if there is any content other than spaces
+      if (arg.trim().length > 0) {
+        return arg
+          .split("\n")
+          .map((line: any) => {
+            if (line.trim().length > 0) {
+              return prefix + line;
+            } else {
+              return line;
             }
-        } else {
-            return arg;
-        }
-    });
-
-
-    log.apply(console, args);
-    if (logWin) {
-      logWin.webContents.send("log", args.join(" "));
+          })
+          .join("\n");
+      }
+    } else {
+      return arg;
     }
-}
+  });
 
+  log.apply(console, args);
+  if (logWin) {
+    logWin.webContents.send("log", args.join(" "));
+  }
+};
 
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath("home"), ".belljar");
@@ -61,8 +65,6 @@ const envPythonPath = path.join(envPath, envMod);
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
 const pyScriptsPath = path.join(appDir, "/py");
-
-
 
 // Promise version of file moving
 function move(o: string, t: string) {
@@ -736,14 +738,8 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
 
 // Alignment
 ipcMain.on("runAlign", function (event: any, data: any[]) {
-  const modelPath =
-    data[2] == "False"
-      ? path.join(homeDir, "models/predictor_encoder.pt")
-      : path.join(homeDir, "models/predictor_full_encoder.pt");
-  const embedPath =
-    data[2] == "False"
-      ? path.join(homeDir, "embeddings/hemisphere_embeddings.pkl")
-      : path.join(homeDir, "embeddings/whole_embeddings.pkl");
+  const modelPath = path.join(homeDir, "models/predictor.pt");
+  const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
   const nrrdPath = path.join(homeDir, "nrrd");
   const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
   const mapPath = path.join(appDir, "csv/class_map.pkl");
