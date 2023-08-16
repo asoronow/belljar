@@ -204,8 +204,9 @@ if __name__ == "__main__":
         y_visited = [predictions[fileList[i]] for i in x_visited]
 
         if len(x_visited) < 2:
-            # Not enough points to compute a line
-            return predictions
+            # compute line of best fit with all points
+            x_visited = [i for i in range(len(fileList))]
+            y_visited = [predictions[fileList[i]] for i in x_visited]
 
         m, c = best_fit_line(x_visited, y_visited)
 
@@ -228,7 +229,7 @@ if __name__ == "__main__":
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
-
+    predictions = adjustPredictions(predictions, visited, fileList)
     if images[0].dtype == np.uint8:
         contrast_limits = [0, images[0].max()]
     elif images[0].dtype == np.uint16:

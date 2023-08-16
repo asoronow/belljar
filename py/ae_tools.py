@@ -206,8 +206,3 @@ def make_embeddings(dataset_path):
         pickle.dump(embeddings, f)
 
     print(f"Saved embeddings for {len(embeddings)} images.")
-
-
-if __name__ == "__main__":
-    # create_png_dataset()
-    make_embeddings(Path(r"C:\Users\Alec\.belljar\solo-dataset"))

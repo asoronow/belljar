@@ -10,114 +10,66 @@ import multiprocessing
 sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() - 2)
 
 
-def log_progress(registration_method):
-    print(f"Level: {registration_method.GetCurrentLevel()}", flush=True)
-    print(f"Metric value: {registration_method.GetMetricValue()}", flush=True)
-    print(
-        f"Learning rate: {registration_method.GetOptimizerLearningRate()}", flush=True
-    )
-
-
-def mutual_information_registration(fixed, moving, current_tx=None):
-    """Sequentially performs JMHI registration, captures shape dynamics well for final registration"""
-    if current_tx is None:
-        initial_tx = sitk.CenteredTransformInitializer(
-            fixed, moving, sitk.AffineTransform(fixed.GetDimension())
-        )
-    else:
-        initial_tx = current_tx
-
-    registration_method = sitk.ImageRegistrationMethod()
-    registration_method.SetMetricAsJointHistogramMutualInformation()
-    registration_method.SetInitialTransform(initial_tx, inPlace=True)
-    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
-
-    registration_method.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=1500,
-        estimateLearningRate=registration_method.EachIteration,
-    )
-
-    registration_method.SetOptimizerScalesFromPhysicalShift()
-    # registration_method.AddCommand(sitk.sitkIterationEvent, lambda: log_progress(registration_method))
-
-    final_tx = registration_method.Execute(fixed, moving)
-
-    return final_tx
-
-
-def ants_registration(fixed, moving, current_tx=None):
-    """
-    Performs ANTS registration between two images, captures size dynamics well for initial registration
-
-    Intialzed as a displacement field transform, uses the following parameters
-    """
-    if current_tx is None:
-        displacement_field = sitk.Image(fixed.GetSize(), sitk.sitkVectorFloat64)
-        displacement_field.CopyInformation(fixed)
-        initial_tx = sitk.DisplacementFieldTransform(displacement_field)
-        del displacement_field
-    else:
-        # convert current transform to displacement field
-        field_filter = sitk.TransformToDisplacementFieldFilter()
-        field_filter.SetReferenceImage(fixed)
-        curr_field = field_filter.Execute(current_tx)
-        initial_tx = sitk.DisplacementFieldTransform(curr_field)
-
-    registration_method = sitk.ImageRegistrationMethod()
-    registration_method.SetInitialTransform(initial_tx, inPlace=True)
-    registration_method.SetMetricAsANTSNeighborhoodCorrelation(5)
-
-    registration_method.SetShrinkFactorsPerLevel([5, 3, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([3, 2, 1, 1])
-
-    registration_method.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=1500,
-        estimateLearningRate=registration_method.EachIteration,
-    )
-
-    registration_method.SetOptimizerScalesFromPhysicalShift()
-
-    registration_method.Execute(fixed, moving)
-
-    return initial_tx
-
-
-def demons_registration(fixed, moving, current_tx=None):
-    """Performs demons registration between two images, captures shape dynamics well for final registration"""
-    demons = sitk.FastSymmetricForcesDemonsRegistrationFilter()
-
-    demons.SetNumberOfIterations(500)
-    demons.SetSmoothDisplacementField(True)
-    demons.SetStandardDeviations(1.5)
-
-    if current_tx is None:
-        final_field = demons.Execute(fixed, moving)
-    else:
-        # convert current transform to displacement field
-        field_filter = sitk.TransformToDisplacementFieldFilter()
-        field_filter.SetReferenceImage(fixed)
-        curr_field = field_filter.Execute(current_tx)
-        final_field = demons.Execute(fixed, moving, curr_field)
-    # convert deformation field to displacement field
-    tx = sitk.DisplacementFieldTransform(final_field)
-
-    return tx
-
-
-def match_histograms(src, target):
-    """Match the src histogram to the target using sitk"""
+def match_histograms(fixed, moving):
+    """Match the moving histogram to the fixed using sitk"""
     matcher = sitk.HistogramMatchingImageFilter()
-    if src.GetPixelID() in (sitk.sitkUInt8, sitk.sitkInt8):
-        matcher.SetNumberOfHistogramLevels(128)
-    else:
-        matcher.SetNumberOfHistogramLevels(1024)
-
+    matcher.SetNumberOfHistogramLevels(1024)
     matcher.SetNumberOfMatchPoints(10)
     matcher.ThresholdAtMeanIntensityOn()
-    return matcher.Execute(src, target)
+    return matcher.Execute(moving, fixed)
+
+
+def multimodal_registration(fixed, moving):
+    # Initial alignment using an affine transformation
+    initialTx = sitk.CenteredTransformInitializer(
+        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
+    )
+
+    R = sitk.ImageRegistrationMethod()
+    R.SetMetricAsMattesMutualInformation(32)
+    R.MetricUseFixedImageGradientFilterOff()
+
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=100,
+    )
+    R.SetOptimizerScalesFromPhysicalShift()
+    R.SetShrinkFactorsPerLevel([4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([2, 1, 0])
+
+    R.SetInitialTransform(initialTx)
+    R.SetInterpolator(sitk.sitkLinear)
+
+    outTx1 = R.Execute(fixed, moving)
+
+    # Resample the moving image using the initial transformation
+    resampled_moving = sitk.Resample(
+        moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
+    )
+
+    # B-spline registration
+    transformDomainMeshSize = [8] * fixed.GetDimension()
+    tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
+
+    R.SetMetricAsMattesMutualInformation(32)
+    R.SetShrinkFactorsPerLevel([4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([2, 1, 0])
+    R.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=250,
+    )
+    R.SetOptimizerScalesFromPhysicalShift()
+
+    R.SetInitialTransform(tx, inPlace=False)
+    R.SetInterpolator(sitk.sitkLinear)
+
+    outTx2 = R.Execute(fixed, resampled_moving)
+
+    # Combine the transformations: Affine followed by B-spline.
+    composite_transform = sitk.CompositeTransform(outTx1)
+    composite_transform.AddTransform(outTx2)
+
+    return composite_transform
 
 
 def register_to_atlas(tissue, section, label, class_map_path):
@@ -134,16 +86,13 @@ def register_to_atlas(tissue, section, label, class_map_path):
     moving = sitk.Cast(moving, sitk.sitkFloat32)
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
 
-    moving = match_histograms(moving, fixed)
+    moving = match_histograms(fixed, moving)
 
-    tx_middle = mutual_information_registration(fixed, moving)
-    tx_final = ants_registration(fixed, moving, tx_middle)
-    tx_demons = demons_registration(fixed, moving, tx_final)
-
+    tx = multimodal_registration(fixed, moving)
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)
     resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-    resampler.SetTransform(tx_demons)
+    resampler.SetTransform(tx)
     resampler.SetOutputPixelType(sitk.sitkUInt32)
     resampler.SetDefaultPixelValue(0)
 
