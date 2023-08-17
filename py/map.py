@@ -11,7 +11,14 @@ import csv
 import napari
 import argparse
 from skimage.metrics import structural_similarity as ssim
-from qtpy.QtWidgets import QPushButton, QProgressBar, QLabel, QCheckBox, QComboBox, QSlider
+from qtpy.QtWidgets import (
+    QPushButton,
+    QProgressBar,
+    QLabel,
+    QCheckBox,
+    QComboBox,
+    QSlider,
+)
 from qtpy.QtCore import Qt, QTimer
 
 
@@ -56,21 +63,20 @@ def get_max_contour(image, separated=False):
 
     return largest_contour
 
+
 def save_alignment(selected_sections, selected_regions, file_list, angle, input_dir):
     """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
         f.write(f"{angle}\n")
         for i, (s, r) in enumerate(zip(selected_sections, selected_regions)):
-            f.write(f"{file_list[i]}-{s}-r\n")
+            f.write(f"{file_list[i]}-{s}-{r}\n")
 
 
 def load_alignment(input_dir, file_list):
     """Load prior alignments if any from the input directory"""
     alignments = {}
     angle = 0
-    region_selections = {
-        f : 'A' for f in file_list
-    }
+    region_selections = {f: "A" for f in file_list}
     try:
         print("Loading prior alignments...", flush=True)
         with open(Path(input_dir.strip()) / "alignment.txt", "r") as f:
@@ -91,7 +97,7 @@ def load_alignment(input_dir, file_list):
         print("No prior alignments found...", flush=True)
         alignments = {}
         angle = 0
-    
+
     return alignments, angle, region_selections
 
 
@@ -115,9 +121,7 @@ if __name__ == "__main__":
     ]
     absolutePaths = [str(inputPath / p) for p in fileList]
     # Create a dict to track which sections have been visted
-    visited = {
-        f: False for f in fileList
-    }
+    visited = {f: False for f in fileList}
     # Track any right hemisphere steps
     right_hemisphere_steps = {}
     # Track any region selections
@@ -128,7 +132,9 @@ if __name__ == "__main__":
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (256, 256)) for im in images]
 
-    prior_alignment, prior_angle, region_selections = load_alignment(args.input, fileList)
+    prior_alignment, prior_angle, region_selections = load_alignment(
+        args.input, fileList
+    )
     did_load_alignment = len(prior_alignment) > 0
 
     left_section_num = 0
@@ -173,7 +179,6 @@ if __name__ == "__main__":
             hemisphere=eval(args.whole),
         )
 
-
     def best_fit_line(x, y):
         n = len(x)
 
@@ -191,10 +196,12 @@ if __name__ == "__main__":
         x_visited = [i for i, v in enumerate(visited.values()) if v]
         y_visited = [predictions[fileList[i]] for i in x_visited]
 
-        if len(x_visited) < 2:
+        if len(x_visited) < 2 and len(predictions) > 1:
             # compute line of best fit with all points
             x_visited = [i for i in range(len(fileList))]
             y_visited = [predictions[fileList[i]] for i in x_visited]
+        else:
+            return predictions
 
         m, c = best_fit_line(x_visited, y_visited)
 
@@ -284,7 +291,7 @@ if __name__ == "__main__":
     # Button callbacks
     def update_step():
         global currentSection
-        
+
         left_hemi_slider.setValue(predictions[fileList[currentSection]])
         left_hemi_value.setText(str(predictions[fileList[currentSection]]))
         if is_whole:
@@ -343,7 +350,9 @@ if __name__ == "__main__":
         isProcessing = True
 
         # Save the seleceted sections
-        save_alignment(list(predictions.values()), region_selections, fileList, angle, args.input)
+        save_alignment(
+            list(predictions.values()), region_selections, fileList, angle, args.input
+        )
 
         # Warp the predictions on the tissue and save the results
         for i in range(len(images)):
@@ -351,10 +360,10 @@ if __name__ == "__main__":
             print(f"Warping {imageName}...", flush=True)
             used_atlas = atlas
             used_annotation = annotation
-            if region_selections[imageName] == 'C':
+            if region_selections[imageName] == "C":
                 used_atlas = c_atlas
                 used_annotation = c_annotation
-            elif region_selections[imageName] == 'NC':
+            elif region_selections[imageName] == "NC":
                 used_atlas = nc_atlas
                 used_annotation = nc_annotation
 
@@ -363,8 +372,12 @@ if __name__ == "__main__":
                 left_section = used_atlas[int(predictions[imageName]), :, :]
 
                 if imageName in right_hemisphere_steps.keys():
-                    right_section = used_atlas[right_hemisphere_steps[imageName], :, ::-1]
-                    right_label = used_annotation[right_hemisphere_steps[imageName], :, ::-1]
+                    right_section = used_atlas[
+                        right_hemisphere_steps[imageName], :, ::-1
+                    ]
+                    right_label = used_annotation[
+                        right_hemisphere_steps[imageName], :, ::-1
+                    ]
                 else:
                     right_label = used_annotation[int(predictions[imageName]), :, ::-1]
                     right_section = used_atlas[int(predictions[imageName]), :, ::-1]
@@ -457,7 +470,6 @@ if __name__ == "__main__":
 
         print("Done!", flush=True)
 
-
     def set_left_section():
         """Set the left hemisphere section"""
         global left_section_num, isProcessing, currentSection
@@ -470,14 +482,13 @@ if __name__ == "__main__":
         if link_hemispheres.isChecked() and is_whole:
             right_hemi_slider.setValue(left_section_num)
             right_hemi_value.setText(str(left_section_num))
-            
 
     def set_right_section():
         """Set the right hemisphere section"""
         global right_section_num, isProcessing
         if isProcessing:
             return
-        
+
         right_section_num = right_hemi_slider.value()
         right_atlas_layer.data = atlas[right_section_num, :, ::-1]
         right_hemi_value.setText(str(right_section_num))
@@ -493,20 +504,20 @@ if __name__ == "__main__":
         global region_selections
         current_text = atlasTypeDropdown.currentText()
         if current_text == "All Regions":
-            region_selections[fileList[currentSection]] = 'A'
+            region_selections[fileList[currentSection]] = "A"
         elif current_text == "Cerebrum Only":
-            region_selections[fileList[currentSection]] = 'C'
+            region_selections[fileList[currentSection]] = "C"
         elif current_text == "No Cerebrum":
-            region_selections[fileList[currentSection]] = 'NC'
-    
+            region_selections[fileList[currentSection]] = "NC"
+
     def update_region():
         global region_selections
         flag = region_selections[fileList[currentSection]]
-        if flag == 'A':
+        if flag == "A":
             atlasTypeDropdown.setCurrentIndex(0)
-        elif flag == 'C':
+        elif flag == "C":
             atlasTypeDropdown.setCurrentIndex(1)
-        elif flag == 'NC':
+        elif flag == "NC":
             atlasTypeDropdown.setCurrentIndex(2)
 
     # Button objects
@@ -548,7 +559,7 @@ if __name__ == "__main__":
     left_hemi_slider.valueChanged.connect(set_left_section)
     right_hemi_slider.valueChanged.connect(set_right_section)
 
-    bottomRow = [left_hemi_label,  left_hemi_slider, left_hemi_value]
+    bottomRow = [left_hemi_label, left_hemi_slider, left_hemi_value]
     widgets = [progressBar, atlasTypeDropdown, nextButton, backButton, doneButton]
     # Link left and right hemispheres
     link_hemispheres = QCheckBox("Link Hemispheres")
