@@ -269,9 +269,9 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
-    const embeddingsLink = `${bucketParentPath}/embeddings.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models.tar.gz`;
-    const nrrdLink = `${bucketParentPath}/nrrd.tar.gz`;
+    const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
+    const modelsLink = `${bucketParentPath}/models-v6.tar.gz`;
+    const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
     if (!fresh) {

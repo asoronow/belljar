@@ -73,7 +73,7 @@ def multimodal_registration(fixed, moving):
 
 
 def register_to_atlas(tissue, section, label, class_map_path):
-    """Uses demons registration to register a tissue section to the atlas"""
+    """Uses deformable registration to register a tissue section to the atlas"""
     with open(class_map_path, "rb") as f:
         classMap = pickle.load(f)
         classMap[997] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}

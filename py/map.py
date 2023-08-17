@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import pickle
 from pathlib import Path
-from demons import register_to_atlas, match_histograms
+from demons import register_to_atlas
 from ae_tools import make_predictions
 import nrrd
 import SimpleITK as sitk
@@ -11,7 +11,7 @@ import csv
 import napari
 import argparse
 from skimage.metrics import structural_similarity as ssim
-from qtpy.QtWidgets import QPushButton, QProgressBar, QLabel, QCheckBox
+from qtpy.QtWidgets import QPushButton, QProgressBar, QLabel, QCheckBox, QComboBox, QSlider
 from qtpy.QtCore import Qt, QTimer
 
 
@@ -56,38 +56,21 @@ def get_max_contour(image, separated=False):
 
     return largest_contour
 
-
-def get_affine_transform(src_bbox, dst_bbox):
-    # Get the center and dimensions of the src and dst bounding rectangles
-    src_center_x, src_center_y, src_width, src_height = src_bbox
-    dst_center_x, dst_center_y, dst_width, dst_height = dst_bbox
-
-    # Calculate the scaling factors along both axes
-    scale_x = src_width / dst_width
-    scale_y = src_height / dst_height
-
-    # Calculate the translation vector
-    translate_x = src_center_x - (dst_center_x * scale_x)
-    translate_y = src_center_y - (dst_center_y * scale_y)
-
-    # Construct the affine transformation matrix
-    transform_matrix = np.array([[scale_x, 0, translate_x], [0, scale_y, translate_y]])
-
-    return transform_matrix
-
-
-def save_alignment(selected_sections, file_list, angle, input_dir):
+def save_alignment(selected_sections, selected_regions, file_list, angle, input_dir):
     """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
         f.write(f"{angle}\n")
-        for i, s in enumerate(selected_sections):
-            f.write(f"{file_list[i]}-{s}\n")
+        for i, (s, r) in enumerate(zip(selected_sections, selected_regions)):
+            f.write(f"{file_list[i]}-{s}-r\n")
 
 
 def load_alignment(input_dir, file_list):
     """Load prior alignments if any from the input directory"""
     alignments = {}
     angle = 0
+    region_selections = {
+        f : 'A' for f in file_list
+    }
     try:
         print("Loading prior alignments...", flush=True)
         with open(Path(input_dir.strip()) / "alignment.txt", "r") as f:
@@ -95,20 +78,21 @@ def load_alignment(input_dir, file_list):
 
             angle = int(lines[0])
             for line in lines[1:]:
-                file_name, section = line.split("-")
+                file_name, section, region = line.split("-")
                 section = section.strip()
                 file_name = file_name.strip()
                 if file_name in file_list:
                     alignments[file_name] = int(section)
+                    region_selections[file_name] = region.strip()
 
-            return alignments, angle
+            return alignments, angle, region_selections
     except:
         # bad file or no file, just give no alignments
         print("No prior alignments found...", flush=True)
         alignments = {}
         angle = 0
-    finally:
-        return alignments, angle
+    
+    return alignments, angle, region_selections
 
 
 if __name__ == "__main__":
@@ -130,18 +114,25 @@ if __name__ == "__main__":
         and name.endswith(".png")
     ]
     absolutePaths = [str(inputPath / p) for p in fileList]
+    # Create a dict to track which sections have been visted
+    visited = {
+        f: False for f in fileList
+    }
+    # Track any right hemisphere steps
+    right_hemisphere_steps = {}
+    # Track any region selections
     # Update the user, next steps are coming
     print(4 + len(absolutePaths), flush=True)
 
     # Setup the images for analysis
     images = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY) for p in absolutePaths]
     resizedImages = [cv2.resize(im, (256, 256)) for im in images]
-    # Calculate and get the predictions
-    # Predictions dict holds the section numbers for atlas
 
-    prior_alignment, prior_angle = load_alignment(args.input, fileList)
+    prior_alignment, prior_angle, region_selections = load_alignment(args.input, fileList)
     did_load_alignment = len(prior_alignment) > 0
 
+    left_section_num = 0
+    right_section_num = 0
     if len(prior_alignment) > 0:
         # load in any old values
         predictions = prior_alignment
@@ -181,10 +172,7 @@ if __name__ == "__main__":
             nrrdPath,
             hemisphere=eval(args.whole),
         )
-    # Create a dict to track which sections have been visted
-    visited = {}
-    for f in fileList:
-        visited[f] = False
+
 
     def best_fit_line(x, y):
         n = len(x)
@@ -217,29 +205,44 @@ if __name__ == "__main__":
         return predictions
 
     # Load the appropriate atlas
-    # Override the angle if needed
     atlas, atlasHeader = nrrd.read(
         str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
     )
+    c_atlas, c_atlasHeader = nrrd.read(
+        str(nrrdPath / f"ara_nissl_10_cerebrum.nrrd"), index_order="C"
+    )
+    nc_atlas, nc_atlasHeader = nrrd.read(
+        str(nrrdPath / f"ara_nissl_10_no_cerebrum.nrrd"), index_order="C"
+    )
+
+    # Load the appropriate annotation
     annotation, annotationHeader = nrrd.read(
         str(nrrdPath / f"annotation_10_all.nrrd"),
         index_order="C",
     )
+    c_annotation, c_annotationHeader = nrrd.read(
+        str(nrrdPath / f"annotation_10_cerebrum.nrrd"),
+        index_order="C",
+    )
+    nc_annotation, nc_annotationHeader = nrrd.read(
+        str(nrrdPath / f"annotation_10_no_cerebrum.nrrd"),
+        index_order="C",
+    )
+
     print("Awaiting fine tuning...", flush=True)
     # Setup the viewer
     viewer = napari.Viewer()
     # Add each layer
     predictions = adjustPredictions(predictions, visited, fileList)
+
     if images[0].dtype == np.uint8:
         contrast_limits = [0, images[0].max()]
     elif images[0].dtype == np.uint16:
         contrast_limits = [0, images[0].max()]
 
     if is_whole:
-        left_atlas = atlas.copy()
-        right_atlas = atlas.copy()[:, :, ::-1]
-        # expand the dim of the right atlas
-        # swap the 1st and 0th axis
+        left_atlas = atlas[predictions[fileList[0]], :, :]
+        right_atlas = atlas[predictions[fileList[0]], :, ::-1]
 
         right_atlas_layer = viewer.add_image(
             right_atlas,
@@ -257,11 +260,12 @@ if __name__ == "__main__":
         )
 
         # set grid witdth to 3
-        viewer.grid.shape = (2, 3)
+        viewer.grid.shape = (1, 3)
 
     else:
-        atlasLayer = viewer.add_image(
-            atlas,
+        left_atlas = atlas[predictions[fileList[0]], :, :]
+        left_atlas_layer = viewer.add_image(
+            left_atlas,
             name="atlas",
         )
 
@@ -271,10 +275,6 @@ if __name__ == "__main__":
             colormap="cyan",
             contrast_limits=contrast_limits,
         )
-
-    # Set the initial slider position
-    viewer.dims.set_point(0, predictions[fileList[0]])
-
     # Track the current section
     currentSection = 0
     isProcessing = False
@@ -282,12 +282,19 @@ if __name__ == "__main__":
 
     # Setup  the napari contorls
     # Button callbacks
+    def update_step():
+        global currentSection
+        
+        left_hemi_slider.setValue(predictions[fileList[currentSection]])
+        left_hemi_value.setText(str(predictions[fileList[currentSection]]))
+        if is_whole:
+            right_hemi_slider.setValue(predictions[fileList[currentSection]])
+            right_hemi_value.setText(str(predictions[fileList[currentSection]]))
 
     def nextSection():
         """Move one section forward by crawling file paths"""
         global currentSection, progressBar
         if not currentSection == len(images) - 1:
-            predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
 
             if not did_load_alignment:
@@ -301,14 +308,14 @@ if __name__ == "__main__":
                 images[currentSection],
                 (atlas.shape[2], atlas.shape[1]),
             )
-
-            viewer.dims.set_point(0, predictions[fileList[currentSection]])
+            atlasTypeDropdown.setCurrentIndex(0)
+            update_step()
+            update_region()
 
     def prevSection():
         """Move one section backward by crawling file paths"""
         global currentSection, progressBar
         if not currentSection == 0:
-            predictions[fileList[currentSection]] = viewer.dims.current_step[0]
             visited[fileList[currentSection]] = True
 
             if not did_load_alignment:
@@ -324,32 +331,43 @@ if __name__ == "__main__":
                 (atlas.shape[2], atlas.shape[1]),
             )
 
-            viewer.dims.set_point(0, predictions[fileList[currentSection]])
+            update_step()
+            update_region()
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        global currentSection, isProcessing, angle, predictions
+        global currentSection, isProcessing, angle, predictions, region_selections
         if isProcessing:
             return
         print("Warping output...", flush=True)
         isProcessing = True
 
-        # Get the final section details wherever we stopped
-        predictions[fileList[currentSection]] = viewer.dims.current_step[0]
-
         # Save the seleceted sections
-        save_alignment(list(predictions.values()), fileList, angle, args.input)
+        save_alignment(list(predictions.values()), region_selections, fileList, angle, args.input)
 
         # Warp the predictions on the tissue and save the results
         for i in range(len(images)):
             imageName = fileList[i]
             print(f"Warping {imageName}...", flush=True)
-            if is_whole:
-                left_label = annotation[int(predictions[imageName]), :, :]
-                left_section = atlas[int(predictions[imageName]), :, :]
+            used_atlas = atlas
+            used_annotation = annotation
+            if region_selections[imageName] == 'C':
+                used_atlas = c_atlas
+                used_annotation = c_annotation
+            elif region_selections[imageName] == 'NC':
+                used_atlas = nc_atlas
+                used_annotation = nc_annotation
 
-                right_label = annotation[int(predictions[imageName]), :, ::-1]
-                right_section = atlas[int(predictions[imageName]), :, ::-1]
+            if is_whole:
+                left_label = used_annotation[int(predictions[imageName]), :, :]
+                left_section = used_atlas[int(predictions[imageName]), :, :]
+
+                if imageName in right_hemisphere_steps.keys():
+                    right_section = used_atlas[right_hemisphere_steps[imageName], :, ::-1]
+                    right_label = used_annotation[right_hemisphere_steps[imageName], :, ::-1]
+                else:
+                    right_label = used_annotation[int(predictions[imageName]), :, ::-1]
+                    right_section = used_atlas[int(predictions[imageName]), :, ::-1]
 
                 section = np.zeros((left_section.shape[0], left_section.shape[1] * 2))
                 section[:, : left_section.shape[1]] = left_section
@@ -361,11 +379,10 @@ if __name__ == "__main__":
                 label[:, : left_label.shape[1]] = left_label
                 label[:, left_label.shape[1] :] = right_label
             else:
-                label = annotation[int(predictions[imageName]), :, :]
-                section = atlas[int(predictions[imageName]), :, :]
+                label = used_annotation[int(predictions[imageName]), :, :]
+                section = used_atlas[int(predictions[imageName]), :, :]
 
             tissue = images[i]
-
             # resize atlas and label to match tissue
             section = cv2.resize(section, (tissue.shape[1], tissue.shape[0]))
             label = cv2.resize(
@@ -440,64 +457,57 @@ if __name__ == "__main__":
 
         print("Done!", flush=True)
 
-    def predict_alignment_accuracy():
-        """Uses SSIM to get a metric of alignment accuracy in realtime"""
-        global currentSection
+
+    def set_left_section():
+        """Set the left hemisphere section"""
+        global left_section_num, isProcessing, currentSection
         if isProcessing:
             return
+        left_section_num = left_hemi_slider.value()
+        left_atlas_layer.data = atlas[left_section_num, :, :]
+        left_hemi_value.setText(str(left_section_num))
+        predictions[fileList[currentSection]] = left_section_num
+        if link_hemispheres.isChecked() and is_whole:
+            right_hemi_slider.setValue(left_section_num)
+            right_hemi_value.setText(str(left_section_num))
+            
 
-        # Get the current section
-        # Get the current image
-        section_image = images[currentSection]
-        atlas_pos = viewer.dims.current_step[0]
-
-        if is_whole:
-            left_atlas = atlas[atlas_pos, :, :]
-            right_atlas = atlas[atlas_pos, :, ::-1]
-
-            atlas_image = np.zeros((left_atlas.shape[0], left_atlas.shape[1] * 2))
-            atlas_image[:, : left_atlas.shape[1]] = left_atlas
-            atlas_image[:, left_atlas.shape[1] :] = right_atlas
+    def set_right_section():
+        """Set the right hemisphere section"""
+        global right_section_num, isProcessing
+        if isProcessing:
+            return
+        
+        right_section_num = right_hemi_slider.value()
+        right_atlas_layer.data = atlas[right_section_num, :, ::-1]
+        right_hemi_value.setText(str(right_section_num))
+        if link_hemispheres.isChecked():
+            left_hemi_slider.setValue(right_section_num)
+            left_hemi_value.setText(str(right_section_num))
+            predictions[fileList[currentSection]] = right_section_num
         else:
-            atlas_image = atlas[atlas_pos, :, :]
+            right_hemisphere_steps[fileList[currentSection]] = right_section_num
 
-        atlas_image = cv2.normalize(
-            atlas_image, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
-        )
-        atlas_image = cv2.resize(
-            atlas_image, (section_image.shape[1], section_image.shape[0])
-        )
-
-        # histograms
-        section_image = sitk.GetImageFromArray(section_image)
-        atlas_image = sitk.GetImageFromArray(atlas_image)
-
-        atlas_image = match_histograms(atlas_image, section_image)
-
-        atlas_image = sitk.GetArrayFromImage(atlas_image)
-        section_image = sitk.GetArrayFromImage(section_image)
-
-        # Get percent similarity
-        result = ssim(section_image, atlas_image)
-
-        # Update the label
-        acc_label.setText(f"Structural Similarity: {100*result:.2f}%")
-        # Make the label red if the accuracy is below 80%
-        if result < 0.25:
-            acc_label.setStyleSheet("font: 12px; color: red")
-        elif result < 0.5:
-            acc_label.setStyleSheet("font: 12px; color: yellow")
-        else:
-            acc_label.setStyleSheet("font: 12px; color: green")
-
-    def link_hemispheres():
-        """Link/Unlink hemispheres during whole brain alignment"""
-        pass
-
-    # Labels
-    acc_label = QLabel("Alignment Accuracy: ")
-    acc_label.setAlignment(Qt.AlignLeft)
-    acc_label.setStyleSheet("font: 12px;")
+    def change_region_type():
+        """Change the region type"""
+        global region_selections
+        current_text = atlasTypeDropdown.currentText()
+        if current_text == "All Regions":
+            region_selections[fileList[currentSection]] = 'A'
+        elif current_text == "Cerebrum Only":
+            region_selections[fileList[currentSection]] = 'C'
+        elif current_text == "No Cerebrum":
+            region_selections[fileList[currentSection]] = 'NC'
+    
+    def update_region():
+        global region_selections
+        flag = region_selections[fileList[currentSection]]
+        if flag == 'A':
+            atlasTypeDropdown.setCurrentIndex(0)
+        elif flag == 'C':
+            atlasTypeDropdown.setCurrentIndex(1)
+        elif flag == 'NC':
+            atlasTypeDropdown.setCurrentIndex(2)
 
     # Button objects
     nextButton = QPushButton("Next Section")
@@ -513,17 +523,47 @@ if __name__ == "__main__":
     backButton.clicked.connect(prevSection)
     doneButton.clicked.connect(finishAlignment)
 
-    widgets = [progressBar, nextButton, backButton, doneButton]
+    # Dropdown to select if it should be cerebrum only, no cerebrum, or whole brain
+    atlasTypeDropdown = QComboBox()
+    atlasTypeDropdown.addItem("All Regions")
+    atlasTypeDropdown.addItem("Cerebrum Only")
+    atlasTypeDropdown.addItem("No Cerebrum")
+    atlasTypeDropdown.currentIndexChanged.connect(change_region_type)
+
+    # Left and right hemisphere sliders
+    left_hemi_slider = QSlider(Qt.Horizontal)
+    right_hemi_slider = QSlider(Qt.Horizontal)
+    left_hemi_slider.setRange(0, 1319)
+    right_hemi_slider.setRange(0, 1319)
+    left_hemi_slider.setValue(predictions[fileList[currentSection]])
+    right_hemi_slider.setValue(predictions[fileList[currentSection]])
+    # add label
+    left_hemi_label = QLabel("Left Hemisphere")
+    right_hemi_label = QLabel("Right Hemisphere")
+    left_hemi_label.setAlignment(Qt.AlignCenter)
+    right_hemi_label.setAlignment(Qt.AlignCenter)
+    left_hemi_value = QLabel(str(predictions[fileList[currentSection]]))
+    right_hemi_value = QLabel(str(predictions[fileList[currentSection]]))
+
+    left_hemi_slider.valueChanged.connect(set_left_section)
+    right_hemi_slider.valueChanged.connect(set_right_section)
+
+    bottomRow = [left_hemi_label,  left_hemi_slider, left_hemi_value]
+    widgets = [progressBar, atlasTypeDropdown, nextButton, backButton, doneButton]
+    # Link left and right hemispheres
+    link_hemispheres = QCheckBox("Link Hemispheres")
+    link_hemispheres.setChecked(True)
     if is_whole:
-        # Link left and right hemispheres
-        is_linked = QCheckBox("Link Hemispheres")
-        is_linked.setChecked(True)
-        is_linked.stateChanged.connect(link_hemispheres)
-        widgets.append(is_linked)
+        widgets.insert(1, link_hemispheres)
+        extras = [right_hemi_label, right_hemi_slider, right_hemi_value]
+        for e in extras:
+            bottomRow.append(e)
+
+    # Add the buttons to the dock
     viewer.window.add_dock_widget(
-        acc_label,
-        name="metrics",
-        area="left",
+        bottomRow,
+        name="region",
+        area="bottom",
     )
 
     # Add them to the dock

@@ -14,9 +14,15 @@ Bell Jar's goal is be built on any platform, as such we provide release binaries
 
 See the belljar_guide.pdf included in the repository for a detailed set of instructions on how to run the program with our sample dataset. It also includes a guide to each individual tool.
 
+# Requirements
+- At least 20GB of disk space
+- 32GB of memory
+- Intel i5 / Apple Silicon / AMD Ryzen 4th gen
+- (Strongly Recommended) GPU with at least 6 GB of VRAM
+
 # Install
 
-To build and run from source please clone the main branch onto your local machine and run the following. Note that complete install requires internet and about 55GB of storage.
+To build and run from source please clone the main branch onto your local machine and run the following. Note that complete install requires internet and is about 10gb on disk.
 
 To install from a release binary:
 

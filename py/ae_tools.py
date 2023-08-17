@@ -60,9 +60,15 @@ def make_predictions(
         matched = []
         for image in dapiImages:
             dapi = sitk.GetImageFromArray(image)
-            matched_dapi = match_histograms(dapi, sample)
+            matched_dapi = match_histograms(sample, dapi)
             matched_dapi = sitk.GetArrayFromImage(matched_dapi)
             matched.append(matched_dapi)
+
+
+        if hemisphere:
+            # Only use the left hemisphere
+            matched = [img[:, :img.shape[1] // 2] for img in matched]
+            matched = [cv2.resize(img, (256, 256)) for img in matched]
 
         t = transforms.Compose([transforms.ToTensor()])
         dataset = Nissl(matched, transform=t, labels=dapiLabels)
