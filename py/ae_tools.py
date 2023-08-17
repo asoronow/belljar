@@ -40,7 +40,7 @@ def make_predictions(
 
     # Load encoder model
     encoder = TissueAutoencoder()
-    checkpoint = torch.load(modelPath)
+    checkpoint = torch.load(modelPath, map_location=device)
     encoder.load_state_dict(checkpoint)
     encoder.to(device)
     encoder.eval()
@@ -64,10 +64,9 @@ def make_predictions(
             matched_dapi = sitk.GetArrayFromImage(matched_dapi)
             matched.append(matched_dapi)
 
-
         if hemisphere:
             # Only use the left hemisphere
-            matched = [img[:, :img.shape[1] // 2] for img in matched]
+            matched = [img[:, : img.shape[1] // 2] for img in matched]
             matched = [cv2.resize(img, (256, 256)) for img in matched]
 
         t = transforms.Compose([transforms.ToTensor()])
