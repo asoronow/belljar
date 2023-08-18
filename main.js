@@ -480,7 +480,7 @@ app.on("ready", () => {
         }
     });
     win.webContents.once("did-finish-load", () => {
-        // Make a directory to house enviornment, settings, etc.
+        // Make a directory to house enviornment, settings, etc.yarn
         checkLocalDir();
         // Setup python for running the pipeline
         setupPython(win)
@@ -493,6 +493,7 @@ app.on("ready", () => {
             else {
                 // Otherwise, we can just update the dependencies
                 updatePythonDependencies(win).then(() => {
+                    // Check for new patch
                     // Check if any directories are missing
                     fixMissingDirectories(win).then(() => {
                         win.loadFile("pages/index.html");

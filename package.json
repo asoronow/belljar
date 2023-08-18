@@ -1,9 +1,9 @@
 {
   "name": "belljar",
   "description": "A tool for mouse neurohistology",
-  "version": "6.0.0-beta",
+  "version": "6.1.0-beta",
   "main": "main.js",
-  "repository": "git@github.com:asoronow/belljar.git",
+  "repository": "asoronow/belljar",
   "author": "Alec <a.soronow@gmail.com>",
   "license": "MIT",
   "private": false,
@@ -27,7 +27,7 @@
     "@electron-forge/maker-deb": "^6.0.3",
     "@electron-forge/maker-dmg": "^6.2.1",
     "@electron-forge/maker-rpm": "^6.0.3",
-    "@electron-forge/maker-squirrel": "^6.0.3",
+    "@electron-forge/maker-squirrel": "^6.3.0",
     "@electron-forge/maker-zip": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^4.29.0",
     "@typescript-eslint/parser": "^4.29.0",
@@ -43,11 +43,8 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "osxSign": {
-          "identity": "Developer ID Application: Alec Soronow (Q6GLLTVM85)"
-        },
         "asar": false,
-        "icon": "assets/icons/icon.png",
+        "icon": "assets/icons/icon",
         "ignore": [
           "src",
           "tsconfig.json",
@@ -58,13 +55,7 @@
       },
       "makers": [
         {
-          "name": "@electron-forge/maker-zip",
-          "platforms": [
-            "win32"
-          ],
-          "config": {
-            "name": "belljar"
-          }
+          "name": "@electron-forge/maker-zip"
         },
         {
           "name": "@electron-forge/maker-dmg",
@@ -73,8 +64,10 @@
           }
         },
         {
-          "name": "@electron-forge/maker-deb",
-          "config": {}
+          "name": "@electron-forge/maker-deb"
+        },
+        {
+          "name": "@electron-forge/maker-squirrel"
         }
       ]
     }

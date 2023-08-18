@@ -10,7 +10,6 @@ import SimpleITK as sitk
 import csv
 import napari
 import argparse
-from skimage.metrics import structural_similarity as ssim
 from qtpy.QtWidgets import (
     QPushButton,
     QProgressBar,

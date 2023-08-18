@@ -15,6 +15,8 @@ var appDir = app.getAppPath();
 var win: typeof BrowserWindow = null;
 var logWin: typeof BrowserWindow = null;
 
+
+
 // override console log
 var log = console.log;
 console.log = function () {
@@ -133,6 +135,7 @@ function getVersion() {
   const packageJson = require(path.join(appDir, "package.json"));
   return packageJson.version;
 }
+
 
 function setupPython(win: typeof BrowserWindow) {
   const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
@@ -578,7 +581,7 @@ app.on("ready", () => {
   });
 
   win.webContents.once("did-finish-load", () => {
-    // Make a directory to house enviornment, settings, etc.
+    // Make a directory to house enviornment, settings, etc.yarn
     checkLocalDir();
     // Setup python for running the pipeline
     setupPython(win)
@@ -590,9 +593,10 @@ app.on("ready", () => {
         } else {
           // Otherwise, we can just update the dependencies
           updatePythonDependencies(win).then(() => {
-            // Check if any directories are missing
-            fixMissingDirectories(win).then(() => {
-              win.loadFile("pages/index.html");
+            // Check for new patch
+              // Check if any directories are missing
+              fixMissingDirectories(win).then(() => {
+                win.loadFile("pages/index.html");
             });
           });
         }
