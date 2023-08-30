@@ -65,9 +65,6 @@
         },
         {
           "name": "@electron-forge/maker-deb"
-        },
-        {
-          "name": "@electron-forge/maker-squirrel"
         }
       ]
     }
