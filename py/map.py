@@ -32,7 +32,7 @@ parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
 parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
 parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
 parser.add_argument("-w", "--whole", default=False)
-parser.add_argument("-a", "--angle", help="override predicted angle", default=False)
+parser.add_argument("-a", "--spacing", help="override predicted spacing", default=False)
 parser.add_argument(
     "-s",
     "--structures",
@@ -63,7 +63,14 @@ def get_max_contour(image, separated=False):
     return largest_contour
 
 
-def save_alignment(selected_sections_left, selected_sections_right, selected_regions, file_list, angle, input_dir):
+def save_alignment(
+    selected_sections_left,
+    selected_sections_right,
+    selected_regions,
+    file_list,
+    angle,
+    input_dir,
+):
     """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
         f.write(f"{angle}\n")
@@ -122,6 +129,9 @@ if __name__ == "__main__":
         and not name.startswith(".")
         and name.endswith(".png")
     ]
+    # Sort the file paths by number
+    fileList.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
+
     absolutePaths = [str(inputPath / p) for p in fileList]
     # Create a dict to track which sections have been visted
     visited = {f: False for f in fileList}
@@ -199,8 +209,10 @@ if __name__ == "__main__":
         return m, c
 
     def adjustPredictions(predictions, right_predictions, visited, fileList):
+        global args
         x_visited = [i for i, v in enumerate(visited.values()) if v]
         y_visited = [predictions[fileList[i]] for i in x_visited]
+
         if len(x_visited) < 2 and len(predictions) > 1:
             # compute line of best fit with all points
             x_visited = [i for i in range(len(fileList))]
@@ -212,10 +224,22 @@ if __name__ == "__main__":
         m, c = best_fit_line(x_visited, y_visited)
         m_r, c_r = best_fit_line(x_visited, y_r_visited)
 
+        # Check if args.spacing exists and attempt to convert it to an integer
+        spacing = None
+        if hasattr(args, "spacing"):
+            try:
+                spacing = int(args.spacing) // 10  # convert to 10 micron spacing
+            except ValueError:
+                spacing = None
+
         for i in range(len(fileList)):
             if not visited[fileList[i]]:
-                predictions[fileList[i]] = int(m * i + c)
-                right_predictions[fileList[i]] = int(m_r * i + c_r)
+                if spacing is not None:
+                    predictions[fileList[i]] = int(c + spacing * i)
+                    right_predictions[fileList[i]] = int(c_r + spacing * i)
+                else:
+                    predictions[fileList[i]] = int(m * i + c)
+                    right_predictions[fileList[i]] = int(m_r * i + c_r)
 
         return predictions, right_predictions
 
@@ -246,9 +270,13 @@ if __name__ == "__main__":
 
     print("Awaiting fine tuning...", flush=True)
     # Setup the viewer
-    viewer = napari.Viewer(title="Bell Jar Atlas Alignment",)
+    viewer = napari.Viewer(
+        title="Bell Jar Atlas Alignment",
+    )
     # Add each layer
-    predictions, right_hemisphere_steps = adjustPredictions(predictions, right_hemisphere_steps, visited, fileList)
+    predictions, right_hemisphere_steps = adjustPredictions(
+        predictions, right_hemisphere_steps, visited, fileList
+    )
 
     contrast_limits = [0, images[0].max()]
 
@@ -266,7 +294,7 @@ if __name__ == "__main__":
         )
 
         sectionLayer = viewer.add_image(
-            cv2.resize(images[0], (atlas.shape[2] , atlas.shape[1])),
+            cv2.resize(images[0], (atlas.shape[2], atlas.shape[1])),
             name="section",
             colormap="cyan",
             contrast_limits=contrast_limits,
@@ -316,7 +344,9 @@ if __name__ == "__main__":
             right_hemisphere_steps[fileList[currentSection]] = right_value
 
             right_atlas_layer.data = atlas[right_value, :, ::-1]
-        left_section_num = new_left_section_num  # Update the global variable after processing
+        left_section_num = (
+            new_left_section_num  # Update the global variable after processing
+        )
         predictions[fileList[currentSection]] = new_left_section_num
 
     def set_right_section():
@@ -341,9 +371,10 @@ if __name__ == "__main__":
             predictions[fileList[currentSection]] = left_value
 
             left_atlas_layer.data = atlas[left_value, :, :]
-        right_section_num = new_right_section_num  # Update the global variable after processing
+        right_section_num = (
+            new_right_section_num  # Update the global variable after processing
+        )
         right_hemisphere_steps[fileList[currentSection]] = new_right_section_num
-
 
     def change_region_type():
         """Change the region type"""
@@ -365,7 +396,7 @@ if __name__ == "__main__":
             atlasTypeDropdown.setCurrentIndex(1)
         elif flag == "NC":
             atlasTypeDropdown.setCurrentIndex(2)
-            
+
     def nextSection():
         """Move one section forward by crawling file paths"""
         global currentSection, progressBar, isProcessing, predictions, right_hemisphere_steps, left_section_num, right_section_num
@@ -373,7 +404,9 @@ if __name__ == "__main__":
             visited[fileList[currentSection]] = True
             is_linked[fileList[currentSection]] = link_hemispheres.isChecked()
             if not did_load_alignment:
-                predictions, right_hemisphere_steps = adjustPredictions(predictions, right_hemisphere_steps, visited, fileList)
+                predictions, right_hemisphere_steps = adjustPredictions(
+                    predictions, right_hemisphere_steps, visited, fileList
+                )
 
             currentSection += 1
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
@@ -402,7 +435,9 @@ if __name__ == "__main__":
             is_linked[fileList[currentSection]] = link_hemispheres.isChecked()
 
             if not did_load_alignment:
-                predictions, right_hemisphere_steps = adjustPredictions(predictions, right_hemisphere_steps, visited, fileList)
+                predictions, right_hemisphere_steps = adjustPredictions(
+                    predictions, right_hemisphere_steps, visited, fileList
+                )
 
             currentSection -= 1
             progressBar.setFormat(f"{currentSection + 1}/{len(images)}")
@@ -433,7 +468,12 @@ if __name__ == "__main__":
 
         # Save the seleceted sections
         save_alignment(
-            list(predictions.values()), right_hemisphere_steps, region_selections, fileList, angle, args.input
+            list(predictions.values()),
+            right_hemisphere_steps,
+            region_selections,
+            fileList,
+            angle,
+            args.input,
         )
 
         # Warp the predictions on the tissue and save the results
@@ -502,6 +542,8 @@ if __name__ == "__main__":
 
             # composite the warped labels onto the tissue
             tissue = cv2.cvtColor(tissue, cv2.COLOR_GRAY2BGR)
+            # contrast adjust the tissue
+            tissue = (255 * (tissue / tissue.max())).astype(np.uint8)
             # convert color_label to 8 bit
             color_label = (color_label).astype(np.uint8)
             color_label = cv2.cvtColor(color_label, cv2.COLOR_RGB2BGR)
@@ -551,8 +593,6 @@ if __name__ == "__main__":
         viewer.close()
 
         print("Done!", flush=True)
-
-   
 
     # Button objects
     nextButton = QPushButton("Next Section")
