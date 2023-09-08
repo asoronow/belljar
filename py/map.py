@@ -129,8 +129,9 @@ if __name__ == "__main__":
         and not name.startswith(".")
         and name.endswith(".png")
     ]
+
     # Sort the file paths by number
-    fileList.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
+    fileList.sort()
 
     absolutePaths = [str(inputPath / p) for p in fileList]
     # Create a dict to track which sections have been visted
@@ -230,26 +231,6 @@ if __name__ == "__main__":
     # Load the appropriate atlas
     atlas, atlasHeader = nrrd.read(
         str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
-    )
-    c_atlas, c_atlasHeader = nrrd.read(
-        str(nrrdPath / f"ara_nissl_10_cerebrum.nrrd"), index_order="C"
-    )
-    nc_atlas, nc_atlasHeader = nrrd.read(
-        str(nrrdPath / f"ara_nissl_10_no_cerebrum.nrrd"), index_order="C"
-    )
-
-    # Load the appropriate annotation
-    annotation, annotationHeader = nrrd.read(
-        str(nrrdPath / f"annotation_10_all.nrrd"),
-        index_order="C",
-    )
-    c_annotation, c_annotationHeader = nrrd.read(
-        str(nrrdPath / f"annotation_10_cerebrum.nrrd"),
-        index_order="C",
-    )
-    nc_annotation, nc_annotationHeader = nrrd.read(
-        str(nrrdPath / f"annotation_10_no_cerebrum.nrrd"),
-        index_order="C",
     )
 
     print("Awaiting fine tuning...", flush=True)
@@ -461,6 +442,31 @@ if __name__ == "__main__":
             angle,
             args.input,
         )
+
+        # Load the appropriate annotation
+        annotation, annotationHeader = nrrd.read(
+            str(nrrdPath / f"annotation_10_all.nrrd"),
+            index_order="C",
+        )
+
+        if "C" in region_selections.values():
+            c_annotation, c_annotationHeader = nrrd.read(
+                str(nrrdPath / f"annotation_10_cerebrum.nrrd"),
+                index_order="C",
+            )
+            c_atlas, c_atlasHeader = nrrd.read(
+                str(nrrdPath / f"ara_nissl_10_cerebrum.nrrd"), index_order="C"
+            )
+
+        if "NC" in region_selections.values():
+            nc_annotation, nc_annotationHeader = nrrd.read(
+                str(nrrdPath / f"annotation_10_no_cerebrum.nrrd"),
+                index_order="C",
+            )
+
+            nc_atlas, nc_atlasHeader = nrrd.read(
+                str(nrrdPath / f"ara_nissl_10_no_cerebrum.nrrd"), index_order="C"
+            )
 
         # Warp the predictions on the tissue and save the results
         for i in range(len(images)):

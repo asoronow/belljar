@@ -564,7 +564,7 @@ ipcMain.on("runMax", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-o ${data[1]}`, `-i ${data[0]}`, "-g False"],
+        args: [`-o ${data[1]}`, `-i ${data[0]}`, `-d ${data[2]}`, `-t ${data[3]}`, "-g False"],
     };
     let pyshell = new PythonShell("max.py", options);
     var total = 0;
@@ -585,6 +585,7 @@ ipcMain.on("runMax", function (event, data) {
         }
         else {
             current++;
+            console.log(message);
             event.sender.send("updateLoad", [
                 Math.round((current / total) * 100),
                 message,
