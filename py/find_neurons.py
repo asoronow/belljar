@@ -42,10 +42,12 @@ else:
     tileSize = int(args.tile)
     modelPath = args.model.strip()
 
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
 detectionModel = Yolov5DetectionModel(
     model_path=modelPath,
     confidence_threshold=float(args.confidence),
-    device="cuda:0" if torch.cuda.is_available() else "cpu",
+    device=device,
 )
 files = os.listdir(inputDirectory)
 print(len(files), flush=True)
@@ -55,13 +57,9 @@ for file in files:
         filePath = os.path.join(inputDirectory, file)
         # Read it in with cv2
         try:
-            fileSizeGB = os.path.getsize(filePath) / 1e9
-            if fileSizeGB > 1:
-                img = tifffile.imread(filePath)
-                bbout = tifffile.imread(filePath)
-            else:
-                img = cv2.imread(filePath)
-                bbout = cv2.imread(filePath, cv2.IMREAD_COLOR)
+            img = tifffile.imread(filePath)
+            bbout = tifffile.imread(filePath)
+
             print(f"Processing {file}", flush=True)
             height, width, channels = img.shape
             # Create a blank image for recording predictionsY
@@ -73,8 +71,8 @@ for file in files:
                 detection_model=detectionModel,
                 slice_height=tileSize,
                 slice_width=tileSize,
-                overlap_height_ratio=0.5,
-                overlap_width_ratio=0.5,
+                overlap_height_ratio=0.1,
+                overlap_width_ratio=0.1,
             )
             # List of objects we found
             predictionList = result.object_prediction_list
