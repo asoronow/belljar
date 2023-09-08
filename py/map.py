@@ -77,7 +77,7 @@ def save_alignment(
         for i, (s, r) in enumerate(zip(selected_sections_left, selected_regions)):
             current_file = file_list[i]
             s_r = selected_sections_right[current_file]
-            f.write(f"{current_file}-{s}-{s_r}-{r}\n")
+            f.write(f"{current_file}${s}${s_r}${r}\n")
 
 
 def load_alignment(input_dir, file_list):
@@ -93,7 +93,7 @@ def load_alignment(input_dir, file_list):
 
             angle = int(lines[0])
             for line in lines[1:]:
-                file_name, section_left, section_right, region = line.split("-")
+                file_name, section_left, section_right, region = line.split("$")
                 file_name = file_name.strip()
                 if file_name in file_list:
                     alignments[file_name] = int(section_left)
@@ -195,51 +195,35 @@ if __name__ == "__main__":
     left_section_num = predictions[fileList[0]]
     right_section_num = right_hemisphere_steps[fileList[0]]
 
-    def best_fit_line(x, y):
-        n = len(x)
-
-        denominator = n * sum(i**2 for i in x) - sum(x) ** 2
-
-        # Ensure we're not dividing by zero
-        if denominator == 0:
-            return None, None
-
-        m = (n * sum(i * j for i, j in zip(x, y)) - sum(x) * sum(y)) / denominator
-        c = (sum(y) - m * sum(x)) / n
-        return m, c
-
     def adjustPredictions(predictions, right_predictions, visited, fileList):
         global args
+
         x_visited = [i for i, v in enumerate(visited.values()) if v]
         y_visited = [predictions[fileList[i]] for i in x_visited]
-
-        if len(x_visited) < 2 and len(predictions) > 1:
-            # compute line of best fit with all points
-            x_visited = [i for i in range(len(fileList))]
-            y_visited = [predictions[fileList[i]] for i in x_visited]
-            y_r_visited = [right_predictions[fileList[i]] for i in x_visited]
-        else:
-            return predictions, right_predictions
-
-        m, c = best_fit_line(x_visited, y_visited)
-        m_r, c_r = best_fit_line(x_visited, y_r_visited)
+        y_r_visited = [right_predictions[fileList[i]] for i in x_visited]
 
         # Check if args.spacing exists and attempt to convert it to an integer
         spacing = None
         if hasattr(args, "spacing"):
             try:
-                spacing = int(args.spacing) // 10  # convert to 10 micron spacing
+                spacing = int(args.spacing) // 10
             except ValueError:
-                spacing = None
+                spacing = 0
 
+        # If there are not enough visited points to establish a trend,
+        # we can't adjust predictions and just return the inputs unchanged
+        if len(x_visited) < 2:
+            return predictions, right_predictions
+
+        # Calculate the line of best fit based on the visited points
+        m, b = np.polyfit(x_visited, y_visited, 1)
+        m_r, b_r = np.polyfit(x_visited, y_r_visited, 1)
+
+        # Update the prediction values for unvisited sections based on the trend defined by the line of best fit
         for i in range(len(fileList)):
             if not visited[fileList[i]]:
-                if spacing is not None:
-                    predictions[fileList[i]] = int(c + spacing * i)
-                    right_predictions[fileList[i]] = int(c_r + spacing * i)
-                else:
-                    predictions[fileList[i]] = int(m * i + c)
-                    right_predictions[fileList[i]] = int(m_r * i + c_r)
+                predictions[fileList[i]] = int(m * (i + spacing) + b)
+                right_predictions[fileList[i]] = int(m_r * (i + spacing) + b_r)
 
         return predictions, right_predictions
 
@@ -274,9 +258,11 @@ if __name__ == "__main__":
         title="Bell Jar Atlas Alignment",
     )
     # Add each layer
-    predictions, right_hemisphere_steps = adjustPredictions(
-        predictions, right_hemisphere_steps, visited, fileList
-    )
+
+    if not did_load_alignment:
+        predictions, right_hemisphere_steps = adjustPredictions(
+            predictions, right_hemisphere_steps, visited, fileList
+        )
 
     contrast_limits = [0, images[0].max()]
 
@@ -470,7 +456,7 @@ if __name__ == "__main__":
         save_alignment(
             list(predictions.values()),
             right_hemisphere_steps,
-            region_selections,
+            list(region_selections.values()),
             fileList,
             angle,
             args.input,

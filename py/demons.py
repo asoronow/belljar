@@ -25,17 +25,19 @@ def multimodal_registration(fixed, moving):
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
     )
 
+    # Pad
+    padding_size = [32] * fixed.GetDimension()
+    fixed = sitk.ConstantPad(fixed, padding_size)
+    moving = sitk.ConstantPad(moving, padding_size)
+
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(32)
-    R.MetricUseFixedImageGradientFilterOff()
-
     R.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=100,
+        learningRate=1.0, numberOfIterations=250, estimateLearningRate=R.EachIteration
     )
     R.SetOptimizerScalesFromPhysicalShift()
-    R.SetShrinkFactorsPerLevel([4, 2, 1])
-    R.SetSmoothingSigmasPerLevel([2, 1, 0])
+    R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
 
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
@@ -48,20 +50,19 @@ def multimodal_registration(fixed, moving):
     )
 
     # B-spline registration
-    transformDomainMeshSize = [8] * fixed.GetDimension()
+    transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
 
     R.SetMetricAsMattesMutualInformation(32)
-    R.SetShrinkFactorsPerLevel([4, 2, 1])
-    R.SetSmoothingSigmasPerLevel([2, 1, 0])
+    R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
     R.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=250,
+        learningRate=1.0, numberOfIterations=250, estimateLearningRate=R.EachIteration
     )
     R.SetOptimizerScalesFromPhysicalShift()
 
     R.SetInitialTransform(tx, inPlace=False)
-    R.SetInterpolator(sitk.sitkLinear)
+    R.SetInterpolator(sitk.sitkNearestNeighbor)
 
     outTx2 = R.Execute(fixed, resampled_moving)
 
