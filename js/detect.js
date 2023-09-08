@@ -25,7 +25,7 @@ function checkNumber(value, message) {
 }
 
 run.addEventListener('click', function(){
-    var c = 0.5;
+    var c = 0.85;
     var t = 640;
     var m = '';
 

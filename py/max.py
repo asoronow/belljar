@@ -45,22 +45,8 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         # Max projection
         img = np.max(img, axis=0)
 
-        if topHat:
-            # Apply a white tophat filter to isolate bright spots on a dark background
-            selem = morphology.disk(25)
-            img = morphology.white_tophat(img, selem)
-
-        if dendrite:
-            # Get rid of dendrites: apply morphological opening with a small disk structuring element
-            selem = morphology.disk(
-                3
-            )  # Adjust the size based on the dendrite size in your images
-            img = morphology.opening(img, selem)
-
         # Apply unsharp mask to enhance edges
         img = unsharp_mask(img, radius=1, amount=2)
-
-        img = (255 * (img / img.max())).astype(np.uint8)
 
         # Save the processed image
         tf.imwrite(f"{outputDirectory}/{file}", img)
