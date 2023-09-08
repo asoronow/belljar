@@ -51,8 +51,14 @@ if __name__ == "__main__":
             img = tifffile.imread(filePath)
 
             # Convert to 8bit
-            img = img * 255
-            img = img.astype(np.uint8)
+            if img.dtype != np.uint8:
+                # if floating point
+                if img.dtype == np.float32 or img.dtype == np.float64:
+                    img = img * 255
+                    img = img.astype(np.uint8)
+                else:
+                    img = img.astype(np.uint8)
+
             bbout = img.copy()
             bbout = cv2.cvtColor(bbout, cv2.COLOR_GRAY2BGR)
 
