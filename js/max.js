@@ -16,16 +16,7 @@ run.addEventListener("click", function () {
 		back.innerHTML = "Cancel";
 		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
 
-		// See if checked
-		var dendritesChecked = dendrites.checked;
-		var cellsChecked = cells.checked;
-
-		ipc.send("runMax", [
-			indir.value,
-			outdir.value,
-			dendritesChecked,
-			cellsChecked,
-		]);
+		ipc.send("runMax", [indir.value, outdir.value, false, false]);
 	}
 });
 

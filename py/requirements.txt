@@ -4,7 +4,6 @@ numpy
 opencv_python
 Pillow
 pynrrd
-sahi==0.10.7
 scikit_learn
 scipy
 scikit-image

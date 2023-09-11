@@ -71,26 +71,41 @@ if __name__ == "__main__":
             num_tiles_x = width // tileSize
             num_tiles_y = height // tileSize
 
+            # All predictions
+            all_preds = np.array([])
+
             for i in range(num_tiles_y):
                 for j in range(num_tiles_x):
                     # Define the coordinates for the current tile
-                    x1, y1, x2, y2 = j * tileSize, i * tileSize, (j+1) * tileSize, (i+1) * tileSize
+                    x1, y1, x2, y2 = (
+                        j * tileSize,
+                        i * tileSize,
+                        (j + 1) * tileSize,
+                        (i + 1) * tileSize,
+                    )
                     tile = img[y1:y2, x1:x2]  # Extract the tile from the image
 
                     result = model(tile)  # Get predictions for the current tile
                     pred = result.xyxy[0].cpu().numpy()  # Extract predictions
-                    
-                    # Process the predictions and visualize them on the original image
-                    for det in pred:
-                        x, y, mX, mY = int(det[0]) + x1, int(det[1]) + y1, int(det[2]) + x1, int(det[3]) + y1
-                        cv2.circle(
-                            predictionImage,
-                            ((mX + x) // 2, (mY + y) // 2),
-                            4,
-                            (0, 0, 255),
-                            -1,
-                        )
-                        cv2.rectangle(bbout, (x, y), (mX, mY), (255, 0, 255), 2)
+                    if len(pred) > 0:
+                        all_preds = np.append(all_preds, pred)
+
+            # Process the predictions and visualize them on the original image
+            for det in all_preds:
+                x, y, mX, mY = (
+                    int(det[0]) + x1,
+                    int(det[1]) + y1,
+                    int(det[2]) + x1,
+                    int(det[3]) + y1,
+                )
+                cv2.circle(
+                    predictionImage,
+                    ((mX + x) // 2, (mY + y) // 2),
+                    4,
+                    (0, 0, 255),
+                    -1,
+                )
+                cv2.rectangle(bbout, (x, y), (mX, mY), (255, 0, 255), 2)
 
             # No extension filename
             stripped = file.split(".")[0]
@@ -100,7 +115,7 @@ if __name__ == "__main__":
                 os.path.join(outputDirectory, f"Dots_{stripped}.png"), predictionImage
             )
             cv2.imwrite(os.path.join(outputDirectory, f"BBoxes_{stripped}.png"), bbout)
-            
+
             # Write the raw results to a pkl for later review or reuse
             with open(
                 os.path.join(outputDirectory, f"Predictions_{stripped}.pkl"), "wb"
