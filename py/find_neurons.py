@@ -4,6 +4,7 @@ import pickle
 import os
 import torch
 import yolov5
+from torchvision.ops import nms
 import numpy as np
 import argparse
 from pathlib import Path
@@ -71,33 +72,43 @@ if __name__ == "__main__":
             num_tiles_x = width // tileSize
             num_tiles_y = height // tileSize
 
-            # All predictions
-            all_preds = np.array([])
-
+            # Initialize an empty list to hold all predictions
+            all_preds = []
+            overlap = 0.1
+            overlap_px = int(tileSize * overlap)  # overlap in pixels
             for i in range(num_tiles_y):
                 for j in range(num_tiles_x):
                     # Define the coordinates for the current tile
-                    x1, y1, x2, y2 = (
-                        j * tileSize,
-                        i * tileSize,
-                        (j + 1) * tileSize,
-                        (i + 1) * tileSize,
-                    )
+                    x1 = max(0, j * tileSize - overlap_px)
+                    y1 = max(0, i * tileSize - overlap_px)
+                    x2 = min(img.shape[1], (j + 1) * tileSize + overlap_px)
+                    y2 = min(img.shape[0], (i + 1) * tileSize + overlap_px)
+
                     tile = img[y1:y2, x1:x2]  # Extract the tile from the image
 
                     result = model(tile)  # Get predictions for the current tile
                     pred = result.xyxy[0].cpu().numpy()  # Extract predictions
                     if len(pred) > 0:
-                        all_preds = np.append(all_preds, pred)
+                        # Append the tile offsets to each prediction
+                        pred[:, :4] += [x1, y1, x1, y1]
+                        all_preds.append(pred)
 
+            # Convert the list of predictions to a single NumPy array
+            all_preds_np = np.concatenate(all_preds)
+
+            # Create tensors for the bounding box coordinates and the scores
+            # Assuming the score is at index 4, adjust if necessary
+            all_boxes = torch.tensor(all_preds_np[:, :4])
+            all_scores = torch.tensor(all_preds_np[:, 4])
+
+            # Apply NMS; here 0.5 is the IoU threshold, adjust as necessary
+            keep_indices = nms(all_boxes, all_scores, 0.5)
+
+            # Now keep only the predictions that were retained after NMS
+            final_preds_np = all_preds_np[keep_indices]
             # Process the predictions and visualize them on the original image
-            for det in all_preds:
-                x, y, mX, mY = (
-                    int(det[0]) + x1,
-                    int(det[1]) + y1,
-                    int(det[2]) + x1,
-                    int(det[3]) + y1,
-                )
+            for det in final_preds_np:
+                x, y, mX, mY = map(int, det[:4])
                 cv2.circle(
                     predictionImage,
                     ((mX + x) // 2, (mY + y) // 2),
@@ -106,6 +117,7 @@ if __name__ == "__main__":
                     -1,
                 )
                 cv2.rectangle(bbout, (x, y), (mX, mY), (255, 0, 255), 2)
+
 
             # No extension filename
             stripped = file.split(".")[0]
