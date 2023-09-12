@@ -48,8 +48,20 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         # Apply unsharp mask to enhance edges
         img = unsharp_mask(img, radius=1, amount=2)
 
+        # convert to 8 bit tiff if not already
+        if img.dtype != np.uint8:
+            # if floating point
+            if img.dtype == np.float32 or img.dtype == np.float64:
+                img = img * 255
+                img = img.astype(np.uint8)
+            else:
+                img = img.astype(np.uint8)
+
+        # Get filename stem
+        stem = file.split(".")[0]
+
         # Save the processed image
-        tf.imwrite(f"{outputDirectory}/{file}", img)
+        tf.imwrite(f"{outputDirectory}/{stem}.tif", img)
     except Exception as e:
         print(f"Failed to process {file}. Error: {e}", flush=True)
 

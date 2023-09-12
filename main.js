@@ -22,7 +22,6 @@ const https = require("https");
 var appDir = app.getAppPath();
 var win = null;
 var logWin = null;
-// override console log
 var log = console.log;
 console.log = function () {
     var args = Array.from(arguments);
@@ -31,26 +30,27 @@ console.log = function () {
         .replace(/T/, " ")
         .replace(/\..+/, "");
     let prefix = `[${timestamp}] `;
-    // for every new line, add the prefix again at the start
     args = args.map((arg) => {
-        if (typeof arg === "string") {
-            // Check if there is any content other than spaces
-            if (arg.trim().length > 0) {
-                return arg
-                    .split("\n")
-                    .map((line) => {
-                    if (line.trim().length > 0) {
-                        return prefix + line;
-                    }
-                    else {
-                        return line;
-                    }
-                })
-                    .join("\n");
+        try {
+            if (typeof arg === "string") {
+                // Check if there is any content other than spaces
+                if (arg.trim().length > 0) {
+                    return arg
+                        .split("\n")
+                        .map((line) => {
+                        if (line.trim().length > 0) {
+                            return prefix + line;
+                        }
+                        else {
+                            return line;
+                        }
+                    })
+                        .join("\n");
+                }
             }
         }
-        else {
-            return arg;
+        catch (e) {
+            return arg; // return the raw arg if an exception occurs or if it's not a non-empty string
         }
     });
     log.apply(console, args);
@@ -859,7 +859,7 @@ ipcMain.on("runCollate", function (event, data) {
 // Cell Detection
 ipcMain.on("runDetection", function (event, data) {
     // Set model path
-    var modelPath = path.join(homeDir, "models/ancientwizard.pt");
+    var modelPath = path.join(homeDir, "models/chaosdruid.pt");
     // Switch over to custom if necessary
     if (data[4].length > 0) {
         modelPath = data[4];
@@ -895,7 +895,7 @@ ipcMain.on("runDetection", function (event, data) {
                 ipcMain.removeAllListeners("killDetect");
             });
         }
-        else if (message.includes("Processing")) {
+        else {
             current++;
             event.sender.send("updateLoad", [
                 Math.round((current / total) * 100),

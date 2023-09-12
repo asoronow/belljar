@@ -16,8 +16,6 @@ var win: typeof BrowserWindow = null;
 var logWin: typeof BrowserWindow = null;
 
 
-
-// override console log
 var log = console.log;
 console.log = function () {
   var args = Array.from(arguments);
@@ -27,24 +25,25 @@ console.log = function () {
     .replace(/\..+/, "");
   let prefix = `[${timestamp}] `;
 
-  // for every new line, add the prefix again at the start
   args = args.map((arg: any) => {
-    if (typeof arg === "string") {
-      // Check if there is any content other than spaces
-      if (arg.trim().length > 0) {
-        return arg
-          .split("\n")
-          .map((line: any) => {
-            if (line.trim().length > 0) {
-              return prefix + line;
-            } else {
-              return line;
-            }
-          })
-          .join("\n");
-      }
-    } else {
-      return arg;
+    try {
+      if (typeof arg === "string") {
+        // Check if there is any content other than spaces
+        if (arg.trim().length > 0) {
+          return arg
+            .split("\n")
+            .map((line: any) => {
+              if (line.trim().length > 0) {
+                return prefix + line;
+              } else {
+                return line;
+              }
+            })
+            .join("\n");
+        }
+      } 
+    } catch (e) {
+      return arg;  // return the raw arg if an exception occurs or if it's not a non-empty string
     }
   });
 
@@ -971,7 +970,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
 // Cell Detection
 ipcMain.on("runDetection", function (event: any, data: any[]) {
   // Set model path
-  var modelPath = path.join(homeDir, "models/ancientwizard.pt");
+  var modelPath = path.join(homeDir, "models/chaosdruid.pt");
   // Switch over to custom if necessary
   if (data[4].length > 0) {
     modelPath = data[4];
@@ -1006,7 +1005,7 @@ ipcMain.on("runDetection", function (event: any, data: any[]) {
         event.sender.send("detectResult");
         ipcMain.removeAllListeners("killDetect");
       });
-    } else if (message.includes("Processing")) {
+    } else {
       current++;
       event.sender.send("updateLoad", [
         Math.round((current / total) * 100),
