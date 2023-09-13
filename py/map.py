@@ -177,7 +177,7 @@ if __name__ == "__main__":
         for i, image in enumerate(new_sections):
             predictions[image] = new_predictions[image]
             right_hemisphere_steps[image] = new_predictions[image]
-
+    
     else:
         print("Making predictions...", flush=True)
         # no saved values, make a fresh prediction
@@ -195,7 +195,7 @@ if __name__ == "__main__":
     # Globals for alignment
     left_section_num = predictions[fileList[0]]
     right_section_num = right_hemisphere_steps[fileList[0]]
-
+    atlas_masks = {}
     def adjustPredictions(predictions, right_predictions, visited, fileList):
         global args
 
@@ -363,6 +363,74 @@ if __name__ == "__main__":
             atlasTypeDropdown.setCurrentIndex(1)
         elif flag == "NC":
             atlasTypeDropdown.setCurrentIndex(2)
+    
+    def get_current_atlas():
+        global left_section_num, right_section_num, is_whole, atlas
+        if is_whole:
+            return atlas[left_section_num, :, :], atlas[right_section_num, :, ::-1]
+        else:
+            return atlas[left_section_num, :, :], None
+
+    def set_mask():
+        global atlas_masks, currentSection
+
+        left_atlas, right_atlas = get_current_atlas()
+        if right_atlas is not None:
+            mask = paint_mask(np.concatenate((left_atlas, right_atlas), axis=1))
+        else:
+            mask = paint_mask(left_atlas)
+
+        atlas_masks[fileList[currentSection]] = mask
+
+    def paint_mask(image):
+        # Create a clone of the image to work on
+        clone = image.copy()
+        # Create a mask with 0s
+        mask = np.zeros((image.shape[0], image.shape[1]))
+
+        # List to store history of drawn segments for the undo functionality
+        segments_history = []
+
+        # The function to draw the segment on the image and mask
+        def draw_segment(event, x, y, flags, param):
+            nonlocal segments_history
+            if event == cv2.EVENT_LBUTTONDOWN:
+                segments_history.append((x, y))
+            elif event == cv2.EVENT_MOUSEMOVE and flags == cv2.EVENT_FLAG_LBUTTON:
+                if segments_history:
+                    cv2.line(clone, segments_history[-1], (x, y), (0, 0, 255), 2)
+                    cv2.line(mask, segments_history[-1], (x, y), 1, 2)
+                    segments_history.append((x, y))
+                    cv2.imshow('Image', clone)
+
+        # Setting the mouse callback function to draw the segment
+        cv2.namedWindow('Image')
+        cv2.setMouseCallback('Image', draw_segment)
+
+        while True:
+            # Display the image
+            cv2.imshow('Image', clone)
+            key = cv2.waitKey(1) & 0xFF
+
+            # If 'q' is pressed, break from the loop
+            if key == ord("q"):
+                break
+            # If 'z' is pressed, undo the last segment
+            elif key == ord("z"):
+                if segments_history:
+                    clone = image.copy()
+                    mask = np.zeros((image.shape[0], image.shape[1]))
+                    segments_history.pop()
+                    for i in range(0, len(segments_history), 2):
+                        if i + 1 < len(segments_history):
+                            cv2.line(clone, segments_history[i], segments_history[i + 1], (0, 0, 255), 2)
+                            cv2.line(mask, segments_history[i], segments_history[i + 1], 1, 2)
+                    cv2.imshow('Image', clone)
+
+        # Destroy all windows
+        cv2.destroyAllWindows()
+
+        return mask
 
     def nextSection():
         """Move one section forward by crawling file paths"""
@@ -590,7 +658,8 @@ if __name__ == "__main__":
     nextButton = QPushButton("Next Section")
     backButton = QPushButton("Previous Section")
     doneButton = QPushButton("Done")
-
+    addMask = QPushButton("Add Mask")
+    
     progressBar = QProgressBar(minimum=1, maximum=len(images))
     progressBar.setFormat(f"1/{len(images)}")
     progressBar.setValue(1)
@@ -599,7 +668,7 @@ if __name__ == "__main__":
     nextButton.clicked.connect(nextSection)
     backButton.clicked.connect(prevSection)
     doneButton.clicked.connect(finishAlignment)
-
+    addMask.clicked.connect(lambda: paint_mask(inputPath / fileList[currentSection]))
     # Dropdown to select if it should be cerebrum only, no cerebrum, or whole brain
     atlasTypeDropdown = QComboBox()
     atlasTypeDropdown.addItem("All Regions")

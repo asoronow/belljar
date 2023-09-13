@@ -77,6 +77,10 @@ if __name__ == "__main__":
                 y2 = min(img.shape[0], (i + 1) * tileSize + overlap_px)
 
                 tile = img[y1:y2, x1:x2]  # Extract the tile from the image
+
+                # tophat filter
+                tile = cv2.morphologyEx(tile, cv2.MORPH_TOPHAT, (15, 15))
+
                 tiles.append(tile)
                 tile_coords.append((x1, y1, x2, y2))
 
@@ -103,7 +107,7 @@ if __name__ == "__main__":
         keep = nms(
             torch.tensor(pred[:, :4], dtype=torch.float32),
             torch.tensor(pred[:, 4], dtype=torch.float32),
-            0.7,
+            0.4,
         )
 
         for p in pred[keep]:
