@@ -70,6 +70,7 @@ def save_alignment(
     file_list,
     angle,
     input_dir,
+    masks=None,
 ):
     """Writes the selected atlas section for each tissue section to a simple text file"""
     with open(Path(input_dir.strip()) / "alignment.txt", "w") as f:
@@ -78,6 +79,22 @@ def save_alignment(
             current_file = file_list[i]
             s_r = selected_sections_right[current_file]
             f.write(f"{current_file}${s}${s_r}${r}\n")
+
+    if masks is not None:
+        with open(Path(input_dir.strip()) / "masks.pkl", "wb") as f:
+            pickle.dump(masks, f)
+
+
+def load_masks(input_dir):
+    """Load masks if any from the input directory"""
+    try:
+        print("Loading prior masks...", flush=True)
+        with open(Path(input_dir.strip()) / "masks.pkl", "rb") as f:
+            return pickle.load(f)
+    except:
+        # bad file or no file, just give no masks
+        print("No compatible prior masks found...", flush=True)
+        return {}
 
 
 def load_alignment(input_dir, file_list):
@@ -177,7 +194,7 @@ if __name__ == "__main__":
         for i, image in enumerate(new_sections):
             predictions[image] = new_predictions[image]
             right_hemisphere_steps[image] = new_predictions[image]
-    
+
     else:
         print("Making predictions...", flush=True)
         # no saved values, make a fresh prediction
@@ -195,7 +212,8 @@ if __name__ == "__main__":
     # Globals for alignment
     left_section_num = predictions[fileList[0]]
     right_section_num = right_hemisphere_steps[fileList[0]]
-    atlas_masks = {}
+    atlas_masks = load_masks(args.input)
+
     def adjustPredictions(predictions, right_predictions, visited, fileList):
         global args
 
@@ -363,7 +381,7 @@ if __name__ == "__main__":
             atlasTypeDropdown.setCurrentIndex(1)
         elif flag == "NC":
             atlasTypeDropdown.setCurrentIndex(2)
-    
+
     def get_current_atlas():
         global left_section_num, right_section_num, is_whole, atlas
         if is_whole:
@@ -372,64 +390,64 @@ if __name__ == "__main__":
             return atlas[left_section_num, :, :], None
 
     def set_mask():
-        global atlas_masks, currentSection
+        global atlas_masks, currentSection, addMask
 
         left_atlas, right_atlas = get_current_atlas()
         if right_atlas is not None:
-            mask = paint_mask(np.concatenate((left_atlas, right_atlas), axis=1))
+            mask = paint_and_get_mask(np.concatenate((left_atlas, right_atlas), axis=1))
         else:
-            mask = paint_mask(left_atlas)
+            mask = paint_and_get_mask(left_atlas)
 
         atlas_masks[fileList[currentSection]] = mask
+        addMask.setText("Change Mask")
 
-    def paint_mask(image):
-        # Create a clone of the image to work on
-        clone = image.copy()
-        # Create a mask with 0s
-        mask = np.zeros((image.shape[0], image.shape[1]))
+    def paint_and_get_mask(img):
+        drawing = False
+        pts = []
 
-        # List to store history of drawn segments for the undo functionality
-        segments_history = []
+        # ensure image is color
+        if len(img.shape) == 2:
+            # convert to 8bit from float64
+            img = (img).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        # The function to draw the segment on the image and mask
-        def draw_segment(event, x, y, flags, param):
-            nonlocal segments_history
+        def draw_circle(event, x, y, flags, param):
+            nonlocal drawing, pts
             if event == cv2.EVENT_LBUTTONDOWN:
-                segments_history.append((x, y))
-            elif event == cv2.EVENT_MOUSEMOVE and flags == cv2.EVENT_FLAG_LBUTTON:
-                if segments_history:
-                    cv2.line(clone, segments_history[-1], (x, y), (0, 0, 255), 2)
-                    cv2.line(mask, segments_history[-1], (x, y), 1, 2)
-                    segments_history.append((x, y))
-                    cv2.imshow('Image', clone)
+                drawing = True
+                pts.append((x, y))
+            elif event == cv2.EVENT_MOUSEMOVE:
+                if drawing:
+                    cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
+                    pts.append((x, y))
+            elif event == cv2.EVENT_LBUTTONUP:
+                drawing = False
+                cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
+                pts.append((x, y))
 
-        # Setting the mouse callback function to draw the segment
-        cv2.namedWindow('Image')
-        cv2.setMouseCallback('Image', draw_segment)
+        # Load image
+        if img is None:
+            print(f"Could not open or find the image")
+            return None
 
-        while True:
-            # Display the image
-            cv2.imshow('Image', clone)
-            key = cv2.waitKey(1) & 0xFF
+        mask = np.zeros(img.shape[:2], dtype=np.uint8)
 
-            # If 'q' is pressed, break from the loop
-            if key == ord("q"):
+        cv2.namedWindow("Image")
+        cv2.setMouseCallback("Image", draw_circle)
+
+        while 1:
+            cv2.imshow("Image", img)
+            k = cv2.waitKey(1) & 0xFF
+            if k == ord("q"):
                 break
-            # If 'z' is pressed, undo the last segment
-            elif key == ord("z"):
-                if segments_history:
-                    clone = image.copy()
-                    mask = np.zeros((image.shape[0], image.shape[1]))
-                    segments_history.pop()
-                    for i in range(0, len(segments_history), 2):
-                        if i + 1 < len(segments_history):
-                            cv2.line(clone, segments_history[i], segments_history[i + 1], (0, 0, 255), 2)
-                            cv2.line(mask, segments_history[i], segments_history[i + 1], 1, 2)
-                    cv2.imshow('Image', clone)
 
-        # Destroy all windows
+        # Filling the closed shape
+        if len(pts) > 2:
+            cv2.fillPoly(mask, [np.array(pts)], 1)
+
+        mask = np.logical_not(mask).astype(np.uint8)
+
         cv2.destroyAllWindows()
-
         return mask
 
     def nextSection():
@@ -448,6 +466,12 @@ if __name__ == "__main__":
             progressBar.setValue(currentSection + 1)
             left_section_num = predictions[fileList[currentSection]]
             right_section_num = right_hemisphere_steps[fileList[currentSection]]
+
+            # If there is a mask set the addMask button text to Change Mask
+            if fileList[currentSection] in list(atlas_masks.keys()):
+                addMask.setText("Change Mask")
+            else:
+                addMask.setText("Add Mask")
 
             sectionLayer.data = cv2.resize(
                 images[currentSection],
@@ -484,6 +508,13 @@ if __name__ == "__main__":
                 images[currentSection],
                 (atlas.shape[2], atlas.shape[1]),
             )
+
+            # If there is a mask set the addMask button text to Change Mask
+            if fileList[currentSection] in list(atlas_masks.keys()):
+                addMask.setText("Change Mask")
+            else:
+                addMask.setText("Add Mask")
+
             link_hemispheres.setChecked(is_linked[fileList[currentSection]])
             right_hemi_slider.blockSignals(True)
             right_hemi_slider.setValue(right_section_num)
@@ -495,9 +526,11 @@ if __name__ == "__main__":
 
     def finishAlignment():
         """Save our final updated prediction, perform warps, close, also write atlas borders to file"""
-        global currentSection, isProcessing, angle, predictions, region_selections
+        global currentSection, isProcessing, angle, predictions, region_selections, atlas_masks
+
         if isProcessing:
             return
+
         print("Warping output...", flush=True)
         isProcessing = True
 
@@ -509,6 +542,7 @@ if __name__ == "__main__":
             fileList,
             angle,
             args.input,
+            masks=atlas_masks,
         )
 
         # Load the appropriate annotation
@@ -578,6 +612,13 @@ if __name__ == "__main__":
                 section = used_atlas[int(predictions[imageName]), :, :]
 
             tissue = images[i]
+
+            # Check if tissue has a mask
+            if imageName in atlas_masks.keys():
+                mask = atlas_masks[imageName]
+                section = section * mask
+                label = label * mask
+
             # resize atlas and label to match tissue
             section = cv2.resize(section, (tissue.shape[1], tissue.shape[0]))
             label = cv2.resize(
@@ -585,6 +626,7 @@ if __name__ == "__main__":
                 (tissue.shape[1], tissue.shape[0]),
                 interpolation=cv2.INTER_NEAREST,
             )
+
             warped_labels, warped_atlas, color_label = register_to_atlas(
                 tissue,
                 section,
@@ -659,7 +701,7 @@ if __name__ == "__main__":
     backButton = QPushButton("Previous Section")
     doneButton = QPushButton("Done")
     addMask = QPushButton("Add Mask")
-    
+
     progressBar = QProgressBar(minimum=1, maximum=len(images))
     progressBar.setFormat(f"1/{len(images)}")
     progressBar.setValue(1)
@@ -668,7 +710,7 @@ if __name__ == "__main__":
     nextButton.clicked.connect(nextSection)
     backButton.clicked.connect(prevSection)
     doneButton.clicked.connect(finishAlignment)
-    addMask.clicked.connect(lambda: paint_mask(inputPath / fileList[currentSection]))
+    addMask.clicked.connect(set_mask)
     # Dropdown to select if it should be cerebrum only, no cerebrum, or whole brain
     atlasTypeDropdown = QComboBox()
     atlasTypeDropdown.addItem("All Regions")
@@ -695,7 +737,14 @@ if __name__ == "__main__":
     right_hemi_slider.valueChanged.connect(set_right_section)
 
     bottomRow = [left_hemi_label, left_hemi_slider, left_hemi_value]
-    widgets = [progressBar, atlasTypeDropdown, nextButton, backButton, doneButton]
+    widgets = [
+        progressBar,
+        atlasTypeDropdown,
+        addMask,
+        nextButton,
+        backButton,
+        doneButton,
+    ]
     # Link left and right hemispheres
     link_hemispheres = QCheckBox("Link Hemispheres")
     link_hemispheres.setChecked(is_linked[fileList[currentSection]])
@@ -703,6 +752,10 @@ if __name__ == "__main__":
         widgets.insert(1, link_hemispheres)
         extras = [right_hemi_label, right_hemi_slider, right_hemi_value]
         bottomRow.extend(extras)
+
+    # check if first section has loaded mask
+    if fileList[currentSection] in list(atlas_masks.keys()):
+        addMask.setText("Change Mask")
 
     # Add the buttons to the dock
     viewer.window.add_dock_widget(

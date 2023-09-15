@@ -33,7 +33,7 @@ def multimodal_registration(fixed, moving):
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(32)
     R.SetOptimizerAsGradientDescent(
-        learningRate=1.0, numberOfIterations=250, estimateLearningRate=R.EachIteration
+        learningRate=1.0, numberOfIterations=100, estimateLearningRate=R.EachIteration
     )
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
@@ -57,7 +57,7 @@ def multimodal_registration(fixed, moving):
     R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
     R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
     R.SetOptimizerAsGradientDescent(
-        learningRate=1.0, numberOfIterations=250, estimateLearningRate=R.EachIteration
+        learningRate=1.0, numberOfIterations=100, estimateLearningRate=R.EachIteration
     )
     R.SetOptimizerScalesFromPhysicalShift()
 

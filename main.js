@@ -29,33 +29,11 @@ console.log = function () {
         .toISOString()
         .replace(/T/, " ")
         .replace(/\..+/, "");
-    let prefix = `[${timestamp}] `;
-    args = args.map((arg) => {
-        try {
-            if (typeof arg === "string") {
-                // Check if there is any content other than spaces
-                if (arg.trim().length > 0) {
-                    return arg
-                        .split("\n")
-                        .map((line) => {
-                        if (line.trim().length > 0) {
-                            return prefix + line;
-                        }
-                        else {
-                            return line;
-                        }
-                    })
-                        .join("\n");
-                }
-            }
-        }
-        catch (e) {
-            return arg; // return the raw arg if an exception occurs or if it's not a non-empty string
-        }
-    });
-    log.apply(console, args);
+    let prefix = `[${timestamp}]`;
+    let message = [prefix, ...args];
+    log.apply(console, message);
     if (logWin) {
-        logWin.webContents.send("log", args.join(" "));
+        logWin.webContents.send("log", message.join(" "));
     }
 };
 // Path variables for easy management of execution
@@ -89,28 +67,34 @@ function createLogFile(message) {
 // Get files asynchonously
 function downloadFile(url, target, win) {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(target);
+        const file = fs.createWriteStream(target, { highWaterMark: 64 * 1024 });
         // get the file, update the user loading screen with text on progress
-        const requestedFileName = url.split("/").pop();
         const progress = (receivedBytes, totalBytes) => {
             const percentage = (receivedBytes * 100) / totalBytes;
-            win.webContents.send("updateStatus", `Downloading ${requestedFileName}... ${percentage.toFixed(0)}%`);
+            if (percentage > 0) {
+                win.webContents.send("updateStatus", { message: `Downloading ${target.split("/").pop()}... ${percentage.toFixed(0)}%`, timestamp: Date.now() });
+            }
         };
+        const dummy = new stream.PassThrough();
         const request = https.get(url, (response) => {
             // create a dummy stream so we can update the user on progress
-            const dummy = new stream.PassThrough();
             var receivedBytes = 0;
             var totalBytes = parseInt(response.headers["content-length"]);
             response.pipe(dummy);
+            let lastUpdateTimestamp = Date.now();
             dummy.on("data", (chunk) => {
                 receivedBytes += chunk.length;
-                progress(receivedBytes, totalBytes);
+                const currentTimestamp = Date.now();
+                if (currentTimestamp - lastUpdateTimestamp >= 1000) { // 1000 ms = 1 second
+                    progress(receivedBytes, totalBytes);
+                    lastUpdateTimestamp = currentTimestamp;
+                }
             });
             // pipe the response to the file
             response.pipe(file);
             file.on("finish", () => {
                 file.close();
-                win.webContents.send("updateStatus", `Extracting ${requestedFileName}...`);
+                win.webContents.send("updateStatus", `Extracting ${target.split("/").pop()}...`);
                 resolve(true);
             });
         });
@@ -226,7 +210,7 @@ function downloadResources(win, fresh) {
     return new Promise((resolve, reject) => {
         const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
         const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-        const modelsLink = `${bucketParentPath}/models-v6.tar.gz`;
+        const modelsLink = `${bucketParentPath}/models-v7.tar.gz`; //  Update to v7
         const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
         const requiredDirs = ["models", "embeddings", "nrrd"];
         if (!fresh) {
@@ -240,90 +224,115 @@ function downloadResources(win, fresh) {
                     downloading.push(dir);
                 }
             }
-            for (let i = 0; i < downloading.length; i++) {
-                const dir = downloading[i];
-                win.webContents.send("updateStatus", `Redownloading ${dir}...this may take a while`);
-                // Remove the directory if it exists, download tar and extract
-                if (fs.existsSync(path.join(homeDir, dir))) {
-                    fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+            if (downloading.indexOf("models") === -1) {
+                // Check in the models dir if chaosdruid.pt exists do nothing, otherwise delete the dir and download
+                if (!fs.existsSync(path.join(homeDir, "models/chaosdruid.pt"))) {
+                    downloading.push("models");
+                    // Delete existing
+                    if (fs.existsSync(path.join(homeDir, "models"))) {
+                        fs.rm(path.join(homeDir, "models"), { recursive: true });
+                    }
                 }
-                // Download the tar file
-                downloadFile(`${bucketParentPath}/${dir}.tar.gz`, path.join(homeDir, `${dir}.tar.gz`), win).then(() => {
-                    // Extract the tar file
-                    tar
-                        .x({
+            }
+            downloading.reduce((promiseChain, dir, i) => {
+                return promiseChain
+                    .then(() => {
+                    win.webContents.send("updateStatus", `Redownloading ${dir}...this may take a while`);
+                    if (fs.existsSync(path.join(homeDir, dir))) {
+                        fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+                    }
+                    let downloadPath = "";
+                    switch (dir) {
+                        case "models":
+                            downloadPath = modelsLink;
+                            break;
+                        case "embeddings":
+                            downloadPath = embeddingsLink;
+                            break;
+                        case "nrrd":
+                            downloadPath = nrrdLink;
+                            break;
+                        default:
+                            break;
+                    }
+                    return downloadFile(downloadPath, path.join(homeDir, `${dir}.tar.gz`), win);
+                })
+                    .then(() => {
+                    return tar.x({
                         cwd: homeDir,
                         preservePaths: true,
                         file: path.join(homeDir, `${dir}.tar.gz`),
-                    })
-                        .then(() => {
-                        // Delete the tar file
-                        deleteFile(path.join(homeDir, `${dir}.tar.gz`)).then(() => {
-                            win.webContents.send("updateStatus", `Downloaded ${dir}`);
-                            total++;
-                            if (downloading.length === total) {
-                                resolve(true);
-                            }
-                        });
                     });
+                })
+                    .then(() => {
+                    return deleteFile(path.join(homeDir, `${dir}.tar.gz`));
+                })
+                    .then(() => {
+                    win.webContents.send("updateStatus", `Downloaded ${dir}`);
+                    total++;
+                    if (downloading.length === total) {
+                        resolve(true);
+                    }
                 });
-            }
+            }, Promise.resolve());
             if (downloading.length === 0) {
                 resolve(true);
             }
         }
-        // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
-        // Check if these directories exist, if they do, we don't need to download any files
-        let allDirsExist = true;
-        requiredDirs.forEach((dir) => {
-            if (!fs.existsSync(path.join(homeDir, dir))) {
-                allDirsExist = false;
-            }
-        });
-        if (!allDirsExist) {
-            // Something is missing, delete everything and download again
+        else {
+            // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
+            // Check if these directories exist, if they do, we don't need to download any files
+            let allDirsExist = true;
             requiredDirs.forEach((dir) => {
-                if (fs.existsSync(path.join(homeDir, dir))) {
-                    fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+                if (!fs.existsSync(path.join(homeDir, dir))) {
+                    allDirsExist = false;
                 }
             });
-            // Download the embeddings
-            downloadFile(embeddingsLink, path.join(homeDir, "embeddings.tar.gz"), win).then(() => {
-                // Extract the embeddings
-                tar
-                    .x({
-                    cwd: homeDir,
-                    preservePaths: true,
-                    file: path.join(homeDir, "embeddings.tar.gz"),
-                })
-                    .then(() => {
-                    // Delete the tar file
-                    deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
-                        // Download the models
-                        downloadFile(modelsLink, path.join(homeDir, "models.tar.gz"), win).then(() => {
-                            // Extract the models
-                            tar
-                                .x({
-                                cwd: homeDir,
-                                preservePaths: true,
-                                file: path.join(homeDir, "models.tar.gz"),
-                            })
-                                .then(() => {
-                                // Delete the tar file
-                                deleteFile(path.join(homeDir, "models.tar.gz")).then(() => {
-                                    // Download the nrrd
-                                    downloadFile(nrrdLink, path.join(homeDir, "nrrd.tar.gz"), win).then(() => {
-                                        // Extract the nrrd
-                                        tar
-                                            .x({
-                                            cwd: homeDir,
-                                            preservePaths: true,
-                                            file: path.join(homeDir, "nrrd.tar.gz"),
-                                        })
-                                            .then(() => {
-                                            // Delete the tar file
-                                            deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(() => {
-                                                resolve(true);
+            if (!allDirsExist) {
+                // Something is missing, delete everything and download again
+                requiredDirs.forEach((dir) => {
+                    if (fs.existsSync(path.join(homeDir, dir))) {
+                        fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+                    }
+                });
+                // Download the embeddings
+                downloadFile(embeddingsLink, path.join(homeDir, "embeddings.tar.gz"), win).then(() => {
+                    // Extract the embeddings
+                    tar
+                        .x({
+                        cwd: homeDir,
+                        preservePaths: true,
+                        file: path.join(homeDir, "embeddings.tar.gz"),
+                    })
+                        .then(() => {
+                        // Delete the tar file
+                        deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
+                            // Download the models
+                            downloadFile(modelsLink, path.join(homeDir, "models.tar.gz"), win).then(() => {
+                                // Extract the models
+                                tar
+                                    .x({
+                                    cwd: homeDir,
+                                    preservePaths: true,
+                                    file: path.join(homeDir, "models.tar.gz"),
+                                })
+                                    .then(() => {
+                                    // Delete the tar file
+                                    deleteFile(path.join(homeDir, "models.tar.gz")).then(() => {
+                                        // Download the nrrd
+                                        downloadFile(nrrdLink, path.join(homeDir, "nrrd.tar.gz"), win).then(() => {
+                                            // Extract the nrrd
+                                            tar
+                                                .x({
+                                                cwd: homeDir,
+                                                preservePaths: true,
+                                                file: path.join(homeDir, "nrrd.tar.gz"),
+                                            })
+                                                .then(() => {
+                                                // Delete the tar file
+                                                deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(() => {
+                                                    resolve(true);
+                                                });
                                             });
                                         });
                                     });
@@ -332,11 +341,10 @@ function downloadResources(win, fresh) {
                         });
                     });
                 });
-            });
-        }
-        else {
-            //TODO: Error handling for unsupported platforms
-            resolve(true);
+            }
+            else {
+                resolve(true);
+            }
         }
     });
 }
@@ -344,62 +352,56 @@ function downloadResources(win, fresh) {
 function setupEnvironment(win) {
     if (!fs.existsSync(envPath)) {
         // We have not created the venv yet, so we probably don't have the models, etc. either
-        // Download the required files, checking if their directories exist
         win.webContents.send("updateStatus", "Preparing to download require files...");
-        downloadResources(win, true).then(() => {
-            // Promise chain to setup the python enviornment
+        downloadResources(win, true)
+            .then(() => {
             win.webContents.send("updateStatus", "Installing venv...");
-            installVenv()
-                .then(({ stdout, stderr }) => {
-                console.log(stdout);
-                win.webContents.send("updateStatus", "Creating venv...");
-                createVenv()
-                    .then(({ stdout, stderr }) => {
-                    console.log(stdout);
-                    win.webContents.send("updateStatus", "Installing packages...");
-                    installDeps()
-                        .then(({ stdout, stderr }) => {
-                        console.log(stdout);
-                        win.webContents.send("updateStatus", "Setup complete!");
-                        win.loadFile("pages/index.html");
-                    })
-                        .catch((error) => {
-                        console.log(error);
-                    });
-                })
-                    .catch((error) => {
-                    console.log(error);
-                });
-            })
-                .catch((error) => {
-                console.log(error);
-            });
+            return installVenv();
+        })
+            .then(({ stdout, stderr }) => {
+            console.log(stdout);
+            win.webContents.send("updateStatus", "Creating venv...");
+            return createVenv();
+        })
+            .then(({ stdout, stderr }) => {
+            console.log(stdout);
+            win.webContents.send("updateStatus", "Installing packages...");
+            return installDeps();
+        })
+            .then(({ stdout, stderr }) => {
+            console.log(stdout);
+            win.webContents.send("updateStatus", "Setup complete!");
+            win.loadFile("pages/index.html");
+        })
+            .catch((error) => {
+            console.log("An error occurred during setup:", error);
+            win.webContents.send("updateStatus", "An error occurred during setup.");
         });
-        // Install venv package
-        function installVenv() {
-            return __awaiter(this, void 0, void 0, function* () {
-                const { stdout, stderr } = yield exec(`${pyCommand} -m pip install --user virtualenv`, { cwd: pythonPath });
-                return { stdout, stderr };
+    }
+    // Install venv package
+    function installVenv() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { stdout, stderr } = yield exec(`${pyCommand} -m pip install --user virtualenv`, { cwd: pythonPath });
+            return { stdout, stderr };
+        });
+    }
+    // Create venv
+    function createVenv() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const envDir = process.platform === "win32" ? "../benv" : "../../benv";
+            const { stdout, stderr } = yield exec(`${pyCommand} -m venv ${envDir}`, {
+                cwd: pythonPath,
             });
-        }
-        // Create venv
-        function createVenv() {
-            return __awaiter(this, void 0, void 0, function* () {
-                const envDir = process.platform === "win32" ? "../benv" : "../../benv";
-                const { stdout, stderr } = yield exec(`${pyCommand} -m venv ${envDir}`, {
-                    cwd: pythonPath,
-                });
-                return { stdout, stderr };
-            });
-        }
-        // Install pip packages
-        function installDeps() {
-            return __awaiter(this, void 0, void 0, function* () {
-                const reqs = path.join(appDir, "py/requirements.txt");
-                const { stdout, stderr } = yield exec(`${pyCommand} -m pip install -r ${reqs} --use-pep517`, { cwd: envPythonPath });
-                return { stdout, stderr };
-            });
-        }
+            return { stdout, stderr };
+        });
+    }
+    // Install pip packages
+    function installDeps() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const reqs = path.join(appDir, "py/requirements.txt");
+            const { stdout, stderr } = yield exec(`${pyCommand} -m pip install -r ${reqs} --use-pep517`, { cwd: envPythonPath });
+            return { stdout, stderr };
+        });
     }
 }
 // Install the latest dependencies, could have changed after an update

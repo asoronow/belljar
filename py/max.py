@@ -1,11 +1,11 @@
 from tkinter import filedialog
-import tifffile as tf
 import os
+import tifffile as tiff
 from skimage.filters import unsharp_mask
-from skimage import filters, morphology
 import tkinter as tk
 import numpy as np
 import argparse
+import cv2
 
 parser = argparse.ArgumentParser(description="Process z-stack images")
 parser.add_argument(
@@ -40,8 +40,7 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
     # Update current file
     try:
         print(f"Processing {file}", flush=True)
-        img = tf.imread(file)
-
+        img = tiff.imread(file)
         # Max projection
         img = np.max(img, axis=0)
 
@@ -61,7 +60,7 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         stem = file.split(".")[0]
 
         # Save the processed image
-        tf.imwrite(f"{outputDirectory}/{stem}.tif", img)
+        cv2.imwrite(f"{outputDirectory}/{stem}.tif", img)
     except Exception as e:
         print(f"Failed to process {file}. Error: {e}", flush=True)
 
