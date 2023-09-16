@@ -490,7 +490,12 @@ function setupEnvironment(win: typeof BrowserWindow) {
 
     // Install pip packages
     async function installDeps() {
-      const reqs = path.join(appDir, "py/requirements.txt");
+      let reqs = path.join(appDir, "py/requirements.txt");
+      // escape spaces in path
+      if (process.platform === "win32") {
+        reqs = reqs.replace(/ /g, "\\ ");
+      }
+      
       const { stdout, stderr } = await exec(
         `${pyCommand} -m pip install -r ${reqs} --use-pep517`,
         { cwd: envPythonPath }
