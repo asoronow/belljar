@@ -47,15 +47,6 @@ if __name__ == "__main__":
     annotationFiles = [f for f in annotationFiles if f.endswith(".pkl")]
     annotationFiles.sort()
 
-    # Drop .DS_Store files
-    if intensityFiles[0] == ".DS_Store":
-        intensityFiles.pop(0)
-
-    if annotationFiles[0] == ".DS_Store":
-        annotationFiles.pop(0)
-
-    # assert (len(intensityFiles) == len(annotationFile))
-
     print(2 + len(intensityFiles), flush=True)
     print("Setting up...", flush=True)
     # Read in the regions
@@ -81,7 +72,7 @@ if __name__ == "__main__":
     for i, iName in enumerate(intensityFiles):
         intensities = {}
         verticies = {}
-        
+
         # load the image
         try:
             intensity = tifffile.imread(intensityPath + "/" + iName)
@@ -89,6 +80,7 @@ if __name__ == "__main__":
             height, width = intensity.shape
         except:
             continue
+
         # load the annotation
         with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
@@ -115,7 +107,7 @@ if __name__ == "__main__":
                 "RSPd",
                 "RSPv",
                 "ACA",
-                "STR"
+                "STR",
             ]
 
             requiredIds = [nameToRegion[region] for region in requiredRegions]

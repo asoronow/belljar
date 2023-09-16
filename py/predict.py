@@ -5,9 +5,6 @@ from torchvision.datasets import ImageFolder
 from model import Autoencoder
 import h5py
 import numpy as np
-from matplotlib import pyplot as plt
-import cv2
-from scipy.spatial.distance import directed_hausdorff
 from PIL import Image
 
 

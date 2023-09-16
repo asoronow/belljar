@@ -1,3 +1,5 @@
+const { t } = require("tar");
+
 var ipc = require("electron").ipcRenderer;
 var run = document.getElementById("run");
 var indir = document.getElementById("indir");
@@ -7,7 +9,7 @@ var loadmessage = document.getElementById("loadmessage");
 var back = document.getElementById("back");
 var whole = document.getElementById("whole");
 var half = document.getElementById("half");
-var angle = document.getElementById("angle");
+var spacing = document.getElementById("spacing");
 var alignmentMethod = "True";
 var methods = document.querySelector("#methods");
 
@@ -25,14 +27,18 @@ half.addEventListener("click", function () {
 
 run.addEventListener("click", function () {
 	if (indir && outdir && indir.value && outdir.value) {
-		var a;
-		if (angle && angle.value && angle.value >= -10 && angle.value <= 10) {
-			a = angle.value;
-		} else if (!angle || !angle.value) {
-			a = 99;
-		} else {
-			alert("Please enter a valid angle between -10 and 10");
+		var a = spacing.value;
+		// use try catch to check if a is a number
+		try {
+			a = Number(a);
+		} catch (err) {
+			console.log(err);
+			alert("Spacing must be a integer!");
 			return;
+		}
+
+		if (a % 1 != 0) {
+			a = Math.round(a);
 		}
 
 		run.classList.add("disabled");

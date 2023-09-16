@@ -59,11 +59,7 @@
             Alignment Method
             <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Select the alignment method you want to use, hemisphere requires all slices are in left hemisphere orientation"></i>
           </h5>
-        </div>
-      </div>
-      <div class="row align-items-center m-1">
-        <div class="col d-grid justify-content-start">
-          <div class="dropdown">
+          <div class="dropdown text-start">
             <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
             Both Hemispheres
             </button>
@@ -72,6 +68,16 @@
               <li><a class="dropdown-item" id="half" href="#">Single Hemisphere</a></li>
             </ul>
           </div> 
+        </div>
+        <div class="col d-grid justify-content-start">
+          <!-- Spacing input, integer -->
+          <h5>
+            Spacing (Optional)
+            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Spacing between slices in microns"></i>
+          </h5>
+          <input type="number" id="spacing" placeholder="Spacing in microns"
+            min="10" max="200" step="10"
+          >
         </div>
       </div>
       <div class="row align-items-center m-4">
