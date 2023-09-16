@@ -432,11 +432,13 @@ if __name__ == "__main__":
 
         mask = np.zeros(img.shape[:2], dtype=np.uint8)
 
-        cv2.namedWindow("Image")
-        cv2.setMouseCallback("Image", draw_circle)
+        cv2.namedWindow("Click and hold to outline | Press Q to finish")
+        cv2.setMouseCallback(
+            "Click and hold to outline | Press Q to finish", draw_circle
+        )
 
         while 1:
-            cv2.imshow("Image", img)
+            cv2.imshow("Click and hold to outline | Press Q to finish", img)
             k = cv2.waitKey(1) & 0xFF
             if k == ord("q"):
                 break
