@@ -399,11 +399,7 @@ function setupEnvironment(win) {
     function installDeps() {
         return __awaiter(this, void 0, void 0, function* () {
             let reqs = path.join(appDir, "py/requirements.txt");
-            // escape spaces in path
-            if (process.platform === "win32") {
-                reqs = reqs.replace(/ /g, "\\ ");
-            }
-            const { stdout, stderr } = yield exec(`${pyCommand} -m pip install -r ${reqs} --use-pep517`, { cwd: envPythonPath });
+            const { stdout, stderr } = yield exec(`${pyCommand} -m pip install -r "${reqs}" --use-pep517`, { cwd: envPythonPath });
             return { stdout, stderr };
         });
     }
