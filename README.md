@@ -21,7 +21,7 @@ See the belljar_guide.pdf included in the repository for a detailed set of instr
 - Intel i5 / Apple Silicon / AMD Ryzen 4th gen
 - (Strongly Recommended) GPU with at least 6 GB of VRAM
 
-## Install from Release:
+# Install from Release
 
 Get a percompiled version from releases, download the most recent version for your OS.
 To run simply extract the downloaded release and run the belljar executable.
