@@ -114,24 +114,24 @@ function getVersion() {
 }
 function setupPython(win) {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
-    const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
-    const winURL = `${bucketParentPath}/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz`;
-    const osxURL = `${bucketParentPath}/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz`;
-    const osxIntelURL = `${bucketParentPath}/cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz`;
+    const linuxURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz`;
+    const winURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz`;
+    const osxURL = `${bucketParentPath}/cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz`;
+    const osxIntelURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz`;
     return new Promise((resolve, reject) => {
         if (!fs.existsSync(path.join(homeDir, "python"))) {
             win.webContents.send("updateStatus", "Settting up python...");
             switch (process.platform) {
                 case "win32":
                     // Download and extract python to the home directory
-                    downloadFile(winURL, path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"), win)
+                    downloadFile(winURL, path.join(homeDir, "cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz"), win)
                         .then(() => {
                         // Extract the tarball
                         tar
                             .x({
                             cwd: homeDir,
                             preservePaths: true,
-                            file: path.join(homeDir, "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"),
+                            file: path.join(homeDir, "cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz"),
                         })
                             .then(() => {
                             win.webContents.send("updateStatus", "Extracted python...");
@@ -143,12 +143,12 @@ function setupPython(win) {
                     });
                     break;
                 case "linux":
-                    downloadFile(linuxURL, path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"), win).then(() => {
+                    downloadFile(linuxURL, path.join(homeDir, "cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz"), win).then(() => {
                         tar
                             .x({
                             cwd: homeDir,
                             preservePaths: true,
-                            file: path.join(homeDir, "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"),
+                            file: path.join(homeDir, "cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz"),
                         })
                             .then(() => {
                             win.webContents.send("updateStatus", "Extracted python...");
@@ -159,12 +159,12 @@ function setupPython(win) {
                 case "darwin":
                     // Check if we are on intel or arm
                     if (process.arch === "x64") {
-                        downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"), win).then(() => {
+                        downloadFile(osxIntelURL, path.join(homeDir, "cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz"), win).then(() => {
                             tar
                                 .x({
                                 cwd: homeDir,
                                 preservePaths: true,
-                                file: path.join(homeDir, "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"),
+                                file: path.join(homeDir, "cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz"),
                             })
                                 .then(() => {
                                 win.webContents.send("updateStatus", "Extracted python...");
@@ -173,12 +173,12 @@ function setupPython(win) {
                         });
                     }
                     else {
-                        downloadFile(osxURL, path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"), win).then(() => {
+                        downloadFile(osxURL, path.join(homeDir, "cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz"), win).then(() => {
                             tar
                                 .x({
                                 cwd: homeDir,
                                 preservePaths: true,
-                                file: path.join(homeDir, "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"),
+                                file: path.join(homeDir, "cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz"),
                             })
                                 .then(() => {
                                 win.webContents.send("updateStatus", "Extracted python...");

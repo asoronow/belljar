@@ -6,7 +6,6 @@ from pathlib import Path
 from demons import register_to_atlas
 from ae_tools import make_predictions
 import nrrd
-import SimpleITK as sitk
 import csv
 import napari
 import argparse
