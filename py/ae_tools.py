@@ -53,6 +53,7 @@ def make_predictions(
         atlas, atlasHeader = nrrd.read(
             str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
         )
+
         sample = atlas[800, :, :]
         sample = sitk.GetImageFromArray(sample)
         sample = sitk.Cast(sample, sitk.sitkUInt8)

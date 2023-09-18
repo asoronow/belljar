@@ -15,23 +15,25 @@ Bell Jar's goal is be built on any platform, as such we provide release binaries
 See the belljar_guide.pdf included in the repository for a detailed set of instructions on how to run the program with our sample dataset. It also includes a guide to each individual tool.
 
 # Requirements
+
 - At least 20GB of disk space
 - 32GB of memory
 - Intel i5 / Apple Silicon / AMD Ryzen 4th gen
 - (Strongly Recommended) GPU with at least 6 GB of VRAM
 
-# Install
-
-To build and run from source please clone the main branch onto your local machine and run the following. Note that complete install requires internet and is about 10gb on disk.
-
-To install from a release binary:
+# Install from Release
 
 Get a percompiled version from releases, download the most recent version for your OS.
 To run simply extract the downloaded release and run the belljar executable.
 
-Tip: Releases are found under tags on github.
+Note: On some OSX systems you'll need to authroize the Bell Jar process to run since code signing is not implemented.
+See Apple's guide on running unsigned code, https://support.apple.com/en-us/HT202491.
 
-To install from source:
+Tip: Releases are also found under tags on github.
+
+# Install from Source
+
+To build and run from source please clone the main branch onto your local machine and run the following. Note that complete install requires internet and is about 20gb on disk.
 
 ```
 // 1. Clone the main branch of the repository

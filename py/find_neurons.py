@@ -141,6 +141,11 @@ if __name__ == "__main__":
                     -1,
                 )
 
+            pred = pred[keep]
+
+        # Appened the image dimensions to the end of the list for reconstruction
+        pred = [pred, (height, width)]
+
         # No extension filename
         stripped = file.split(".")[0]
 

@@ -127,10 +127,10 @@ function getVersion() {
 
 function setupPython(win: typeof BrowserWindow) {
   const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
-  const linuxURL = `${bucketParentPath}/cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz`;
-  const winURL = `${bucketParentPath}/cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz`;
-  const osxURL = `${bucketParentPath}/cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz`;
-  const osxIntelURL = `${bucketParentPath}/cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz`;
+  const linuxURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz`;
+  const winURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz`;
+  const osxURL = `${bucketParentPath}/cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz`;
+  const osxIntelURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz`;
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(path.join(homeDir, "python"))) {
       win.webContents.send("updateStatus", "Settting up python...");
@@ -141,7 +141,7 @@ function setupPython(win: typeof BrowserWindow) {
             winURL,
             path.join(
               homeDir,
-              "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"
+              "cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz"
             ),
             win
           )
@@ -153,7 +153,7 @@ function setupPython(win: typeof BrowserWindow) {
                   preservePaths: true,
                   file: path.join(
                     homeDir,
-                    "cpython-3.9.6-x86_64-pc-windows-msvc-shared-install_only-20210724T1424.tar.gz"
+                    "cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz"
                   ),
                 })
                 .then(() => {
@@ -170,7 +170,7 @@ function setupPython(win: typeof BrowserWindow) {
             linuxURL,
             path.join(
               homeDir,
-              "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+              "cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz"
             ),
             win
           ).then(() => {
@@ -180,7 +180,7 @@ function setupPython(win: typeof BrowserWindow) {
                 preservePaths: true,
                 file: path.join(
                   homeDir,
-                  "cpython-3.9.6-x86_64-unknown-linux-gnu-install_only-20210724T1424.tar.gz"
+                  "cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz"
                 ),
               })
               .then(() => {
@@ -196,7 +196,7 @@ function setupPython(win: typeof BrowserWindow) {
               osxIntelURL,
               path.join(
                 homeDir,
-                "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
+                "cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz"
               ),
               win
             ).then(() => {
@@ -206,7 +206,7 @@ function setupPython(win: typeof BrowserWindow) {
                   preservePaths: true,
                   file: path.join(
                     homeDir,
-                    "cpython-3.9.6-x86_64-apple-darwin-install_only-20210724T1424.tar.gz"
+                    "cpython-3.10.13+20230826-x86_64-apple-darwin-install_only.tar.gz"
                   ),
                 })
                 .then(() => {
@@ -219,7 +219,7 @@ function setupPython(win: typeof BrowserWindow) {
               osxURL,
               path.join(
                 homeDir,
-                "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+                "cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz"
               ),
               win
             ).then(() => {
@@ -229,7 +229,7 @@ function setupPython(win: typeof BrowserWindow) {
                   preservePaths: true,
                   file: path.join(
                     homeDir,
-                    "cpython-3.9.6-aarch64-apple-darwin-install_only-20210724T1424.tar.gz"
+                    "cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz"
                   ),
                 })
                 .then(() => {
@@ -491,13 +491,8 @@ function setupEnvironment(win: typeof BrowserWindow) {
     // Install pip packages
     async function installDeps() {
       let reqs = path.join(appDir, "py/requirements.txt");
-      // escape spaces in path
-      if (process.platform === "win32") {
-        reqs = reqs.replace(/ /g, "\\ ");
-      }
-      
       const { stdout, stderr } = await exec(
-        `${pyCommand} -m pip install -r ${reqs} --use-pep517`,
+        `${pyCommand} -m pip install -r "${reqs}" --use-pep517`,
         { cwd: envPythonPath }
       );
       return { stdout, stderr };
