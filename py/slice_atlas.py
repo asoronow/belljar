@@ -6,8 +6,8 @@ import pickle, os
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
-from scipy.ndimage import interpolation
-
+from scipy import ndimage
+import SimpleITK as sitk
 # Path to nrrd
 nrrdPath = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
 
@@ -167,28 +167,104 @@ def make_cerebrum_atlas():
     nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd", new_atlas, index_order="C", compression_level=1)
     nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd", new_annotation, index_order="C", compression_level=1)
 
+def get_normal_vector(tilt_x_degrees, tilt_y_degrees):
+    """
+    Compute a normal vector with specified tilts around the x and y axes.
+
+    Args:
+    - tilt_x_degrees (float): Tilt around the x-axis in degrees.
+    - tilt_y_degrees (float): Tilt around the y-axis in degrees.
+
+    Returns:
+    - np.array: Normal vector with the specified tilts.
+    """
+    
+    # Convert degrees to radians
+    tilt_x = np.radians(tilt_x_degrees)
+    tilt_y = np.radians(tilt_y_degrees)
+    
+    # Initial vector pointing up along the z-axis
+    vector = np.array([0, 0, 1])
+    
+    # Apply tilt around y-axis
+    vector = np.array([np.cos(tilt_y) * vector[0] + np.sin(tilt_y) * vector[2],
+                       vector[1],
+                       -np.sin(tilt_y) * vector[0] + np.cos(tilt_y) * vector[2]])
+
+    # Apply tilt around x-axis
+    vector = np.array([vector[0],
+                       np.cos(tilt_x) * vector[1] - np.sin(tilt_x) * vector[2],
+                       np.sin(tilt_x) * vector[1] + np.cos(tilt_x) * vector[2]])
+    
+    return vector
+
+def reslice_with_plane(image, normal_vector, point_on_plane):
+    """
+    Reslice a 3D SimpleITK image using an arbitrary plane defined by a normal_vector and a point_on_plane.
+
+    Args:
+    - image (SimpleITK.Image): The 3D SimpleITK image to be resliced.
+    - normal_vector (list or numpy.ndarray): The normal vector of the reslicing plane.
+    - point_on_plane (list or numpy.ndarray): A point on the reslicing plane.
+
+    Returns:
+    - SimpleITK.Image: 2D resliced image.
+    """
+    # Ensure image is sitk.Image
+    if not isinstance(image, sitk.Image):
+        image = sitk.GetImageFromArray(image)
+
+
+    # Make sure the normal vector is a unit vector
+    normal_vector = normal_vector / np.linalg.norm(normal_vector)
+    
+    # Compute the rotation to align the plane with the canonical xy-plane
+    current_normal = [0, 0, 1]
+    rotation_axis = np.cross(normal_vector, current_normal)
+    rotation_angle = np.arccos(np.dot(normal_vector, current_normal))
+
+    # Define the rotation matrix
+    rotation_matrix = sitk.VersorTransform(rotation_axis.tolist(), rotation_angle)
+
+    # Translate the image so the point of interest is at the origin
+    translation = sitk.TranslationTransform(3)
+    translation.SetOffset((-np.array(point_on_plane)).tolist())
+    
+    # Compose the transformations: first translation then rotation
+    composite_transform = sitk.CompositeTransform([translation, rotation_matrix])
+
+    # Define the desired size (we want a slice, so the z-dimension is 1)
+    desired_size = list(image.GetSize())
+    desired_size[2] = 1  # only one slice
+
+    # Resample the image using the composite transform
+    resliced_image = sitk.Resample(image, 
+                                   desired_size, 
+                                   composite_transform, 
+                                   sitk.sitkLinear, 
+                                   image.GetOrigin(), 
+                                   image.GetSpacing(), 
+                                   image.GetDirection(), 
+                                   0,  # background value
+                                   image.GetPixelID())
+
+    return resliced_image
+
 if __name__ == "__main__":
     atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C")
     annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C")
 
-    left_label = annotation[800, :, :]
-    left_section = atlas[800, :, :]
 
-    right_label = annotation[800, :, ::-1]
-    right_section = atlas[800, :, ::-1]
+    normal_vector = get_normal_vector(5, 0)
+   
+    # Define a point on the plane
+    point_on_plane = [0, 0, 0]
 
-    # normalize
-    left_section = cv2.normalize(left_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-    right_section = cv2.normalize(right_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+    # Reslice the image
+    resliced_image = reslice_with_plane(atlas, normal_vector, point_on_plane)
+    sitk.Show(resliced_image)
+    new_atlas = sitk.GetArrayFromImage(resliced_image)
 
-    section = np.zeros((left_section.shape[0], left_section.shape[1] * 2), dtype=np.uint8)
-    section[:, : left_section.shape[1]] = left_section
-    section[:, left_section.shape[1] :] = right_section
-
-    label = np.zeros((left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32)
-    label[:, : left_label.shape[1]] = left_label
-    label[:, left_label.shape[1] :] = right_label
-
-    cv2.imshow("section", section)
+    cv2.imshow("atlas", new_atlas[800, :, :])
+    cv2.imshow("old atlas", atlas[800, :, :])
     cv2.waitKey(0)
-
