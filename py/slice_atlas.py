@@ -6,8 +6,9 @@ import pickle, os
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
-from scipy import ndimage
-import SimpleITK as sitk
+from scipy.ndimage import map_coordinates
+import time
+
 # Path to nrrd
 nrrdPath = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
 
@@ -120,25 +121,31 @@ def createTrainingSet():
 
 
 def make_cerebrum_atlas():
-    '''Using the atlas and annotations create a new atlas that only has cerebrum regions.'''
+    """Using the atlas and annotations create a new atlas that only has cerebrum regions."""
     # Load the class map
     classMap = {}
-    with open(Path(r"C:\Users\imageprocessing\Documents\belljar\csv\class_map.pkl"), "rb") as f:
+    with open(
+        Path(r"C:\Users\imageprocessing\Documents\belljar\csv\class_map.pkl"), "rb"
+    ) as f:
         classMap = pickle.load(f)
         # add cerebral cortex
 
     # Load the atlas
-    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10.nrrd"))
-    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10.nrrd"))
+    atlas, _ = nrrd.read(
+        Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10.nrrd")
+    )
+    annotation, _ = nrrd.read(
+        Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10.nrrd")
+    )
 
     # Get the unique labels
     z, y, x = annotation.shape
-    
-    new_atlas = np.zeros((z, y, x//2))
-    new_annotation = np.zeros((z, y, x//2)).astype(np.uint32)
+
+    new_atlas = np.zeros((z, y, x // 2))
+    new_annotation = np.zeros((z, y, x // 2)).astype(np.uint32)
     for i in range(z):
-        label = annotation[i, :, :x//2]
-        section = atlas[i, :, :x//2]
+        label = annotation[i, :, : x // 2]
+        section = atlas[i, :, : x // 2]
 
         # Convert section to 8 bit from float 32
         section = cv2.normalize(section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
@@ -164,107 +171,85 @@ def make_cerebrum_atlas():
         new_atlas[i, :, :] = out_section
         new_annotation[i, :, :] = out_label
 
-    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd", new_atlas, index_order="C", compression_level=1)
-    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd", new_annotation, index_order="C", compression_level=1)
+    nrrd.write(
+        r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd",
+        new_atlas,
+        index_order="C",
+        compression_level=1,
+    )
+    nrrd.write(
+        r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd",
+        new_annotation,
+        index_order="C",
+        compression_level=1,
+    )
 
-def get_normal_vector(tilt_x_degrees, tilt_y_degrees):
+
+def slice_3d_volume(volume, z_position, x_angle, y_angle):
     """
-    Compute a normal vector with specified tilts around the x and y axes.
+    Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
 
     Args:
-    - tilt_x_degrees (float): Tilt around the x-axis in degrees.
-    - tilt_y_degrees (float): Tilt around the y-axis in degrees.
+        volume (numpy.ndarray): 3D numpy array.
+        z_position (int): Position along the z-axis for the slice.
+        x_angle (float): Angle in degrees to tilt in the x axis.
+        y_angle (float): Angle in degrees to tilt in the y axis.
 
     Returns:
-    - np.array: Normal vector with the specified tilts.
+        numpy.ndarray: 2D sliced array.
     """
-    
-    # Convert degrees to radians
-    tilt_x = np.radians(tilt_x_degrees)
-    tilt_y = np.radians(tilt_y_degrees)
-    
-    # Initial vector pointing up along the z-axis
-    vector = np.array([0, 0, 1])
-    
-    # Apply tilt around y-axis
-    vector = np.array([np.cos(tilt_y) * vector[0] + np.sin(tilt_y) * vector[2],
-                       vector[1],
-                       -np.sin(tilt_y) * vector[0] + np.cos(tilt_y) * vector[2]])
 
-    # Apply tilt around x-axis
-    vector = np.array([vector[0],
-                       np.cos(tilt_x) * vector[1] - np.sin(tilt_x) * vector[2],
-                       np.sin(tilt_x) * vector[1] + np.cos(tilt_x) * vector[2]])
-    
-    return vector
+    # Convert angles to radians
+    x_angle_rad = np.deg2rad(x_angle)
+    y_angle_rad = np.deg2rad(y_angle)
 
-def reslice_with_plane(image, normal_vector, point_on_plane):
-    """
-    Reslice a 3D SimpleITK image using an arbitrary plane defined by a normal_vector and a point_on_plane.
+    # Create a coordinate grid
+    x, y = np.mgrid[0 : volume.shape[1], 0 : volume.shape[2]]
 
-    Args:
-    - image (SimpleITK.Image): The 3D SimpleITK image to be resliced.
-    - normal_vector (list or numpy.ndarray): The normal vector of the reslicing plane.
-    - point_on_plane (list or numpy.ndarray): A point on the reslicing plane.
+    # Adjust z-position based on tilt angles
+    z = z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)
+    coords = np.array([z, x, y])
 
-    Returns:
-    - SimpleITK.Image: 2D resliced image.
-    """
-    # Ensure image is sitk.Image
-    if not isinstance(image, sitk.Image):
-        image = sitk.GetImageFromArray(image)
+    # Extract slice using trilinear interpolation
+    slice_2d = map_coordinates(volume, coords, order=1, mode="nearest")
 
+    return slice_2d
 
-    # Make sure the normal vector is a unit vector
-    normal_vector = normal_vector / np.linalg.norm(normal_vector)
-    
-    # Compute the rotation to align the plane with the canonical xy-plane
-    current_normal = [0, 0, 1]
-    rotation_axis = np.cross(normal_vector, current_normal)
-    rotation_angle = np.arccos(np.dot(normal_vector, current_normal))
-
-    # Define the rotation matrix
-    rotation_matrix = sitk.VersorTransform(rotation_axis.tolist(), rotation_angle)
-
-    # Translate the image so the point of interest is at the origin
-    translation = sitk.TranslationTransform(3)
-    translation.SetOffset((-np.array(point_on_plane)).tolist())
-    
-    # Compose the transformations: first translation then rotation
-    composite_transform = sitk.CompositeTransform([translation, rotation_matrix])
-
-    # Define the desired size (we want a slice, so the z-dimension is 1)
-    desired_size = list(image.GetSize())
-    desired_size[2] = 1  # only one slice
-
-    # Resample the image using the composite transform
-    resliced_image = sitk.Resample(image, 
-                                   desired_size, 
-                                   composite_transform, 
-                                   sitk.sitkLinear, 
-                                   image.GetOrigin(), 
-                                   image.GetSpacing(), 
-                                   image.GetDirection(), 
-                                   0,  # background value
-                                   image.GetPixelID())
-
-    return resliced_image
 
 if __name__ == "__main__":
-    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C")
-    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C")
+    atlas, _ = nrrd.read(
+        Path(r"C:\Users\alec\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C"
+    )
+    annotation, _ = nrrd.read(
+        Path(r"C:\Users\alec\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C"
+    )
+    print("Loaded atlas...")
+    # convert atlas to 8 bit
+    atlas = cv2.normalize(atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
+    cv2.namedWindow("image")
+    cv2.namedWindow("controls")
+    curr_x_angle = 0
+    curr_y_angle = 0
+    curr_z_position = 0
 
-    normal_vector = get_normal_vector(5, 0)
-   
-    # Define a point on the plane
-    point_on_plane = [0, 0, 0]
+    def trackbar_callback(x):
+        global curr_x_angle, curr_y_angle, curr_z_position
+        curr_x_angle = cv2.getTrackbarPos("x_angle", "controls")
+        curr_y_angle = cv2.getTrackbarPos("y_angle", "controls")
+        curr_z_position = cv2.getTrackbarPos("z_position", "controls")
 
-    # Reslice the image
-    resliced_image = reslice_with_plane(atlas, normal_vector, point_on_plane)
-    sitk.Show(resliced_image)
-    new_atlas = sitk.GetArrayFromImage(resliced_image)
-
-    cv2.imshow("atlas", new_atlas[800, :, :])
-    cv2.imshow("old atlas", atlas[800, :, :])
-    cv2.waitKey(0)
+    cv2.createTrackbar("x_angle", "controls", 0, 10, trackbar_callback)
+    cv2.createTrackbar("y_angle", "controls", 0, 10, trackbar_callback)
+    cv2.createTrackbar("z_position", "controls", 0, atlas.shape[0], trackbar_callback)
+    cv2.setTrackbarMin("z_position", "controls", 0)
+    cv2.setTrackbarMin("x_angle", "controls", -10)
+    cv2.setTrackbarMin("y_angle", "controls", -10)
+    while True:
+        left_slice = slice_3d_volume(atlas, curr_z_position, curr_x_angle, curr_y_angle)
+        right_slice = slice_3d_volume(
+            atlas[:, :, ::-1], curr_z_position, -1 * curr_x_angle, curr_y_angle
+        )
+        full = np.concatenate((left_slice, right_slice), axis=1)
+        cv2.imshow("image", full)
+        cv2.waitKey(5)

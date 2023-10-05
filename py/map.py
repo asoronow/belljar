@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 from demons import register_to_atlas
 from ae_tools import make_predictions
+from slice_atlas import slice_3d_volume
 import nrrd
 import csv
 import napari
@@ -17,7 +18,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QSlider,
 )
-from qtpy.QtCore import Qt, QTimer
+from qtpy.QtCore import Qt
 
 
 parser = argparse.ArgumentParser(description="Map sections to atlas space")
