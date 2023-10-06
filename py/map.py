@@ -43,24 +43,93 @@ parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pk
 args = parser.parse_args()
 
 
-def get_max_contour(image, separated=False):
-    """Apply a gaussian blur and otsu threshold to the image, then find the largest contour"""
-    # Check if image is 8 bit
-    if image.dtype != np.uint8:
-        image = (image / 256).astype(np.uint8)
+class AtlasSlice:
+    """
+    Helper object to manage atlas slices
 
-    blurry = cv2.GaussianBlur(image, (11, 11), 0)
-    _, binary = cv2.threshold(blurry, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    Parameters:
+        ap_position (int): the ap position of the slice
+        x_angle (float): the x angle of the slice
+        y_angle (float): the y angle of the slice
+    """
 
-    if separated:
-        # if tissue is far apart we should take the two largest and combine them
-        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        largest_contour = np.concatenate((sorted_contours[0], sorted_contours[1]))
-    else:
-        largest_contour = max(contours, key=cv2.contourArea)
+    def __init__(self, ap_position, x_angle, y_angle, whole_brain=False):
+        self.ap_position = ap_position
+        self.x_angle = x_angle
+        self.y_angle = y_angle
+        self.image = None
+        self.label = None
+        self.mask = None
+        self.whole_brain = whole_brain
 
-    return largest_contour
+    def set_mask(self, mask):
+        """
+        Set a mask to omit portion of the atlas from registration
+        """
+        pass
+
+    def get_slice(self, atlas, annotation):
+        """
+        Get the slice from the atlas and annotation
+
+        Args:
+            atlas (numpy.ndarray): the atlas
+            annotation (numpy.ndarray): the annotation
+
+        Returns:
+            numpy.ndarray: the atlas slice
+            numpy.ndarray: the annotation slice
+        """
+        if self.whole_brain:
+            left_image = slice_3d_volume(
+                atlas, self.ap_position, self.x_angle, self.y_angle
+            )
+            right_image = slice_3d_volume(
+                atlas[:, :, ::-1], self.ap_position, -1 * self.x_angle, self.y_angle
+            )
+
+            left_label = slice_3d_volume(
+                annotation, self.ap_position, self.x_angle, self.y_angle
+            ).astype(np.uint32)
+
+            right_label = slice_3d_volume(
+                annotation[:, :, ::-1],
+                self.ap_position,
+                -1 * self.x_angle,
+                self.y_angle,
+            ).astype(np.uint32)
+
+            self.image = np.concatenate((left_image, right_image), axis=1)
+            self.label = np.concatenate((left_label, right_label), axis=1)
+        else:
+            self.image = slice_3d_volume(
+                atlas, self.ap_position, self.x_angle, self.y_angle
+            )
+            self.label = slice_3d_volume(
+                annotation, self.ap_position, self.x_angle, self.y_angle
+            )
+
+    def get_registered(self, tissue):
+        """
+        Runs multi-modal registration between this atlas slice and the provided tissue section.
+
+        Args:
+            tissue (numpy.ndarray): the tissue section
+
+        Returns:
+            numpy.ndarray: the warped atlas slice
+            numpy.ndarray: the warped annotation slice
+            numpy.ndarray: the color annotation slice
+        """
+
+        warped_labels, warped_atlas, color_label = register_to_atlas(
+            tissue,
+            self.image,
+            self.label,
+            args.map.strip(),
+        )
+
+        return warped_labels, warped_atlas, color_label
 
 
 def save_alignment(
@@ -719,6 +788,13 @@ if __name__ == "__main__":
     atlasTypeDropdown.addItem("Cerebrum Only")
     atlasTypeDropdown.addItem("No Cerebrum")
     atlasTypeDropdown.currentIndexChanged.connect(change_region_type)
+
+    x_angle_slider = QSlider(Qt.Horizontal)
+    x_angle_slider.setRange(-180, 180)
+    x_angle_slider.setValue(0)
+    y_angle_slider = QSlider(Qt.Horizontal)
+    y_angle_slider.setRange(-180, 180)
+    y_angle_slider.setValue(0)
 
     # Left and right hemisphere sliders
     left_hemi_slider = QSlider(Qt.Horizontal)

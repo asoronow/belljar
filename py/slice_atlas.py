@@ -218,10 +218,10 @@ def slice_3d_volume(volume, z_position, x_angle, y_angle):
 
 if __name__ == "__main__":
     atlas, _ = nrrd.read(
-        Path(r"C:\Users\alec\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C"
+        Path(r"/Users/alec/.belljar/nrrd/ara_nissl_10_all.nrrd"), index_order="C"
     )
     annotation, _ = nrrd.read(
-        Path(r"C:\Users\alec\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C"
+        Path(r"/Users/alec/.belljar/nrrd/annotation_10_all.nrrd"), index_order="C"
     )
     print("Loaded atlas...")
     # convert atlas to 8 bit
