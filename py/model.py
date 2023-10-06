@@ -1,13 +1,16 @@
 import torch
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 from torchvision import transforms
 from pathlib import Path
 import os
+import nrrd
+import cv2
 from PIL import Image
 from math import exp
+import numpy as np
+from slice_atlas import slice_3d_volume
 
 
 class ResidualBlock(nn.Module):
@@ -122,6 +125,59 @@ class TissueAutoencoder(nn.Module):
         x = self.unpool3(x, idx1)
         x = self.deconv3(x)
         x = self.bn6(x)
+
+        return x
+
+
+class TissuePredictor(nn.Module):
+    def __init__(self):
+        super(TissuePredictor, self).__init__()
+
+        # Convolutional layers
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+
+        # Fully connected layers
+        # After 4 rounds of max-pooling on a 512x512 image, we'll have a 32x32 feature map.
+        self.fc1 = nn.Linear(256 * 32 * 32, 1024)
+        self.fc2 = nn.Linear(1024, 256)
+        self.fc3 = nn.Linear(256, 3)
+
+        # Dropout layer
+        self.dropout = nn.Dropout(0.5)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+
+        x = x.view(x.size(0), -1)  # Flatten
+        x = self.dropout(F.relu(self.fc1(x)))
+        x = self.dropout(F.relu(self.fc2(x)))
+        x = self.fc3(x)  # No activation here as it's a regression output
 
         return x
 
@@ -242,6 +298,66 @@ class AtlasDataset(Dataset):
         return image
 
 
+class AngledAtlasDataset(Dataset):
+    """
+    Dataset of n randomly generate images from the provided atlas at random angles and positions
+    """
+
+    def __init__(self, data_path, transform=None):
+        self.transform = transform
+
+        self.data_path = data_path
+        self.file_list = os.listdir(data_path)
+
+        print("Done generating samples!")
+
+    def __len__(self):
+        return len(self.file_list)
+
+    def _normalize_label(self, label):
+        pos, x_angle, y_angle = [float(l) for l in label]
+        # normalize target values
+        pos_max = 1324
+        pos_min = 0
+        pos = (pos - pos_min) / (pos_max - pos_min)
+        x_angle_max = 10
+        x_angle_min = -10
+        x_angle = (x_angle - x_angle_min) / (x_angle_max - x_angle_min)
+        y_angle_max = 10
+        y_angle_min = -10
+        y_angle = (y_angle - y_angle_min) / (y_angle_max - y_angle_min)
+        return torch.tensor([pos, x_angle, y_angle])
+
+    def restore_label(self, label):
+        pos, x_angle, y_angle = label
+        # restore target values
+        pos_max = 1324
+        pos_min = 0
+        pos = pos * (pos_max - pos_min) + pos_min
+        x_angle_max = 10
+        x_angle_min = -10
+        x_angle = x_angle * (x_angle_max - x_angle_min) + x_angle_min
+        y_angle_max = 10
+        y_angle_min = -10
+        y_angle = y_angle * (y_angle_max - y_angle_min) + y_angle_min
+        return [pos, x_angle, y_angle]
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        image = cv2.imread(
+            os.path.join(self.data_path, self.file_list[idx]), cv2.IMREAD_GRAYSCALE
+        )
+        label = self.file_list[idx].replace(".png", "").split("_")
+        label = self._normalize_label(label)
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
+
 class GaussianNoise:
     """Torch transform that adds Gaussian noise to an image"""
 
@@ -259,38 +375,65 @@ class GaussianNoise:
 if __name__ == "__main__":
     from train import Trainer
 
-    # Create the model
-    model = TissueAutoencoder()
+    # # Create the model
+    # model = TissueAutoencoder()
 
-    # Create the optimizer
+    # # Create the optimizer
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+
+    # # Create the criterion
+    # criterion = CombinedLoss(0.80)
+
+    # # Create the dataset
+    # dataset_path = Path(r"c:\Users\Alec\.belljar\dataset")
+    # noisy = transforms.Compose(
+    #     [
+    #         transforms.Grayscale(),
+    #         transforms.ToTensor(),
+    #         GaussianNoise(0.0, 0.0001),
+    #     ]
+    # )
+    # dataset = AtlasDataset(str(dataset_path), transform=noisy)
+
+    # # Split the dataset into train and validation sets
+    # train_size = int(0.75 * len(dataset))
+    # val_size = len(dataset) - train_size
+    # train_dataset, val_dataset = torch.utils.data.random_split(
+    #     dataset, [train_size, val_size]
+    # )
+
+    # # Create the dataloaders
+    # train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+    # val_dataloader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+
+    # # Train the model
+
+    # trainer = Trainer(
+    #     model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda"
+    # )
+    # trainer.run(epochs=200)
+
+    model = TissuePredictor()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    criterion = torch.nn.MSELoss()
 
-    # Create the criterion
-    criterion = CombinedLoss(0.80)
-
-    # Create the dataset
-    dataset_path = Path(r"c:\Users\Alec\.belljar\dataset")
-    noisy = transforms.Compose(
+    transforms = transforms.Compose(
         [
-            transforms.Grayscale(),
             transforms.ToTensor(),
-            GaussianNoise(0.0, 0.0001),
         ]
     )
-    dataset = AtlasDataset(str(dataset_path), transform=noisy)
+    dataset = AngledAtlasDataset(
+        r"C:\Users\Alec\Desktop\angled_data", transform=transforms
+    )
 
-    # Split the dataset into train and validation sets
     train_size = int(0.75 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, [train_size, val_size]
     )
 
-    # Create the dataloaders
-    train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=256, shuffle=False)
-
-    # Train the model
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
     trainer = Trainer(
         model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda"
