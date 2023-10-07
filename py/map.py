@@ -185,7 +185,7 @@ class AtlasSlice:
         return warped_labels, warped_atlas, color_label
 
 
-class AlignmnetController:
+class AlignmentController:
     """
     Handles the control flow for alignment to the atlas
 
@@ -644,7 +644,7 @@ class AlignmnetController:
 
 
 if __name__ == "__main__":
-    align_controller = AlignmnetController(
+    align_controller = AlignmentController(
         args.nrrd.strip(),
         args.input.strip(),
         args.output.strip(),
