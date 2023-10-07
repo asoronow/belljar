@@ -7,7 +7,7 @@ import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
 from scipy.ndimage import map_coordinates
-import time
+from skimage import measure, morphology
 
 # Path to nrrd
 nrrdPath = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
@@ -185,6 +185,53 @@ def make_cerebrum_atlas():
     )
 
 
+def remove_fragments(slice_2d):
+    """
+    Keep the largest connected component for each label and remove other fragments.
+
+    Parameters:
+    - slice_2d: The input labeled image.
+
+    Returns:
+    - A labeled image with fragments removed.
+    """
+
+    unique_labels = np.unique(slice_2d)
+    processed_img = np.zeros_like(slice_2d)
+
+    for label in unique_labels:
+        # Skip background
+        if label == 0:
+            continue
+
+        binary_mask = slice_2d == label
+        labeled_mask, num_features = measure.label(
+            binary_mask, return_num=True, connectivity=2
+        )
+
+        if num_features == 1:  # Only one component, nothing to remove
+            processed_img[binary_mask] = label
+            continue
+
+        # Identify the largest component
+        largest_component = None
+        largest_size = 0
+        for i in range(1, num_features + 1):
+            component = labeled_mask == i
+            component_size = np.sum(component)
+            if component_size > largest_size:
+                largest_size = component_size
+                largest_component = component
+
+        if largest_component < 100:
+            continue
+
+        # Set the largest component in the result
+        processed_img[largest_component] = label
+
+    return processed_img
+
+
 def slice_3d_volume(volume, z_position, x_angle, y_angle):
     """
     Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
@@ -207,11 +254,18 @@ def slice_3d_volume(volume, z_position, x_angle, y_angle):
     x, y = np.mgrid[0 : volume.shape[1], 0 : volume.shape[2]]
 
     # Adjust z-position based on tilt angles
-    z = z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)
+    # Ensure data type is float to handle decimal computations
+    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
+        np.float32
+    )
     coords = np.array([z, x, y])
 
-    # Extract slice using trilinear interpolation
-    slice_2d = map_coordinates(volume, coords, order=1, mode="nearest")
+    # Extract slice using nearest-neighbor interpolation
+    # This will round the float coordinates to the nearest integer
+    slice_2d = map_coordinates(volume, coords, order=0)
+
+    # If you need to maintain uint32 data type for slice_2d
+    slice_2d = slice_2d.astype(np.uint32)
 
     return slice_2d
 

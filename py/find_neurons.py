@@ -24,11 +24,14 @@ parser.add_argument(
     "-m", "--model", help="specify model file", default="../models/ancientwizard.pt"
 )
 parser.add_argument(
-    "-g", "--graphical", help="provides prompts when true", default=True
+    "-n",
+    "--multichannel",
+    help="specify if multichannel",
+    action="store_true",
+    default=False,
 )
+
 args = parser.parse_args()
-
-
 if __name__ == "__main__":
     inputDirectory = Path(args.input.strip())
     outputDirectory = Path(args.output.strip())
