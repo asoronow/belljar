@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QProgressBar,
     QLabel,
     QComboBox,
+    QCheckBox,
     QDoubleSpinBox,
     QVBoxLayout,
     QWidget,
@@ -60,6 +61,7 @@ class AtlasSlice:
         self.ap_position = int(ap_position)
         self.x_angle = float(x_angle)
         self.y_angle = float(y_angle)
+        self.linked = True
         self.region = region
         self.image = None
         self.label = None
@@ -267,6 +269,10 @@ class AlignmentController:
         self.y_angle_spinbox.setSuffix("°")
         self.y_angle_spinbox.valueChanged.connect(self.update_slice)
 
+        self.link_angles_button = QCheckBox("Link Angles")
+        self.link_angles_button.setChecked(True)
+        self.link_angles_button.stateChanged.connect(self.set_all_angles)
+
         self.ap_position_spinbox = QDoubleSpinBox()
         self.ap_position_spinbox.setRange(0, 1319)
         self.ap_position_spinbox.setSingleStep(5)
@@ -340,6 +346,7 @@ class AlignmentController:
                 self.progress_bar,
                 QLabel("Region"),
                 self.region_selection,
+                self.link_angles_button,
                 self.mask_button,
                 self.next_button,
                 self.previous_button,
@@ -354,7 +361,8 @@ class AlignmentController:
         self.prior_alignment = False
         self.load_alignment()
 
-        self.predict_sample_slices()
+        if not self.prior_alignment:
+            self.predict_sample_slices()
         print("Awaiting fine tuning...", flush=True)
         self.start_viewer()
 
@@ -482,10 +490,13 @@ class AlignmentController:
 
     def set_all_angles(self):
         """Update every slice with the current angles"""
-        for slice in self.atlas_slices.values():
-            slice.x_angle = self.x_angle_spinbox.value()
-            slice.y_angle = self.y_angle_spinbox.value()
-            slice.set_slice(self.atlas, self.annotation)
+        current_slice = self.atlas_slices[self.file_list[self.current_section]]
+        current_slice.linked = self.link_angles_button.isChecked()
+        for this_slice in self.atlas_slices.values():
+            if this_slice.linked:
+                this_slice.x_angle = self.x_angle_spinbox.value()
+                this_slice.y_angle = self.y_angle_spinbox.value()
+        self.update_display()
 
     def update_slice(self):
         """Update the angles and region of the current slice"""
@@ -599,12 +610,13 @@ class AlignmentController:
             warped_labels, warped_atlas, color_label = current_slice.get_registered(
                 sample,
             )
+
             cv2.imwrite(
-                str(Path(self.output_path) / f"Atlas_{self.file_list[i]}.png"),
+                str(Path(self.output_path) / f"Atlas_{self.file_list[i]}"),
                 warped_atlas,
             )
             cv2.imwrite(
-                str(Path(self.output_path) / f"Label_{self.file_list[i]}.png"),
+                str(Path(self.output_path) / f"Label_{self.file_list[i]}"),
                 color_label,
             )
 
@@ -623,7 +635,7 @@ class AlignmentController:
                 0,
             )
             cv2.imwrite(
-                str(Path(self.output_path) / f"Composite_{self.file_list[i]}.png"),
+                str(Path(self.output_path) / f"Composite_{self.file_list[i]}"),
                 composite,
             )
 

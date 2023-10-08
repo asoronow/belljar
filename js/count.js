@@ -5,6 +5,7 @@ var annodir = document.getElementById('annodir');
 var outdir = document.getElementById('outdir');
 var loadbar = document.getElementById('loadbar');
 var loadmessage = document.getElementById('loadmessage');
+var layerinfo = document.getElementById('layerinfo');
 var back = document.getElementById('back');
 
 run.addEventListener('click', function(){
@@ -14,7 +15,10 @@ run.addEventListener('click', function(){
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runCount', [preddir.value, annodir.value, outdir.value]);
+
+        var should_layer = layerinfo.checked;
+
+        ipc.send('runCount', [preddir.value, annodir.value, outdir.value, should_layer]);
     }
 });
 

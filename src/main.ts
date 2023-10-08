@@ -15,7 +15,6 @@ var appDir = app.getAppPath();
 var win: typeof BrowserWindow = null;
 var logWin: typeof BrowserWindow = null;
 
-
 var log = console.log;
 console.log = function () {
   var args = Array.from(arguments);
@@ -24,15 +23,14 @@ console.log = function () {
     .replace(/T/, " ")
     .replace(/\..+/, "");
   let prefix = `[${timestamp}]`;
-  
+
   let message = [prefix, ...args];
-  
+
   log.apply(console, message);
   if (logWin) {
     logWin.webContents.send("log", message.join(" "));
   }
 };
-
 
 // Path variables for easy management of execution
 const homeDir = path.join(app.getPath("home"), ".belljar");
@@ -68,16 +66,18 @@ function createLogFile(message: string) {
 // Get files asynchonously
 function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(target, { highWaterMark: 64 * 1024});
+    const file = fs.createWriteStream(target, { highWaterMark: 64 * 1024 });
     // get the file, update the user loading screen with text on progress
 
     const progress = (receivedBytes: number, totalBytes: number) => {
       const percentage = (receivedBytes * 100) / totalBytes;
       if (percentage > 0) {
-        win.webContents.send(
-          "updateStatus",
-          { message: `Downloading ${target.split("/").pop()}... ${percentage.toFixed(0)}%`, timestamp: Date.now() }
-        );
+        win.webContents.send("updateStatus", {
+          message: `Downloading ${target
+            .split("/")
+            .pop()}... ${percentage.toFixed(0)}%`,
+          timestamp: Date.now(),
+        });
       }
     };
     const dummy = new stream.PassThrough();
@@ -91,7 +91,8 @@ function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
       dummy.on("data", (chunk: any) => {
         receivedBytes += chunk.length;
         const currentTimestamp = Date.now();
-        if (currentTimestamp - lastUpdateTimestamp >= 1000) { // 1000 ms = 1 second
+        if (currentTimestamp - lastUpdateTimestamp >= 1000) {
+          // 1000 ms = 1 second
           progress(receivedBytes, totalBytes);
           lastUpdateTimestamp = currentTimestamp;
         }
@@ -123,7 +124,6 @@ function getVersion() {
   const packageJson = require(path.join(appDir, "package.json"));
   return packageJson.version;
 }
-
 
 function setupPython(win: typeof BrowserWindow) {
   const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
@@ -261,7 +261,7 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models-v7.tar.gz`; //  Update to v7
+    const modelsLink = `${bucketParentPath}/models-v72.tar.gz`; //  Update to v7
     const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
@@ -281,10 +281,10 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
       }
 
       if (downloading.indexOf("models") === -1) {
-         // Check in the models dir if chaosdruid.pt exists do nothing, otherwise delete the dir and download
+        // Check in the models dir if chaosdruid.pt exists do nothing, otherwise delete the dir and download
         if (!fs.existsSync(path.join(homeDir, "models/chaosdruid.pt"))) {
           downloading.push("models");
-            // Delete existing
+          // Delete existing
           if (fs.existsSync(path.join(homeDir, "models"))) {
             fs.rm(path.join(homeDir, "models"), { recursive: true });
           }
@@ -298,11 +298,11 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
               "updateStatus",
               `Redownloading ${dir}...this may take a while`
             );
-            
+
             if (fs.existsSync(path.join(homeDir, dir))) {
               fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
             }
-            
+
             let downloadPath = "";
             switch (dir) {
               case "models":
@@ -347,7 +347,6 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         resolve(true);
       }
     } else {
-
       // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
       // Check if these directories exist, if they do, we don't need to download any files
       let allDirsExist = true;
@@ -357,13 +356,13 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         }
       });
 
-        if (!allDirsExist) {
-          // Something is missing, delete everything and download again
-          requiredDirs.forEach((dir) => {
-            if (fs.existsSync(path.join(homeDir, dir))) {
-              fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
-            }
-          });
+      if (!allDirsExist) {
+        // Something is missing, delete everything and download again
+        requiredDirs.forEach((dir) => {
+          if (fs.existsSync(path.join(homeDir, dir))) {
+            fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+          }
+        });
 
         // Download the embeddings
         downloadFile(
@@ -396,31 +395,33 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
                     })
                     .then(() => {
                       // Delete the tar file
-                      deleteFile(path.join(homeDir, "models.tar.gz")).then(() => {
-                        // Download the nrrd
-                        downloadFile(
-                          nrrdLink,
-                          path.join(homeDir, "nrrd.tar.gz"),
-                          win
-                        ).then(() => {
-                          // Extract the nrrd
-                          tar
+                      deleteFile(path.join(homeDir, "models.tar.gz")).then(
+                        () => {
+                          // Download the nrrd
+                          downloadFile(
+                            nrrdLink,
+                            path.join(homeDir, "nrrd.tar.gz"),
+                            win
+                          ).then(() => {
+                            // Extract the nrrd
+                            tar
 
-                            .x({
-                              cwd: homeDir,
-                              preservePaths: true,
-                              file: path.join(homeDir, "nrrd.tar.gz"),
-                            })
-                            .then(() => {
-                              // Delete the tar file
-                              deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(
-                                () => {
+                              .x({
+                                cwd: homeDir,
+                                preservePaths: true,
+                                file: path.join(homeDir, "nrrd.tar.gz"),
+                              })
+                              .then(() => {
+                                // Delete the tar file
+                                deleteFile(
+                                  path.join(homeDir, "nrrd.tar.gz")
+                                ).then(() => {
                                   resolve(true);
-                                }
-                              );
-                            });
-                        });
-                      });
+                                });
+                              });
+                          });
+                        }
+                      );
                     });
                 });
               });
@@ -467,36 +468,35 @@ function setupEnvironment(win: typeof BrowserWindow) {
         console.log("An error occurred during setup:", error);
         win.webContents.send("updateStatus", "An error occurred during setup.");
       });
+  }
 
-    }
+  // Install venv package
+  async function installVenv() {
+    const { stdout, stderr } = await exec(
+      `${pyCommand} -m pip install --user virtualenv`,
+      { cwd: pythonPath }
+    );
+    return { stdout, stderr };
+  }
 
-    // Install venv package
-    async function installVenv() {
-      const { stdout, stderr } = await exec(
-        `${pyCommand} -m pip install --user virtualenv`,
-        { cwd: pythonPath }
-      );
-      return { stdout, stderr };
-    }
+  // Create venv
+  async function createVenv() {
+    const envDir = process.platform === "win32" ? "../benv" : "../../benv";
+    const { stdout, stderr } = await exec(`${pyCommand} -m venv ${envDir}`, {
+      cwd: pythonPath,
+    });
+    return { stdout, stderr };
+  }
 
-    // Create venv
-    async function createVenv() {
-      const envDir = process.platform === "win32" ? "../benv" : "../../benv";
-      const { stdout, stderr } = await exec(`${pyCommand} -m venv ${envDir}`, {
-        cwd: pythonPath,
-      });
-      return { stdout, stderr };
-    }
-
-    // Install pip packages
-    async function installDeps() {
-      let reqs = path.join(appDir, "py/requirements.txt");
-      const { stdout, stderr } = await exec(
-        `${pyCommand} -m pip install -r "${reqs}" --use-pep517`,
-        { cwd: envPythonPath }
-      );
-      return { stdout, stderr };
-    }
+  // Install pip packages
+  async function installDeps() {
+    let reqs = path.join(appDir, "py/requirements.txt");
+    const { stdout, stderr } = await exec(
+      `${pyCommand} -m pip install -r "${reqs}" --use-pep517`,
+      { cwd: envPythonPath }
+    );
+    return { stdout, stderr };
+  }
 }
 
 // Install the latest dependencies, could have changed after an update
@@ -607,9 +607,9 @@ app.on("ready", () => {
           // Otherwise, we can just update the dependencies
           updatePythonDependencies(win).then(() => {
             // Check for new patch
-              // Check if any directories are missing
-              fixMissingDirectories(win).then(() => {
-                win.loadFile("pages/index.html");
+            // Check if any directories are missing
+            fixMissingDirectories(win).then(() => {
+              win.loadFile("pages/index.html");
             });
           });
         }
@@ -681,7 +681,13 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: [`-o ${data[1]}`, `-i ${data[0]}`, `-d ${data[2]}`, `-t ${data[3]}`, "-g False"],
+    args: [
+      `-o ${data[1]}`,
+      `-i ${data[0]}`,
+      `-d ${data[2]}`,
+      `-t ${data[3]}`,
+      "-g False",
+    ],
   };
 
   let pyshell = new PythonShell("max.py", options);
@@ -865,16 +871,22 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
 ipcMain.on("runCount", function (event: any, data: any[]) {
   var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
 
+  let custom_args = [
+    `-p ${data[0]}`,
+    `-a ${data[1]}`,
+    `-o ${data[2]}`,
+    `-s ${structPath}`,
+  ];
+
+  if (data[3]) {
+    custom_args.push(`--layers`);
+  }
+
   let options = {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: [
-      `-p ${data[0]}`,
-      `-a ${data[1]}`,
-      `-o ${data[2]}`,
-      `-s ${structPath}`,
-    ],
+    args: custom_args,
   };
   let pyshell = new PythonShell("count.py", options);
   var total: number = 0;
@@ -990,23 +1002,33 @@ ipcMain.on("runDetection", function (event: any, data: any[]) {
     modelPath = data[4];
   }
 
+  let custom_args = [
+    `-i ${data[0]}`,
+    `-o ${data[1]}`,
+    `-c ${data[2]}`,
+    `-t ${data[3]}`,
+    `-m ${modelPath}`,
+  ];
+
+  if (data[5]) {
+    custom_args.push(`--multichannel`);
+  }
+
   let options = {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: [
-      `-i ${data[0]}`,
-      `-o ${data[1]}`,
-      `-c ${data[2]}`,
-      `-t ${data[3]}`,
-      `-m ${modelPath}`,
-      "-g False",
-    ],
+    args: custom_args,
   };
 
   let pyshell = new PythonShell("find_neurons.py", options);
   var total: number = 0;
   var current: number = 0;
+
+  pyshell.on("stderr", function (stderr: string) {
+    console.log(stderr);
+  });
+
   pyshell.on("message", (message: string) => {
     console.log(message);
     if (total === 0) {
