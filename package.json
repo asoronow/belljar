@@ -1,7 +1,7 @@
 {
   "name": "belljar",
   "description": "A tool for mouse neurohistology",
-  "version": "7.2.0-rc",
+  "version": "8.0.0-rc",
   "main": "main.js",
   "repository": "asoronow/belljar",
   "author": "Alec <a.soronow@gmail.com>",
@@ -55,7 +55,10 @@
       },
       "makers": [
         {
-          "name": "@electron-forge/maker-zip"
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "win32"
+          ]
         },
         {
           "name": "@electron-forge/maker-dmg",
