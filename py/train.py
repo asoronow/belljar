@@ -1,6 +1,7 @@
 import wandb
 import torch
 from PIL import Image
+import time
 
 
 class Trainer:
@@ -23,15 +24,16 @@ class Trainer:
     def train_one_epoch(self):
         self.model.train()
         train_loss = 0.0
-        for batch, samples in enumerate(self.train_loader):
+        for batch, (samples, labels) in enumerate(self.train_loader):
             print(
                 f"Train | Epoch: {self.epoch}, Batch: {batch}/{len(self.train_loader)}",
                 end="\r",
             )
             samples = samples.to(self.device)
+            labels = labels.to(self.device)
             self.optimizer.zero_grad()
             outputs = self.model(samples)
-            loss = self.criterion(outputs, samples)
+            loss = self.criterion(outputs, labels)
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item() * samples.size(0)
@@ -43,11 +45,12 @@ class Trainer:
         self.model.eval()
         valid_loss = 0.0
         with torch.no_grad():
-            for batch, samples in enumerate(self.valid_loader):
+            for batch, (samples, labels) in enumerate(self.valid_loader):
                 print(f"Valid | Batch: {batch}/{len(self.valid_loader)}", end="\r")
                 samples = samples.to(self.device)
+                labels = labels.to(self.device)
                 outputs = self.model(samples)
-                loss = self.criterion(outputs, samples)
+                loss = self.criterion(outputs, labels)
                 valid_loss += loss.item() * samples.size(0)
         print(f"Valid Loss: {valid_loss / len(self.valid_loader.dataset)}")
         return valid_loss / len(self.valid_loader.dataset)
@@ -60,7 +63,8 @@ class Trainer:
             # Check if this epoch has the best validation loss and save model
             if valid_loss < self.best_loss:
                 self.best_loss = valid_loss
-                torch.save(self.model.state_dict(), "best_model.pt")
+                time_formated = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+                torch.save(self.model.state_dict(), f"best_model_predictor.pt")
 
             # Log metrics to wandb
             wandb.log(

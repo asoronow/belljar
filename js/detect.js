@@ -10,6 +10,7 @@ var loadmessage = document.getElementById('loadmessage');
 var back = document.getElementById('back');
 var advance = document.getElementById('advance');
 var arrow = document.getElementById('arrow');
+var multichannel = document.getElementById('multichannel');
 
 advance.addEventListener('click', function () {
     arrow.classList.toggle('down');
@@ -25,9 +26,10 @@ function checkNumber(value, message) {
 }
 
 run.addEventListener('click', function(){
-    var c = 0.85;
+    var c = 0.5;
     var t = 640;
     var m = '';
+    var mc = false;
 
     if (indir && outdir && indir.value && outdir.value) {
         if (confidence.value && confidence.value < 1 && confidence.value > 0) {
@@ -39,13 +41,18 @@ run.addEventListener('click', function(){
         if (model.value) {
             m = model.value
         }
+        if (multichannel.checked) {
+            mc = true;
+        }
+
         run.classList.add('disabled');
         back.classList.remove('btn-warning');
         back.classList.add('btn-danger')
         back.innerHTML = "Cancel";
         run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-        ipc.send('runDetection', [indir.value, outdir.value, c, t, m]);
         loadmessage.innerHTML = "Intializing...";
+
+        ipc.send('runDetection', [indir.value, outdir.value, c, t, m, mc]);
     }
 });
 

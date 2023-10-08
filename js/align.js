@@ -46,6 +46,7 @@ run.addEventListener("click", function () {
 		back.classList.add("btn-danger");
 		back.innerHTML = "Cancel";
 		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
+		loadmessage.innerHTML = "Intializing...";
 		ipc.send("runAlign", [indir.value, outdir.value, alignmentMethod, a]);
 	}
 });

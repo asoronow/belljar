@@ -72,7 +72,12 @@ function downloadFile(url, target, win) {
         const progress = (receivedBytes, totalBytes) => {
             const percentage = (receivedBytes * 100) / totalBytes;
             if (percentage > 0) {
-                win.webContents.send("updateStatus", { message: `Downloading ${target.split("/").pop()}... ${percentage.toFixed(0)}%`, timestamp: Date.now() });
+                win.webContents.send("updateStatus", {
+                    message: `Downloading ${target
+                        .split("/")
+                        .pop()}... ${percentage.toFixed(0)}%`,
+                    timestamp: Date.now(),
+                });
             }
         };
         const dummy = new stream.PassThrough();
@@ -85,7 +90,8 @@ function downloadFile(url, target, win) {
             dummy.on("data", (chunk) => {
                 receivedBytes += chunk.length;
                 const currentTimestamp = Date.now();
-                if (currentTimestamp - lastUpdateTimestamp >= 1000) { // 1000 ms = 1 second
+                if (currentTimestamp - lastUpdateTimestamp >= 1000) {
+                    // 1000 ms = 1 second
                     progress(receivedBytes, totalBytes);
                     lastUpdateTimestamp = currentTimestamp;
                 }
@@ -210,7 +216,7 @@ function downloadResources(win, fresh) {
     return new Promise((resolve, reject) => {
         const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
         const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-        const modelsLink = `${bucketParentPath}/models-v7.tar.gz`; //  Update to v7
+        const modelsLink = `${bucketParentPath}/models-v72.tar.gz`; //  Update to v7
         const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
         const requiredDirs = ["models", "embeddings", "nrrd"];
         if (!fresh) {
@@ -566,7 +572,13 @@ ipcMain.on("runMax", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-o ${data[1]}`, `-i ${data[0]}`, `-d ${data[2]}`, `-t ${data[3]}`, "-g False"],
+        args: [
+            `-o ${data[1]}`,
+            `-i ${data[0]}`,
+            `-d ${data[2]}`,
+            `-t ${data[3]}`,
+            "-g False",
+        ],
     };
     let pyshell = new PythonShell("max.py", options);
     var total = 0;
@@ -745,16 +757,20 @@ ipcMain.on("runIntensity", function (event, data) {
 // Counting
 ipcMain.on("runCount", function (event, data) {
     var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+    let custom_args = [
+        `-p ${data[0]}`,
+        `-a ${data[1]}`,
+        `-o ${data[2]}`,
+        `-s ${structPath}`,
+    ];
+    if (data[3]) {
+        custom_args.push(`--layers`);
+    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-p ${data[0]}`,
-            `-a ${data[1]}`,
-            `-o ${data[2]}`,
-            `-s ${structPath}`,
-        ],
+        args: custom_args,
     };
     let pyshell = new PythonShell("count.py", options);
     var total = 0;
@@ -866,22 +882,28 @@ ipcMain.on("runDetection", function (event, data) {
     if (data[4].length > 0) {
         modelPath = data[4];
     }
+    let custom_args = [
+        `-i ${data[0]}`,
+        `-o ${data[1]}`,
+        `-c ${data[2]}`,
+        `-t ${data[3]}`,
+        `-m ${modelPath}`,
+    ];
+    if (data[5]) {
+        custom_args.push(`--multichannel`);
+    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-i ${data[0]}`,
-            `-o ${data[1]}`,
-            `-c ${data[2]}`,
-            `-t ${data[3]}`,
-            `-m ${modelPath}`,
-            "-g False",
-        ],
+        args: custom_args,
     };
     let pyshell = new PythonShell("find_neurons.py", options);
     var total = 0;
     var current = 0;
+    pyshell.on("stderr", function (stderr) {
+        console.log(stderr);
+    });
     pyshell.on("message", (message) => {
         console.log(message);
         if (total === 0) {

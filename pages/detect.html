@@ -135,6 +135,17 @@
               ></i>
             </h5>
           </div>
+          <div class="col d-grid justify-content-start">
+            <h5>
+              Multichannel
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Specify if you are using multichannel tiff images for N-channel detection"
+              ></i>
+            </h5>
+          </div>
         </div>
         <div class="row align-items-center m-1">
           <div class="col d-grid">
@@ -158,7 +169,15 @@
               placeholder="(Optional) Enter a custom model file"
             />
           </div>
+          <div class="col d-grid">
+            <input
+              type="checkbox"
+              id="multichannel"
+              name="multichannel"
+              value="multichannel"
+            />
         </div>
+        </div>  
       </div>
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">

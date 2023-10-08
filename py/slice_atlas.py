@@ -6,7 +6,8 @@ import pickle, os
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
-from scipy.ndimage import interpolation
+from scipy.ndimage import map_coordinates
+from skimage import measure, morphology
 
 # Path to nrrd
 nrrdPath = "C:\\Users\\Alec\\Projects\\aba-nrrd\\raw"
@@ -120,25 +121,31 @@ def createTrainingSet():
 
 
 def make_cerebrum_atlas():
-    '''Using the atlas and annotations create a new atlas that only has cerebrum regions.'''
+    """Using the atlas and annotations create a new atlas that only has cerebrum regions."""
     # Load the class map
     classMap = {}
-    with open(Path(r"C:\Users\imageprocessing\Documents\belljar\csv\class_map.pkl"), "rb") as f:
+    with open(
+        Path(r"C:\Users\imageprocessing\Documents\belljar\csv\class_map.pkl"), "rb"
+    ) as f:
         classMap = pickle.load(f)
         # add cerebral cortex
 
     # Load the atlas
-    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10.nrrd"))
-    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10.nrrd"))
+    atlas, _ = nrrd.read(
+        Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10.nrrd")
+    )
+    annotation, _ = nrrd.read(
+        Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10.nrrd")
+    )
 
     # Get the unique labels
     z, y, x = annotation.shape
-    
-    new_atlas = np.zeros((z, y, x//2))
-    new_annotation = np.zeros((z, y, x//2)).astype(np.uint32)
+
+    new_atlas = np.zeros((z, y, x // 2))
+    new_annotation = np.zeros((z, y, x // 2)).astype(np.uint32)
     for i in range(z):
-        label = annotation[i, :, :x//2]
-        section = atlas[i, :, :x//2]
+        label = annotation[i, :, : x // 2]
+        section = atlas[i, :, : x // 2]
 
         # Convert section to 8 bit from float 32
         section = cv2.normalize(section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
@@ -164,31 +171,177 @@ def make_cerebrum_atlas():
         new_atlas[i, :, :] = out_section
         new_annotation[i, :, :] = out_label
 
-    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd", new_atlas, index_order="C", compression_level=1)
-    nrrd.write(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd", new_annotation, index_order="C", compression_level=1)
+    nrrd.write(
+        r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd",
+        new_atlas,
+        index_order="C",
+        compression_level=1,
+    )
+    nrrd.write(
+        r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd",
+        new_annotation,
+        index_order="C",
+        compression_level=1,
+    )
+
+
+def remove_fragments(slice_2d):
+    """
+    Keep the largest connected component for each label and remove other fragments.
+
+    Parameters:
+    - slice_2d: The input labeled image.
+
+    Returns:
+    - A labeled image with fragments removed.
+    """
+
+    unique_labels = np.unique(slice_2d)
+    processed_img = np.zeros_like(slice_2d)
+
+    for label in unique_labels:
+        # Skip background
+        if label == 0:
+            continue
+
+        binary_mask = slice_2d == label
+        labeled_mask, num_features = measure.label(
+            binary_mask, return_num=True, connectivity=2
+        )
+
+        if num_features == 1:  # Only one component, nothing to remove
+            processed_img[binary_mask] = label
+            continue
+
+        # Identify the largest component
+        largest_component = None
+        largest_size = 0
+        for i in range(1, num_features + 1):
+            component = labeled_mask == i
+            component_size = np.sum(component)
+            if component_size > largest_size:
+                largest_size = component_size
+                largest_component = component
+
+        if largest_component < 100:
+            continue
+
+        # Set the largest component in the result
+        processed_img[largest_component] = label
+
+    return processed_img
+
+
+def slice_3d_volume(volume, z_position, x_angle, y_angle):
+    """
+    Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
+
+    Args:
+        volume (numpy.ndarray): 3D numpy array.
+        z_position (int): Position along the z-axis for the slice.
+        x_angle (float): Angle in degrees to tilt in the x axis.
+        y_angle (float): Angle in degrees to tilt in the y axis.
+
+    Returns:
+        numpy.ndarray: 2D sliced array.
+    """
+
+    # Convert angles to radians
+    x_angle_rad = np.deg2rad(x_angle)
+    y_angle_rad = np.deg2rad(y_angle)
+
+    # Create a coordinate grid
+    x, y = np.mgrid[0 : volume.shape[1], 0 : volume.shape[2]]
+
+    # Adjust z-position based on tilt angles
+    # Ensure data type is float to handle decimal computations
+    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
+        np.float32
+    )
+    coords = np.array([z, x, y])
+
+    # Extract slice using nearest-neighbor interpolation
+    # This will round the float coordinates to the nearest integer
+    slice_2d = map_coordinates(volume, coords, order=0)
+
+    # If you need to maintain uint32 data type for slice_2d
+    slice_2d = slice_2d.astype(np.uint32)
+
+    return slice_2d
+
+
+def make_angled_data(samples, atlas):
+    for _ in range(samples):
+        x_angle, y_angle = np.random.rand(2)
+
+        # convert to single digit float in range -10 to 10
+        x_angle = round((x_angle - 0.5) * 20, 1)
+        y_angle = round((y_angle - 0.5) * 20, 1)
+
+        pos = np.random.randint(100, atlas.shape[0] - 100)
+
+        # coin toss sample is whole or hemi
+        if np.random.rand() > 0.5:
+            sample = slice_3d_volume(atlas, pos, x_angle, y_angle)
+
+            # randomly mirror
+            if np.random.rand() > 0.5:
+                sample = sample[:, ::-1]
+
+        else:
+            sample_l = slice_3d_volume(atlas, pos, x_angle, y_angle)
+            sample_r = slice_3d_volume(atlas[:, :, ::-1], pos, -1 * x_angle, y_angle)
+            sample = np.concatenate((sample_l, sample_r), axis=1)
+        # resize to 640x640
+        sample = cv2.resize(sample, (640, 640), interpolation=cv2.INTER_AREA)
+
+        # apply a random rotation
+        angle = np.random.randint(-7, 7)
+        rot_mat = cv2.getRotationMatrix2D((320, 320), angle, 1.0)
+        sample = cv2.warpAffine(sample, rot_mat, (512, 512))
+
+        # save to disk
+        cv2.imwrite(
+            f"c:/users/alec/desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
+        )
+
 
 if __name__ == "__main__":
-    atlas, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C")
-    annotation, _ = nrrd.read(Path(r"C:\Users\imageprocessing\.belljar\nrrd\annotation_10_all.nrrd"), index_order="C")
+    atlas, _ = nrrd.read(
+        Path(r"/Users/alec/.belljar/nrrd/ara_nissl_10_all.nrrd"), index_order="C"
+    )
+    annotation, _ = nrrd.read(
+        Path(r"/Users/alec/.belljar/nrrd/annotation_10_all.nrrd"), index_order="C"
+    )
+    print("Loaded atlas...")
+    # convert atlas to 8 bit
+    atlas = cv2.normalize(atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
-    left_label = annotation[800, :, :]
-    left_section = atlas[800, :, :]
+    make_angled_data(10000, atlas)
 
-    right_label = annotation[800, :, ::-1]
-    right_section = atlas[800, :, ::-1]
+    cv2.namedWindow("image")
+    cv2.namedWindow("controls")
+    curr_x_angle = 0
+    curr_y_angle = 0
+    curr_z_position = 0
 
-    # normalize
-    left_section = cv2.normalize(left_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-    right_section = cv2.normalize(right_section, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+    def trackbar_callback(x):
+        global curr_x_angle, curr_y_angle, curr_z_position
+        curr_x_angle = cv2.getTrackbarPos("x_angle", "controls")
+        curr_y_angle = cv2.getTrackbarPos("y_angle", "controls")
+        curr_z_position = cv2.getTrackbarPos("z_position", "controls")
 
-    section = np.zeros((left_section.shape[0], left_section.shape[1] * 2), dtype=np.uint8)
-    section[:, : left_section.shape[1]] = left_section
-    section[:, left_section.shape[1] :] = right_section
-
-    label = np.zeros((left_label.shape[0], left_label.shape[1] * 2), dtype=np.uint32)
-    label[:, : left_label.shape[1]] = left_label
-    label[:, left_label.shape[1] :] = right_label
-
-    cv2.imshow("section", section)
-    cv2.waitKey(0)
-
+    cv2.createTrackbar("x_angle", "controls", 0, 10, trackbar_callback)
+    cv2.createTrackbar("y_angle", "controls", 0, 10, trackbar_callback)
+    cv2.createTrackbar("z_position", "controls", 0, atlas.shape[0], trackbar_callback)
+    cv2.setTrackbarMin("z_position", "controls", 0)
+    cv2.setTrackbarMin("x_angle", "controls", -10)
+    cv2.setTrackbarMin("y_angle", "controls", -10)
+    while True:
+        left_slice = slice_3d_volume(atlas, curr_z_position, curr_x_angle, curr_y_angle)
+        right_slice = slice_3d_volume(
+            atlas[:, :, ::-1], curr_z_position, -1 * curr_x_angle, curr_y_angle
+        )
+        full = np.concatenate((left_slice, right_slice), axis=1)
+        cv2.imshow("image", full)
+        cv2.waitKey(5)
