@@ -487,6 +487,11 @@ class AlignmentController:
         self.ap_position_spinbox.setValue(
             self.atlas_slices[self.file_list[self.current_section]].ap_position
         )
+        self.region_selection.setCurrentIndex(
+            list(self.region_tags.values()).index(
+                self.atlas_slices[self.file_list[self.current_section]].region
+            )
+        )
 
     def set_all_angles(self):
         """Update every slice with the current angles"""
