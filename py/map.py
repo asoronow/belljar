@@ -580,7 +580,8 @@ class AlignmentController:
         print("Warping images...", flush=True)
         # Check for any non-all regions
         regions = np.unique([slice.region for slice in self.atlas_slices.values()])
-        if len(regions) > 1:
+        # if any non-all regions, load other atlases
+        if "NC" in regions or "C" in regions:
             other_atlases = {}
             other_annotations = {}
 
