@@ -492,6 +492,11 @@ class AlignmentController:
                 self.atlas_slices[self.file_list[self.current_section]].region
             )
         )
+        self.mask_button.setText(
+            "Set Mask"
+            if self.atlas_slices[self.file_list[self.current_section]].mask is None
+            else "Update Mask"
+        )
 
     def set_all_angles(self):
         """Update every slice with the current angles"""
