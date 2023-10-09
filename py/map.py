@@ -492,6 +492,11 @@ class AlignmentController:
                 self.atlas_slices[self.file_list[self.current_section]].region
             )
         )
+        self.mask_button.setText(
+            "Set Mask"
+            if self.atlas_slices[self.file_list[self.current_section]].mask is None
+            else "Update Mask"
+        )
 
     def set_all_angles(self):
         """Update every slice with the current angles"""
@@ -580,7 +585,8 @@ class AlignmentController:
         print("Warping images...", flush=True)
         # Check for any non-all regions
         regions = np.unique([slice.region for slice in self.atlas_slices.values()])
-        if len(regions) > 1:
+        # if any non-all regions, load other atlases
+        if "NC" in regions or "C" in regions:
             other_atlases = {}
             other_annotations = {}
 
