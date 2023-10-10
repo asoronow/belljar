@@ -363,6 +363,7 @@ class AlignmentController:
 
         if not self.prior_alignment:
             self.predict_sample_slices()
+
         print("Awaiting fine tuning...", flush=True)
         self.start_viewer()
 
@@ -543,6 +544,9 @@ class AlignmentController:
             # adjust the positions of all slices after the visited slices
             for i in range(self.visited, self.num_slices):
                 self.atlas_slices[self.file_list[i]].ap_position = m * i + b
+
+            # update all the linked angles to the average x and y
+            self.set_all_angles()
 
     def next_section(self):
         """Move to next section"""
