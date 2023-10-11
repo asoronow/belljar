@@ -8,6 +8,7 @@ from slice_atlas import slice_3d_volume, remove_fragments
 from model import TissuePredictor
 import nrrd
 import torch
+import math
 import napari
 import argparse
 from qtpy.QtWidgets import (
@@ -458,22 +459,60 @@ class AlignmentController:
         """Update the mask of the current slice"""
         self.atlas_slices[self.file_list[self.current_section]].set_mask()
 
+    def _find_aspect_constrained_size(self, img1, img2):
+        """
+        Find the ideal size to resize both images to, ensuring:
+        - The resolution is at least 1080p.
+        - The individual aspect ratios of both images are maintained.
+        - The sizes are compatible with one another.
+
+        Parameters:
+        - img1: First image (assumed to be a NumPy array or similar with shape (height, width)).
+        - img2: Second image (assumed to be a NumPy array or similar with shape (height, width)).
+
+        Returns:
+        - Tuple (width, height): Ideal dimensions to resize both images to.
+        """
+        
+        # Calculate the aspect ratio of both images
+        aspect_ratio_img1 = img1.shape[1] / img1.shape[0]
+        aspect_ratio_img2 = img2.shape[1] / img2.shape[0]
+
+        # Set the target height to 1080
+        target_height = 1080
+
+        # Calculate the target width for each image based on its aspect ratio
+        target_width_img1 = int(target_height * aspect_ratio_img1)
+        target_width_img2 = int(target_height * aspect_ratio_img2)
+
+        # The target width should be the maximum width obtained from the two images
+        target_width = max(target_width_img1, target_width_img2)
+
+        return (target_width, target_height)
+
     def update_display(self):
         """Update the viewer to current section"""
         self.viewer.grid.enabled = False
+        
         sample_img = cv2.imread(
             str(Path(self.input_path) / self.file_list[self.current_section]),
             cv2.IMREAD_GRAYSCALE,
         )
-        sample_img = cv2.resize(sample_img, (1920, 1080))
+
+        new_size = self._find_aspect_constrained_size(
+            sample_img,
+            self.atlas_slices[self.file_list[self.current_section]].image,
+        )
+        sample_img = cv2.resize(sample_img, new_size)
         self.tissue_layer.data = sample_img
         # resize atlas to match tissue
         self.atlas_slices[self.file_list[self.current_section]].set_slice(
             self.atlas, self.annotation
         )
+
         temp_data = cv2.resize(
             self.atlas_slices[self.file_list[self.current_section]].image,
-            (1920, 1080),
+            new_size,
         )
         self.atlas_layer.data = temp_data
         self.viewer.grid.enabled = True
@@ -546,7 +585,7 @@ class AlignmentController:
                 self.atlas_slices[self.file_list[i]].ap_position = m * i + b
 
             # update all the linked angles to the average x and y
-            self.set_all_angles()
+        self.set_all_angles()
 
     def next_section(self):
         """Move to next section"""
@@ -626,12 +665,14 @@ class AlignmentController:
                 sample,
             )
 
+            stripped_filename = self.file_list[i].split(".")[0]
+
             cv2.imwrite(
-                str(Path(self.output_path) / f"Atlas_{self.file_list[i]}"),
+                str(Path(self.output_path) / f"Atlas_{stripped_filename}.png"),
                 warped_atlas,
             )
             cv2.imwrite(
-                str(Path(self.output_path) / f"Label_{self.file_list[i]}"),
+                str(Path(self.output_path) / f"Label_{stripped_filename}.png"),
                 color_label,
             )
 
@@ -650,12 +691,12 @@ class AlignmentController:
                 0,
             )
             cv2.imwrite(
-                str(Path(self.output_path) / f"Composite_{self.file_list[i]}"),
+                str(Path(self.output_path) / f"Composite_{stripped_filename}.png"),
                 composite,
             )
 
             with open(
-                Path(self.output_path) / f"Annotation_{self.file_list[i]}.pkl", "wb"
+                Path(self.output_path) / f"Annotation_{stripped_filename}.pkl", "wb"
             ) as f:
                 pickle.dump(warped_labels, f)
 
