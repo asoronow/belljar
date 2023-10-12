@@ -1,7 +1,7 @@
 import SimpleITK as sitk
 import numpy as np
-from PIL import Image
 import pickle
+import matplotlib.pyplot as plt
 
 # Check number of cores available
 import multiprocessing
@@ -31,13 +31,13 @@ def multimodal_registration(fixed, moving):
     moving = sitk.ConstantPad(moving, padding_size)
 
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation(25)
+    R.SetMetricAsMattesMutualInformation(32)
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
         numberOfIterations=200,
         convergenceMinimumValue=1e-10,
         convergenceWindowSize=5,
-        estimateLearningRate=R.EachIteration
+        estimateLearningRate=R.EachIteration,
     )
     R.SetOptimizerScalesFromPhysicalShift()
 
@@ -58,15 +58,15 @@ def multimodal_registration(fixed, moving):
     transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
 
-    R.SetMetricAsMattesMutualInformation(25)
+    R.SetMetricAsMattesMutualInformation(32)
     R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
     R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=1000,
+        numberOfIterations=250,
         convergenceMinimumValue=1e-10,
-        convergenceWindowSize=10,
-        estimateLearningRate=R.EachIteration
+        convergenceWindowSize=5,
+        estimateLearningRate=R.EachIteration,
     )
     R.SetOptimizerScalesFromPhysicalShift()
 
@@ -75,9 +75,41 @@ def multimodal_registration(fixed, moving):
 
     outTx2 = R.Execute(fixed, resampled_moving)
 
+    # DEBUG: Quiver plot, uncomment to see plots of each transformation
     # Combine the transformations: Affine followed by B-spline.
     composite_transform = sitk.CompositeTransform(outTx1)
     composite_transform.AddTransform(outTx2)
+
+    # Calculate displacement field from the composite transform
+    # displacement_field = sitk.TransformToDisplacementField(
+    #     composite_transform,
+    #     sitk.sitkVectorFloat64,
+    #     fixed.GetSize(),
+    #     fixed.GetOrigin(),
+    #     fixed.GetSpacing(),
+    #     fixed.GetDirection(),
+    # )
+
+    # # Convert the displacement field to numpy arrays
+    # displacements = sitk.GetArrayFromImage(displacement_field)
+
+    # # Get the x and y components of the displacements
+    # dy, dx = displacements[..., 0], displacements[..., 1]
+
+    # # For visualization purposes, it may be helpful to sample every k'th point to avoid overcrowding in the quiver plot
+    # k = 10
+    # grid_y, grid_x = np.mgrid[
+    #     0 : displacements.shape[0] : k, 0 : displacements.shape[1] : k
+    # ]
+    # disp_y, disp_x = dy[::k, ::k], dx[::k, ::k]
+
+    # # Use quiver plot to visualize the displacements
+    # plt.figure(figsize=(10, 10))
+    # plt.imshow(sitk.GetArrayFromImage(fixed), cmap="gray")
+    # plt.quiver(grid_x, grid_y, disp_x, disp_y, angles="xy", scale_units="xy", color="r")
+    # # turn off axis to remove clutter
+    # plt.axis("off")
+    # plt.show()
 
     return composite_transform
 

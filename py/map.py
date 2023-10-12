@@ -362,8 +362,7 @@ class AlignmentController:
         self.prior_alignment = False
         self.load_alignment()
 
-        if not self.prior_alignment:
-            self.predict_sample_slices()
+        self.predict_sample_slices()
 
         print("Awaiting fine tuning...", flush=True)
         self.start_viewer()
@@ -473,7 +472,7 @@ class AlignmentController:
         Returns:
         - Tuple (width, height): Ideal dimensions to resize both images to.
         """
-        
+
         # Calculate the aspect ratio of both images
         aspect_ratio_img1 = img1.shape[1] / img1.shape[0]
         aspect_ratio_img2 = img2.shape[1] / img2.shape[0]
@@ -493,7 +492,7 @@ class AlignmentController:
     def update_display(self):
         """Update the viewer to current section"""
         self.viewer.grid.enabled = False
-        
+
         sample_img = cv2.imread(
             str(Path(self.input_path) / self.file_list[self.current_section]),
             cv2.IMREAD_GRAYSCALE,
