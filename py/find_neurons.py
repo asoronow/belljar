@@ -56,7 +56,7 @@ if __name__ == "__main__":
     files = os.listdir(input_dir)
     files = [f for f in files if f.split(".")[-1].lower() in endings]
     files.sort()
-    print(5 + len(files), flush=True)  # update users on steps
+    print(5 + len(files) * 2, flush=True)  # update users on steps
     print(f"Using device: {device}", flush=True)
     print(f"Using model: {model_path}", flush=True)
     print(f"Using confidence level {float(args.confidence)}", flush=True)
@@ -144,7 +144,7 @@ if __name__ == "__main__":
                 overlap_width_ratio=0.1,
             )
             bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
-            scores = [obj.scor.value for obj in result.object_prediction_list]
+            scores = [obj.score.value for obj in result.object_prediction_list]
             predictions = [
                 DetectionResult(
                     boxes=bboxes,
