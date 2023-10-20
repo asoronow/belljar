@@ -2,6 +2,7 @@ import SimpleITK as sitk
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
+import cv2
 
 # Check number of cores available
 import multiprocessing
@@ -26,7 +27,7 @@ def multimodal_registration(fixed, moving):
     )
 
     # Pad
-    padding_size = [32] * fixed.GetDimension()
+    padding_size = [64] * fixed.GetDimension()
     fixed = sitk.ConstantPad(fixed, padding_size)
     moving = sitk.ConstantPad(moving, padding_size)
 
@@ -35,7 +36,7 @@ def multimodal_registration(fixed, moving):
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
         numberOfIterations=200,
-        convergenceMinimumValue=1e-10,
+        convergenceMinimumValue=1e-6,
         convergenceWindowSize=5,
         estimateLearningRate=R.EachIteration,
     )
@@ -63,8 +64,8 @@ def multimodal_registration(fixed, moving):
     R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=250,
-        convergenceMinimumValue=1e-10,
+        numberOfIterations=200,
+        convergenceMinimumValue=1e-6,
         convergenceWindowSize=5,
         estimateLearningRate=R.EachIteration,
     )
@@ -114,12 +115,65 @@ def multimodal_registration(fixed, moving):
     return composite_transform
 
 
+def resize_image_to_original(image, original_size):
+    """
+    Resize the image back to its original size.
+
+    Parameters:
+        image: Resized image.
+        original_size: Tuple of the original height and width.
+
+    Returns:
+        Image resized back to its original dimensions.
+    """
+    original_height, original_width = original_size
+
+    # Resize the image using nearest neighbor interpolation
+    resized_image = cv2.resize(
+        image, (original_width, original_height), interpolation=cv2.INTER_NEAREST
+    )
+
+    return resized_image
+
+
+def resize_image_with_aspect_ratio(image, target_width):
+    """
+    Resize the image to the specified width while maintaining its aspect ratio.
+
+    Parameters:
+        image: Original image to be resized.
+        target_width: Desired width of the resized image.
+
+    Returns:
+        Resized image.
+    """
+    original_height, original_width = image.shape[:2]
+
+    # Calculate the aspect ratio
+    aspect_ratio = float(original_height) / original_width
+
+    # Calculate the new height using the aspect ratio
+    new_height = int(target_width * aspect_ratio)
+
+    # Resize the image using nearest neighbor interpolation
+    resized_image = cv2.resize(
+        image, (target_width, new_height), interpolation=cv2.INTER_NEAREST
+    )
+
+    return resized_image
+
+
 def register_to_atlas(tissue, section, label, class_map_path):
     """Uses deformable registration to register a tissue section to the atlas"""
     with open(class_map_path, "rb") as f:
         classMap = pickle.load(f)
         classMap[997] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}
         classMap[0] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
+
+    tissue_original_size = tissue.shape[:2]
+    tissue = resize_image_with_aspect_ratio(tissue, 1024)
+    section = resize_image_with_aspect_ratio(section, 1024)
+    label = resize_image_with_aspect_ratio(label.astype(np.int32), 1024)
 
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
     moving = sitk.GetImageFromArray(section, isVector=False)
@@ -151,6 +205,11 @@ def register_to_atlas(tissue, section, label, class_map_path):
             except:
                 pass
 
-    resampled_label = sitk.GetArrayFromImage(resampled_label).astype(np.uint32)
+    resampled_label = sitk.GetArrayFromImage(resampled_label).astype(np.int32)
     resampled_atlas = sitk.GetArrayFromImage(resampled_atlas).astype(np.uint8)
+
+    resampled_label = resize_image_to_original(resampled_label, tissue_original_size)
+    resampled_atlas = resize_image_to_original(resampled_atlas, tissue_original_size)
+    color_label = resize_image_to_original(color_label, tissue_original_size)
+
     return resampled_label, resampled_atlas, color_label
