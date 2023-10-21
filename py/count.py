@@ -165,13 +165,14 @@ if __name__ == "__main__":
         with open(prediction_path / pName, "rb") as predictionPkl, open(
             annotation_path / annotation_files[i], "rb"
         ) as annotationPkl:
-            print("Counting...", flush=True)
+            print(f"Counting {annotation_files[i].split('.')[0]}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
             predicted_size = predictions[0].image_dimensions
             predicted_size = (predicted_size[1], predicted_size[0])
             # Count the area of each region in the annotation
+
             annotation_rescaled = cv2.resize(
                 annotation.astype(np.int32),
                 predicted_size,
@@ -199,6 +200,7 @@ if __name__ == "__main__":
                     xPos = int((mX - (mX - x) // 2))
                     yPos = int((mY - (mY - y) // 2))
                     atlas_id = int(annotation_rescaled[yPos, xPos])
+
                     name = regions[atlas_id]["name"]
                     if "layer" in name.lower():
                         if args.layers:
@@ -217,7 +219,7 @@ if __name__ == "__main__":
                             local_sums[c][name] += 1
                         else:
                             local_sums[c][name] = 1
-
+                print(local_sums[c], flush=True)
             # Compute colocalization
             colocalized[annotation_files[i]] = {}
             local_colocalized = colocalized[annotation_files[i]]
@@ -260,6 +262,8 @@ if __name__ == "__main__":
                 per_channel_counts = []
                 for chan, channel_count in counts.items():
                     per_channel_counts.append(channel_count.get(region, 0))
+                if np.all(np.array(per_channel_counts) == 0):
+                    continue
                 line.extend(per_channel_counts)
                 lines.append(line)
 
@@ -274,6 +278,8 @@ if __name__ == "__main__":
             per_channel_counts = []
             for chan, count_result in running_counts.items():
                 per_channel_counts.append(count_result.get(region, 0))
+            if np.all(np.array(per_channel_counts) == 0):
+                continue
             line = [
                 region,
                 regions[nameToRegion[region]]["acronym"],

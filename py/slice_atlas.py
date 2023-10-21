@@ -275,8 +275,8 @@ def make_angled_data(samples, atlas):
         x_angle, y_angle = np.random.rand(2)
 
         # convert to single digit float in range -10 to 10
-        x_angle = round((x_angle - 0.5) * 20, 1)
-        y_angle = round((y_angle - 0.5) * 20, 1)
+        x_angle = round((x_angle - 0.5) * 10, 1)
+        y_angle = round((y_angle - 0.5) * 10, 1)
 
         pos = np.random.randint(100, atlas.shape[0] - 100)
 
@@ -293,32 +293,19 @@ def make_angled_data(samples, atlas):
             sample_r = slice_3d_volume(atlas[:, :, ::-1], pos, -1 * x_angle, y_angle)
             sample = np.concatenate((sample_l, sample_r), axis=1)
         # resize to 640x640
-        sample = cv2.resize(sample, (640, 640), interpolation=cv2.INTER_AREA)
+        sample = cv2.resize(sample.astype(np.uint8), (640, 640), interpolation=cv2.INTER_AREA)
 
         # apply a random rotation
         angle = np.random.randint(-7, 7)
         rot_mat = cv2.getRotationMatrix2D((320, 320), angle, 1.0)
         sample = cv2.warpAffine(sample, rot_mat, (512, 512))
-
+        print(f"Saving sample {pos}_{x_angle}_{y_angle}.png")
         # save to disk
         cv2.imwrite(
-            f"c:/users/alec/desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
+            f"C:/Users/asoro/Desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
         )
 
-
-if __name__ == "__main__":
-    atlas, _ = nrrd.read(
-        Path(r"/Users/alec/.belljar/nrrd/ara_nissl_10_all.nrrd"), index_order="C"
-    )
-    annotation, _ = nrrd.read(
-        Path(r"/Users/alec/.belljar/nrrd/annotation_10_all.nrrd"), index_order="C"
-    )
-    print("Loaded atlas...")
-    # convert atlas to 8 bit
-    atlas = cv2.normalize(atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-
-    make_angled_data(10000, atlas)
-
+def test_angles(atlas):
     cv2.namedWindow("image")
     cv2.namedWindow("controls")
     curr_x_angle = 0
@@ -345,3 +332,14 @@ if __name__ == "__main__":
         full = np.concatenate((left_slice, right_slice), axis=1)
         cv2.imshow("image", full)
         cv2.waitKey(5)
+        
+if __name__ == "__main__":
+    atlas, _ = nrrd.read(
+        Path(r"/Users/asoro/.belljar/nrrd/ara_nissl_10_all.nrrd"), index_order="C"
+    )
+    print("Loaded atlas...")
+    # convert atlas to 8 bit
+    atlas = cv2.normalize(atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+
+    make_angled_data(5000, atlas)
+   

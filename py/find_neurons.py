@@ -78,13 +78,20 @@ if __name__ == "__main__":
         try:
             if ext in ["tif", "tiff"]:
                 img = tiff.imread(file_path)
-                channels, height, width = img.shape
-                index_order = "C"
+                if len(img.shape) == 3:
+                    channels, height, width = img.shape
+                    index_order = "C"
+                elif len(img.shape) == 2:
+                    height, width = img.shape
+                    channels = 1
+                else:
+                    raise Exception("Image has more than 3 dimensions!")
             else:
                 img = cv2.imread(file_path)
                 height, width, channels = img.shape
-        except:
+        except Exception as e:
             print(f"Error reading {file}!", flush=True)
+            print(e, flush=True)
             continue
 
         # If multichannel, split into individual channels
@@ -111,8 +118,8 @@ if __name__ == "__main__":
                     detection_model,
                     slice_height=256,
                     slice_width=256,
-                    overlap_height_ratio=0.1,
-                    overlap_width_ratio=0.1,
+                    overlap_height_ratio=0.2,
+                    overlap_width_ratio=0.2,
                 )
 
                 bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
@@ -134,6 +141,12 @@ if __name__ == "__main__":
             # check if image is BGR
             if channels < 3:
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+            # Make sure image is 8bit or float32
+            if img.dtype != np.uint8:
+                img = cv2.normalize(
+                    img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
+                )
 
             result = get_sliced_prediction(
                 img,

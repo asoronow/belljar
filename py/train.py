@@ -6,7 +6,7 @@ import time
 
 class Trainer:
     def __init__(
-        self, model, train_loader, valid_loader, criterion, optimizer, device="cuda"
+        self, model, train_loader, valid_loader, criterion, optimizer, device="cuda", project_name="tissue_ae"
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -18,7 +18,7 @@ class Trainer:
         self.best_loss = float("inf")
 
         # Initialize wandb
-        wandb.init(project="tissue_ae")  # Set your project name
+        wandb.init(project=project_name)  # Set your project name
         wandb.watch(self.model)
 
     def train_one_epoch(self):
@@ -37,8 +37,11 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item() * samples.size(0)
+        
+        wandb.log({"train_loss": train_loss / len(self.train_loader.dataset)})
+
         self.epoch += 1
-        print(f"Train Loss: {train_loss / len(self.train_loader.dataset)}")
+
         return train_loss / len(self.train_loader.dataset)
 
     def validate(self):
