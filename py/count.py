@@ -150,7 +150,7 @@ if __name__ == "__main__":
         with open(prediction_path / pName, "rb") as predictionPkl, open(
             annotation_path / annotation_files[i], "rb"
         ) as annotationPkl:
-            print("Counting...", flush=True)
+            print(f"Counting {annotation_files[i].split('.')[0]}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)

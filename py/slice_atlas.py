@@ -47,8 +47,8 @@ def make_angled_data(samples, atlas):
         x_angle, y_angle = np.random.rand(2)
 
         # convert to single digit float in range -10 to 10
-        x_angle = round((x_angle - 0.5) * 20, 1)
-        y_angle = round((y_angle - 0.5) * 20, 1)
+        x_angle = round((x_angle - 0.5) * 10, 1)
+        y_angle = round((y_angle - 0.5) * 10, 1)
 
         pos = np.random.randint(100, atlas.shape[0] - 100)
 
@@ -71,10 +71,10 @@ def make_angled_data(samples, atlas):
         angle = np.random.randint(-7, 7)
         rot_mat = cv2.getRotationMatrix2D((320, 320), angle, 1.0)
         sample = cv2.warpAffine(sample, rot_mat, (512, 512))
-
+        print(f"Saving sample {pos}_{x_angle}_{y_angle}.png")
         # save to disk
         cv2.imwrite(
-            f"c:/users/alec/desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
+            f"C:/Users/asoro/Desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
         )
 
 
