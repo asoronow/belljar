@@ -20,12 +20,7 @@ parser.add_argument(
 parser.add_argument(
     "-a", "--annotations", help="input directory for annotation pkls", default=""
 )
-parser.add_argument(
-    "-s",
-    "--structures",
-    help="structures file",
-    default="../csv/structure_tree_safe_2017.csv",
-)
+parser.add_argument("-m", "--map", help="input directory for structure map", default="")
 parser.add_argument(
     "-w",
     "--whole",
@@ -49,25 +44,10 @@ if __name__ == "__main__":
 
     print(2 + len(intensityFiles), flush=True)
     print("Setting up...", flush=True)
-    # Read in the regions
-    regions = {}
-    nameToRegion = {}
-    with open(args.structures.strip()) as structureFile:
-        structureReader = csv.reader(structureFile, delimiter=",")
 
-        header = next(structureReader)
-        root = next(structureReader)
-        regions[997] = {"acronym": "undefined", "name": "undefined", "parent": "N/A"}
-        regions[0] = {"acronym": "root", "name": "root", "parent": "N/A"}
-        nameToRegion["undefined"] = 997
-        nameToRegion["root"] = 0
-        for row in structureReader:
-            regions[int(row[0])] = {
-                "acronym": row[3],
-                "name": row[2],
-                "parent": int(row[8]),
-            }
-            nameToRegion[row[3]] = int(row[0])
+    regions = {}
+    with open(args.map.strip(), "rb") as f:
+        regions = pickle.load(f)
 
     for i, iName in enumerate(intensityFiles):
         intensities = {}
@@ -110,7 +90,11 @@ if __name__ == "__main__":
                 "STR",
             ]
 
-            requiredIds = [nameToRegion[region] for region in requiredRegions]
+            requiredIds = [
+                regions[region]["id"]
+                for region in regions.keys()
+                if regions[region]["acronym"] in requiredRegions
+            ]
             # Iterate through the annotation and check if any of the required regions are present
             for i in range(aHeight):
                 for j in range(aWidth):

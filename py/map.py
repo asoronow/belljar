@@ -4,7 +4,7 @@ import cv2
 import pickle
 from pathlib import Path
 from demons import register_to_atlas
-from slice_atlas import slice_3d_volume, remove_fragments
+from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
 import torch
@@ -35,12 +35,6 @@ parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
 parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
 parser.add_argument("-w", "--whole", default=False)
 parser.add_argument("-a", "--spacing", help="override predicted spacing", default=False)
-parser.add_argument(
-    "-s",
-    "--structures",
-    help="structures file",
-    default="../csv/structure_tree_safe_2017.csv",
-)
 parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
 args = parser.parse_args()
 
@@ -55,9 +49,7 @@ class AtlasSlice:
         y_angle (float): the y angle of the slice
     """
 
-    def __init__(
-        self, section_name, ap_position, x_angle, y_angle, whole_brain=False, region="A"
-    ):
+    def __init__(self, section_name, ap_position, x_angle, y_angle, region="A"):
         self.section_name = section_name
         self.ap_position = int(ap_position)
         self.x_angle = float(x_angle)
@@ -67,7 +59,6 @@ class AtlasSlice:
         self.image = None
         self.label = None
         self.mask = None
-        self.whole_brain = whole_brain
 
     def set_mask(self):
         drawing = False
@@ -133,34 +124,12 @@ class AtlasSlice:
             numpy.ndarray: the atlas slice
             numpy.ndarray: the annotation slice
         """
-        if self.whole_brain:
-            left_image = slice_3d_volume(
-                atlas, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint8)
-            right_image = slice_3d_volume(
-                atlas[:, :, ::-1], self.ap_position, -1 * self.x_angle, self.y_angle
-            ).astype(np.uint8)
-
-            left_label = slice_3d_volume(
-                annotation, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint32)
-
-            right_label = slice_3d_volume(
-                annotation[:, :, ::-1],
-                self.ap_position,
-                -1 * self.x_angle,
-                self.y_angle,
-            ).astype(np.uint32)
-
-            self.image = np.concatenate((left_image, right_image), axis=1)
-            self.label = np.concatenate((left_label, right_label), axis=1)
-        else:
-            self.image = slice_3d_volume(
-                atlas, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint8)
-            self.label = slice_3d_volume(
-                annotation, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint32)
+        self.image = slice_3d_volume(
+            atlas, self.ap_position, self.x_angle, self.y_angle
+        ).astype(np.uint8)
+        self.label = slice_3d_volume(
+            annotation, self.ap_position, self.x_angle, self.y_angle
+        ).astype(np.uint32)
 
     def get_registered(self, tissue):
         """
@@ -225,11 +194,15 @@ class AlignmentController:
         )
 
         self.atlas = nrrd.read(
-            Path(self.nrrd_path) / "ara_nissl_10_all.nrrd", index_order="C"
+            Path(self.nrrd_path) / "atlas_10.nrrd",
         )[0]
         self.annotation = nrrd.read(
-            Path(self.nrrd_path) / "annotation_10_all.nrrd", index_order="C"
+            Path(self.nrrd_path) / "annotation_10.nrrd",
         )[0]
+
+        if not self.is_whole:
+            self.atlas = self.atlas[:, :, : self.atlas.shape[2] // 2]
+            self.annotation = self.annotation[:, :, : self.annotation.shape[2] // 2]
 
         # Atlas layer
         self.atlas_layer = self.viewer.add_image(
@@ -246,8 +219,6 @@ class AlignmentController:
             colormap="gray",
             contrast_limits=[0, 255],
         )
-        # make atalas 8 bit
-        self.atlas = cv2.normalize(self.atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
         self.file_list = []
         self.num_slices = 0
@@ -444,7 +415,6 @@ class AlignmentController:
                     pred[0],
                     pred[1],
                     pred[2],
-                    self.is_whole,
                 )
                 predicted_slice.set_slice(self.atlas, self.annotation)
                 self.atlas_slices[self.file_list[i]] = predicted_slice
@@ -625,26 +595,8 @@ class AlignmentController:
 
         # warp images
         print("Warping images...", flush=True)
-        # Check for any non-all regions
-        regions = np.unique([slice.region for slice in self.atlas_slices.values()])
-        # if any non-all regions, load other atlases
-        if "NC" in regions or "C" in regions:
-            other_atlases = {}
-            other_annotations = {}
-
-            other_atlases["NC"] = nrrd.read(
-                Path(self.nrrd_path) / "ara_nissl_10_no_cerebrum.nrrd", index_order="C"
-            )[0]
-            other_atlases["C"] = nrrd.read(
-                Path(self.nrrd_path) / "ara_nissl_10_cerebrum.nrrd", index_order="C"
-            )[0]
-            other_annotations["NC"] = nrrd.read(
-                Path(self.nrrd_path) / "annotation_10_no_cerebrum.nrrd",
-                index_order="C",
-            )[0]
-            other_annotations["C"] = nrrd.read(
-                Path(self.nrrd_path) / "annotation_10_cerebrum.nrrd", index_order="C"
-            )[0]
+        with open(self.structures_path, "rb") as f:
+            structure_map = pickle.load(f)
 
         for i in range(self.num_slices):
             print(f"Warping {self.file_list[i]}...", flush=True)
@@ -655,10 +607,14 @@ class AlignmentController:
             )
 
             if current_slice.region != "A":
-                current_slice.set_slice(
-                    other_atlases[current_slice.region],
-                    other_annotations[current_slice.region],
+                masked_atlas, masked_annotation = mask_slice_by_region(
+                    current_slice.image,
+                    current_slice.label,
+                    structure_map,
+                    current_slice.region,
                 )
+                current_slice.image = masked_atlas
+                current_slice.label = masked_annotation
 
             warped_labels, warped_atlas, color_label = current_slice.get_registered(
                 sample,
@@ -670,6 +626,7 @@ class AlignmentController:
                 str(Path(self.output_path) / f"Atlas_{stripped_filename}.png"),
                 warped_atlas,
             )
+            color_label = add_outlines(warped_labels, color_label)
             cv2.imwrite(
                 str(Path(self.output_path) / f"Label_{stripped_filename}.png"),
                 color_label,
@@ -677,18 +634,16 @@ class AlignmentController:
 
             # convert sample to color
             sample = cv2.cvtColor(sample, cv2.COLOR_GRAY2RGB)
-            # convert color_label to 8 bit
-            color_label = cv2.normalize(
-                color_label, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
-            )
+
             # composite image
             composite = cv2.addWeighted(
                 sample,
-                0.5,
+                0.75,
                 color_label,
-                0.5,
+                0.25,
                 0,
             )
+
             cv2.imwrite(
                 str(Path(self.output_path) / f"Composite_{stripped_filename}.png"),
                 composite,
@@ -715,7 +670,7 @@ if __name__ == "__main__":
         args.nrrd.strip(),
         args.input.strip(),
         args.output.strip(),
-        args.structures.strip(),
+        args.map.strip(),
         args.model.strip(),
         args.spacing if args.spacing else None,
         eval(args.whole),

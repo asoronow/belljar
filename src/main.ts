@@ -1,4 +1,3 @@
-// Required modules and structures
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const { promisify } = require("util");
 const { PythonShell } = require("python-shell");
@@ -258,18 +257,24 @@ function setupPython(win: typeof BrowserWindow) {
 // Download the required tar files from the bucket
 function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
+  const currnet_versions = {
+    nrrd: "v8",
+    models: "v72",
+    embeddings: "v6",
+  };
+
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
     const modelsLink = `${bucketParentPath}/models-v72.tar.gz`; //  Update to v7
-    const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
+    const nrrdLink = `${bucketParentPath}/nrrd-v8.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
     if (!fresh) {
       var downloading: Array<string> = [];
       var total = 0;
 
-      // Just check if each directory exists and its not empty
+      // check if each directory exists and its not empty
       for (let i = 0; i < requiredDirs.length; i++) {
         const dir = requiredDirs[i];
         if (
@@ -277,6 +282,30 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
           fs.readdirSync(path.join(homeDir, dir)).length === 0
         ) {
           downloading.push(dir);
+        }
+      }
+
+      // check the manifest.json and compare versions
+      // if the versions are different, delete the dir and download
+
+      const manifestPath = path.join(homeDir, "manifest.json");
+      // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
+      if (!fs.existsSync(manifestPath)) {
+        // Create manifest from current versions
+        fs.writeFileSync(
+          manifestPath,
+          JSON.stringify(currnet_versions, null, 2)
+        );
+        // Delete existing
+        downloading.push("models");
+        downloading.push("embeddings");
+        downloading.push("nrrd");
+      }
+      const manifest = require(manifestPath);
+
+      for (const [key, value] of Object.entries(currnet_versions)) {
+        if (manifest[key] !== value) {
+          downloading.push(key);
         }
       }
 
@@ -291,6 +320,14 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         }
       }
 
+      // Delete and update manifest
+      if (downloading.length > 0) {
+        fs.writeFileSync(
+          manifestPath,
+          JSON.stringify(currnet_versions, null, 2)
+        );
+      }
+
       downloading.reduce((promiseChain, dir, i) => {
         return promiseChain
           .then(() => {
@@ -300,7 +337,7 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
             );
 
             if (fs.existsSync(path.join(homeDir, dir))) {
-              fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+              fs.rmSync(path.join(homeDir, dir), { recursive: true });
             }
 
             let downloadPath = "";
@@ -356,11 +393,17 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         }
       });
 
+      // Creat the manifest
+      fs.writeFileSync(
+        path.join(homeDir, "manifest.json"),
+        JSON.stringify(currnet_versions, null, 2)
+      );
+
       if (!allDirsExist) {
         // Something is missing, delete everything and download again
         requiredDirs.forEach((dir) => {
           if (fs.existsSync(path.join(homeDir, dir))) {
-            fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+            fs.rmSync(path.join(homeDir, dir), { recursive: true });
           }
         });
 
@@ -590,6 +633,9 @@ app.on("ready", () => {
     });
     if (choice === 1) {
       e.preventDefault();
+    } else {
+      // kill log window
+      logWin.close();
     }
   });
 
@@ -721,7 +767,7 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
 
 // Adjust
 ipcMain.on("runAdjust", function (event: any, data: any[]) {
-  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  var structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
@@ -765,8 +811,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
   const modelPath = path.join(homeDir, "models/predictor.pt");
   const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
   const nrrdPath = path.join(homeDir, "nrrd");
-  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
-  const mapPath = path.join(appDir, "csv/class_map.pkl");
+  const mapPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
@@ -780,7 +825,6 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
       `-m ${modelPath}`,
       `-e ${embedPath}`,
       `-n ${nrrdPath}`,
-      `-s ${structPath}`,
       `-c ${mapPath}`,
     ],
   };
@@ -821,7 +865,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
 // Intensity by Region
 
 ipcMain.on("runIntensity", function (event: any, data: any[]) {
-  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  const structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
@@ -832,7 +876,7 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
       `-o ${data[1]}`,
       `-a ${data[2]}`,
       `-w ${data[3]}`,
-      `-s ${structPath}`,
+      `-m ${structPath}`,
     ],
   };
 
@@ -869,13 +913,13 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
 
 // Counting
 ipcMain.on("runCount", function (event: any, data: any[]) {
-  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  var structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let custom_args = [
     `-p ${data[0]}`,
     `-a ${data[1]}`,
     `-o ${data[2]}`,
-    `-s ${structPath}`,
+    `-m ${structPath}`,
   ];
 
   if (data[3]) {
@@ -975,7 +1019,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
       String.raw`-o ${data[1]}`,
       String.raw`-i ${data[0]}`,
       `-r ${data[2]}`,
-      String.raw`-s ${path.join(appDir, "csv/structure_tree_safe_2017.csv")}`,
+      String.raw`-s ${path.join(appDir, "csv/structure_map.pkl")}`,
       "-g False",
     ],
   };

@@ -15,8 +15,7 @@ parser.add_argument(
 parser.add_argument(
     "-s",
     "--structures",
-    help="structures file",
-    default="../csv/structure_tree_safe_2017.csv",
+    help="structures map",
 )
 parser.add_argument(
     "-w", "--whole", help="whole brain mode", action="store_true", default=False
@@ -107,58 +106,11 @@ if __name__ == "__main__":
 
     # Prep regions for saving
     regions = {}
-    nameToRegion = {}
-    with open(args.structures.strip()) as structureFile:
-        structureReader = csv.reader(structureFile, delimiter=",")
-        header = next(structureReader)  # skip header
-        tripletIndex = header.index("color_hex_triplet")
-        root = next(structureReader)  # skip atlas root region
-        # manually set root, due to weird values
-        regions[997] = {
-            "acronym": "undefined",
-            "name": "undefined",
-            "parent": "N/A",
-            "points": [],
-            "color": [0, 0, 0],
-        }
-        regions[0] = {
-            "acronym": "LIW",
-            "name": "Lost in Warp",
-            "parent": "N/A",
-            "points": [],
-            "color": [0, 0, 0],
-        }
-        nameToRegion["undefined"] = 997
-        nameToRegion["Lost in Warp"] = 0
-        # function to create unique color tuples
-        usedColors = []
-
-        def getColor():
-            color = np.random.randint(0, 255, (3)).tolist()
-            while color in usedColors:
-                color = np.random.randint(0, 255, (3)).tolist()
-
-            usedColors.append(color)
-            return color
-
-        def getTripletColor(triplet):
-            triplet = triplet.strip()
-            if triplet == "":
-                return getColor()
-            triplet = [int(triplet[i : i + 2], 16) for i in range(0, 6, 2)]
-            return triplet
-
-        # store all other atlas regions and their linkages
-        for row in structureReader:
-            regions[int(row[0])] = {
-                "acronym": row[3],
-                "name": row[2],
-                "parent": int(row[8]),
-                "points": [],
-                "map_points": [],
-                "color": getColor(),
-            }
-            nameToRegion[row[2]] = int(row[0])
+    with open(args.structures.strip(), "rb") as f:
+        regions = pickle.load(f)
+        for k, v in regions.items():
+            v["points"] = []
+            v["map_points"] = []
 
     end = False
     print(2, flush=True)

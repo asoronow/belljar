@@ -21,15 +21,19 @@ def match_histograms(fixed, moving):
 
 
 def multimodal_registration(fixed, moving):
-    # Initial alignment using an affine transformation
-    initialTx = sitk.CenteredTransformInitializer(
-        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
-    )
-
     # Pad
     padding_size = [64] * fixed.GetDimension()
     fixed = sitk.ConstantPad(fixed, padding_size)
     moving = sitk.ConstantPad(moving, padding_size)
+
+    # Cast
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+
+    # Affine
+    initialTx = sitk.CenteredTransformInitializer(
+        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
+    )
 
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(32)
@@ -55,7 +59,7 @@ def multimodal_registration(fixed, moving):
         moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
     )
 
-    # B-spline registration
+    # B-spline
     transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
 
@@ -65,7 +69,7 @@ def multimodal_registration(fixed, moving):
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
         numberOfIterations=200,
-        convergenceMinimumValue=1e-6,
+        convergenceMinimumValue=1e-10,
         convergenceWindowSize=5,
         estimateLearningRate=R.EachIteration,
     )
@@ -115,72 +119,92 @@ def multimodal_registration(fixed, moving):
     return composite_transform
 
 
-def resize_image_to_original(image, original_size):
+def resize_image_nearest_neighbor(input_image, new_size):
     """
-    Resize the image back to its original size.
+    Resize an image using nearest-neighbor interpolation, maintaining the original data type.
 
     Parameters:
-        image: Resized image.
-        original_size: Tuple of the original height and width.
+        input_image (SimpleITK.Image): The input image to be resized.
+        new_size (tuple or list): The desired size (in pixels) as (height, width, [depth]).
 
     Returns:
-        Image resized back to its original dimensions.
+        SimpleITK.Image: The resized image, maintaining the original data type.
     """
-    original_height, original_width = original_size
 
-    # Resize the image using nearest neighbor interpolation
-    resized_image = cv2.resize(
-        image, (original_width, original_height), interpolation=cv2.INTER_NEAREST
-    )
+    # Calculate the new spacing based on old spacing and old and new sizes
+    input_image = sitk.GetImageFromArray(input_image)
+    original_size = input_image.GetSize()
+    original_spacing = input_image.GetSpacing()
+    new_spacing = [
+        float(orig_space) * float(orig_size) / float(new_dim)
+        for orig_space, orig_size, new_dim in zip(
+            original_spacing, original_size, new_size
+        )
+    ]
 
+    # Set up the resampler with nearest neighbor interpolation, original data type is maintained by default
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    resampler.SetOutputSpacing(new_spacing)
+    resampler.SetOutputPixelType(input_image.GetPixelIDValue())
+    resampler.SetSize(new_size)
+    resampler.SetOutputOrigin(input_image.GetOrigin())
+    resampler.SetOutputDirection(input_image.GetDirection())
+
+    # Apply the resampling operation
+    resized_image = resampler.Execute(input_image)
+    resized_image = sitk.GetArrayFromImage(resized_image)
     return resized_image
 
 
-def resize_image_with_aspect_ratio(image, target_width):
+def apply_log_filter(input_image, sigma):
     """
-    Resize the image to the specified width while maintaining its aspect ratio.
+    Apply Laplacian of Gaussian (LoG) filter to the input image.
 
     Parameters:
-        image: Original image to be resized.
-        target_width: Desired width of the resized image.
+    input_image (SimpleITK.Image): The image to process.
+    sigma (float): The sigma of the Gaussian used in the LoG filter. This controls the amount of smoothing.
 
     Returns:
-        Resized image.
+    SimpleITK.Image: The processed image.
     """
-    original_height, original_width = image.shape[:2]
 
-    # Calculate the aspect ratio
-    aspect_ratio = float(original_height) / original_width
+    # The LoG filter is applied in the spatial domain, so we need to ensure the input image is spatial
+    if input_image.GetNumberOfComponentsPerPixel() != 1:
+        raise ValueError(
+            "Input needs to be a single component image (e.g., grayscale)."
+        )
 
-    # Calculate the new height using the aspect ratio
-    new_height = int(target_width * aspect_ratio)
+    # Apply Laplacian of Gaussian filter
+    log_filter = sitk.LaplacianRecursiveGaussianImageFilter()
+    log_filter.SetSigma(sigma)
 
-    # Resize the image using nearest neighbor interpolation
-    resized_image = cv2.resize(
-        image, (target_width, new_height), interpolation=cv2.INTER_NEAREST
-    )
+    log_image = log_filter.Execute(input_image)
 
-    return resized_image
+    return log_image
 
 
-def register_to_atlas(tissue, section, label, class_map_path):
-    """Uses deformable registration to register a tissue section to the atlas"""
-    with open(class_map_path, "rb") as f:
-        classMap = pickle.load(f)
-        classMap[997] = {"index": 1326, "name": "undefined", "color": [0, 0, 0]}
-        classMap[0] = {"index": 1327, "name": "Lost in Warp", "color": [0, 0, 0]}
+def register_to_atlas(tissue, section, label, structure_map_path):
+    """
+    Register a section to the atlas using sitk.
 
-    tissue_original_size = tissue.shape[:2]
-    tissue = resize_image_with_aspect_ratio(tissue, 1024)
-    section = resize_image_with_aspect_ratio(section, 1024)
-    label = resize_image_with_aspect_ratio(label.astype(np.int32), 1024)
+    Args:
+        tissue (numpy.ndarray): The tissue image.
+        section (numpy.ndarray): The section image.
+        label (numpy.ndarray): The label image.
+        class_map_path (str): The path to the class map pickle file.
+
+    Returns:
+        numpy.ndarray: The registered label image.
+        numpy.ndarray: The registered atlas image.
+        numpy.ndarray: The color label image.
+    """
+    with open(structure_map_path, "rb") as f:
+        structure_map = pickle.load(f)
 
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
     moving = sitk.GetImageFromArray(section, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
-
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
 
     moving = match_histograms(fixed, moving)
 
@@ -191,25 +215,24 @@ def register_to_atlas(tissue, section, label, class_map_path):
     resampler.SetTransform(tx)
     resampler.SetOutputPixelType(sitk.sitkUInt32)
     resampler.SetDefaultPixelValue(0)
-
-    resampled_atlas = resampler.Execute(moving)
     resampled_label = resampler.Execute(label)
+    resampler.SetOutputPixelType(sitk.sitkUInt8)
+    resampled_atlas = resampler.Execute(moving)
 
     color_label = np.zeros(
-        (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3)
+        (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3), dtype=np.uint8
     )
+
     for i in range(resampled_label.GetSize()[1]):
         for j in range(resampled_label.GetSize()[0]):
             try:
-                color_label[i, j, :] = classMap[resampled_label.GetPixel(j, i)]["color"]
+                color_label[i, j, :] = structure_map[resampled_label.GetPixel(j, i)][
+                    "color"
+                ]
             except:
                 pass
 
-    resampled_label = sitk.GetArrayFromImage(resampled_label).astype(np.int32)
-    resampled_atlas = sitk.GetArrayFromImage(resampled_atlas).astype(np.uint8)
-
-    resampled_label = resize_image_to_original(resampled_label, tissue_original_size)
-    resampled_atlas = resize_image_to_original(resampled_atlas, tissue_original_size)
-    color_label = resize_image_to_original(color_label, tissue_original_size)
+    resampled_label = sitk.GetArrayFromImage(resampled_label)
+    resampled_atlas = sitk.GetArrayFromImage(resampled_atlas)
 
     return resampled_label, resampled_atlas, color_label

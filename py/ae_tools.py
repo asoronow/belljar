@@ -50,9 +50,7 @@ def make_predictions(
         embeddings = pickle.load(f)
 
         # Normalize the dapi images to atlas range
-        atlas, atlasHeader = nrrd.read(
-            str(nrrdPath / f"ara_nissl_10_all.nrrd"), index_order="C"
-        )
+        atlas, _ = nrrd.read(str(nrrdPath / f"atlas_10.nrrd"))
 
         sample = atlas[800, :, :]
         sample = sitk.GetImageFromArray(sample)
@@ -122,9 +120,7 @@ def create_png_dataset():
 
     dataset_path = Path(r"C:\Users\Alec\.belljar\dataset")
     # Load the atlas
-    atlas, _ = nrrd.read(
-        Path(r"C:\Users\Alec\.belljar\nrrd\ara_nissl_10_all.nrrd"), index_order="C"
-    )
+    atlas, _ = nrrd.read(Path(r"C:\Users\Alec\.belljar\nrrd\atlas_10.nrrd"))
     z, y, x = atlas.shape
 
     right_atlas = atlas[:, :, ::-1]

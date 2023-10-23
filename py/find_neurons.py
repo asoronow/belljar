@@ -115,8 +115,14 @@ if __name__ == "__main__":
                     overlap_width_ratio=0.1,
                 )
 
+                def xyxy_to_area(box):
+                    return (box[2] - box[0]) * (box[3] - box[1])
+
                 bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
                 scores = [obj.score.value for obj in result.object_prediction_list]
+                # Remove any predictions with a oversized box
+                mean_area = np.mean([xyxy_to_area(box) for box in bboxes])
+                bboxes = [box for box in bboxes if xyxy_to_area(box) < mean_area * 2]
                 predictions.append(
                     DetectionResult(
                         boxes=bboxes,
