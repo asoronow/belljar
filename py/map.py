@@ -534,20 +534,20 @@ class AlignmentController:
         self.update_display()
 
     def adjust_positions(self):
-        """Adjust the positions of all slices based on trend in visted slices"""
-        if not self.prior_alignment:
-            visted_positions = []
+        """Adjust the positions of all slices based on trend in visited slices"""
+        if not self.prior_alignment and self.visited < self.num_slices - 1:
+            visited_positions = []
             for i in range(self.visited):
-                visted_positions.append(
+                visited_positions.append(
                     self.atlas_slices[self.file_list[i]].ap_position,
                 )
 
-            if len(visted_positions) < 2:
+            if len(visited_positions) < 2:
                 return
 
             # fit a line to the visited positions
-            x = np.arange(len(visted_positions))
-            m, b = np.polyfit(x, visted_positions, 1)
+            x = np.arange(len(visited_positions))
+            m, b = np.polyfit(x, visited_positions, 1)
 
             # adjust the positions of all slices after the visited slices
             for i in range(self.visited, self.num_slices):
