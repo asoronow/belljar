@@ -8,23 +8,6 @@ from belljarGUI import Page, GuiController
 import argparse
 import pickle
 
-parser = argparse.ArgumentParser(description="Process z-stack images")
-parser.add_argument(
-    "-o", "--output", help="output directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-i", "--input", help="input directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-r", "--regions", help="which regions to include in output", default=""
-)
-parser.add_argument("-s", "--structures", help="structures file", default="")
-parser.add_argument(
-    "-g", "--graphical", help="provides prompts when true", default=True
-)
-
-args = parser.parse_args()
-
 
 class FileLocations(ttk.Frame, Page):
     def __init__(self, parent, controller):
@@ -187,6 +170,26 @@ def collateCount(objectsFile, safeRegions, resultFile):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process z-stack images")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="output directory, only use if graphical false",
+        default="",
+    )
+    parser.add_argument(
+        "-i", "--input", help="input directory, only use if graphical false", default=""
+    )
+    parser.add_argument(
+        "-r", "--regions", help="which regions to include in output", default=""
+    )
+    parser.add_argument("-s", "--structures", help="structures file", default="")
+    parser.add_argument(
+        "-g", "--graphical", help="provides prompts when true", default=True
+    )
+
+    args = parser.parse_args()
+
     if args.graphical == True:
         globals = {
             "objectsFile": "",

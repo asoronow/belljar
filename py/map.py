@@ -23,22 +23,6 @@ from qtpy.QtWidgets import (
 )
 
 
-parser = argparse.ArgumentParser(description="Map sections to atlas space")
-parser.add_argument(
-    "-o", "--output", help="output directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-i", "--input", help="input directory, only use if graphical false", default=""
-)
-parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
-parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
-parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
-parser.add_argument("-w", "--whole", default=False)
-parser.add_argument("-a", "--spacing", help="override predicted spacing", default=False)
-parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
-args = parser.parse_args()
-
-
 class AtlasSlice:
     """
     Helper object to manage atlas slices
@@ -666,6 +650,26 @@ class AlignmentController:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Map sections to atlas space")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="output directory, only use if graphical false",
+        default="",
+    )
+    parser.add_argument(
+        "-i", "--input", help="input directory, only use if graphical false", default=""
+    )
+    parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
+    parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
+    parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
+    parser.add_argument("-w", "--whole", default=False)
+    parser.add_argument(
+        "-a", "--spacing", help="override predicted spacing", default=False
+    )
+    parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
+    args = parser.parse_args()
+
     align_controller = AlignmentController(
         args.nrrd.strip(),
         args.input.strip(),

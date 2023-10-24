@@ -5,31 +5,36 @@ import os
 import pickle
 import csv
 
-parser = argparse.ArgumentParser(description="Allow adjustment of region alignments")
-parser.add_argument(
-    "-i",
-    "--input",
-    help="input files, pkl atlas files and dapi images in same folder",
-    default="",
-)
-parser.add_argument(
-    "-s",
-    "--structures",
-    help="structures map",
-)
-parser.add_argument(
-    "-w", "--whole", help="whole brain mode", action="store_true", default=False
-)
-parser.add_argument(
-    "-m", "--mode", help='mode to run in, either "paint" or "affine"', default="affine"
-)
-parser.add_argument(
-    "-d", "--draw", help="draw new maps", action="store_true", default=False
-)
-args = parser.parse_args()
-
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Allow adjustment of region alignments"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        help="input files, pkl atlas files and dapi images in same folder",
+        default="",
+    )
+    parser.add_argument(
+        "-s",
+        "--structures",
+        help="structures map",
+    )
+    parser.add_argument(
+        "-w", "--whole", help="whole brain mode", action="store_true", default=False
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        help='mode to run in, either "paint" or "affine"',
+        default="affine",
+    )
+    parser.add_argument(
+        "-d", "--draw", help="draw new maps", action="store_true", default=False
+    )
+    args = parser.parse_args()
+
     # Get all files in the input directory
     args.input = args.input.strip()
     files = os.listdir(args.input)
