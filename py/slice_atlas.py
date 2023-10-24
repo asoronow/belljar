@@ -80,7 +80,7 @@ def make_angled_data(samples, atlas):
 
 def dump_structure_data():
     """Dumps structure graph data to a pickle"""
-    project_dir = Path(r"C:\Users\Alec\Projects\belljar")
+    project_dir = Path("/Users/alec/Projects/belljar")
     structure_graph_path = project_dir / "csv/structure_graph.json"
     with open(structure_graph_path, "r") as f:
         structure_graph = json.load(f)
@@ -120,7 +120,7 @@ def dump_structure_data():
 
 def add_outlines(annotation_slice, color_annotation_slice):
     """
-    Add a black outline between each unique label in the annotation slice.
+    Add a white outline between each unique label in the annotation slice.
 
     Args:
         annotation_slice (numpy.ndarray): The annotation slice.
@@ -183,6 +183,7 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
 
 
 def main():
+    dump_structure_data()
     # Color
     structure_map = pickle.load(
         open(r"C:\Users\Alec\Projects\belljar\csv\structure_map.pkl", "rb")

@@ -8,7 +8,9 @@
 out/
 *.pt
 *.pth
+
 *.pkl
+!csv/*.pkl
 *.hdf5
 # Pytorch runs
 resources/py/runs

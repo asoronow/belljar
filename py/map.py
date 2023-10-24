@@ -638,9 +638,9 @@ class AlignmentController:
             # composite image
             composite = cv2.addWeighted(
                 sample,
-                0.75,
+                0.80,
                 color_label,
-                0.25,
+                0.20,
                 0,
             )
 
