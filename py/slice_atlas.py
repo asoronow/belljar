@@ -166,7 +166,8 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
     cerebrum_regions = []
     non_cerebrum_regions = []
     for key, value in structure_map.items():
-        if "567" in value["id_path"].split("/"):
+        parents = ["567", "1009"]
+        if any(parent in value["id_path"].split("/") for parent in parents):
             cerebrum_regions.append(key)
         else:
             non_cerebrum_regions.append(key)
