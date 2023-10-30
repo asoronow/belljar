@@ -139,6 +139,7 @@ if __name__ == "__main__":
                 )
                 result.export_visuals(
                     export_dir=output_dir,
+                    rect_th=0.5,
                     file_name=f"Boxes_{stripped}_channel_{i}",
                     hide_labels=True,
                     hide_conf=True,
@@ -159,8 +160,8 @@ if __name__ == "__main__":
                 detection_model,
                 slice_height=256,
                 slice_width=256,
-                overlap_height_ratio=0.1,
-                overlap_width_ratio=0.1,
+                overlap_height_ratio=0.2,
+                overlap_width_ratio=0.2,
             )
             bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
             scores = [obj.score.value for obj in result.object_prediction_list]
@@ -173,6 +174,7 @@ if __name__ == "__main__":
             ]
             result.export_visuals(
                 export_dir=output_dir,
+                rect_th=0.5,
                 file_name=f"Boxes_{stripped}",
                 hide_labels=True,
                 hide_conf=True,
