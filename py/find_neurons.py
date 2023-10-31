@@ -17,6 +17,13 @@ class DetectionResult:
         self.image_dimensions = image_dimensions
 
 
+def export_bboxes(image, boxes, output_path):
+    for box in boxes:
+        x1, y1, x2, y2 = [int(b) for b in box]
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+    cv2.imwrite(str(output_path), image)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
@@ -128,8 +135,6 @@ if __name__ == "__main__":
                 bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
                 scores = [obj.score.value for obj in result.object_prediction_list]
                 # Remove any predictions with a oversized box
-                mean_area = np.mean([xyxy_to_area(box) for box in bboxes])
-                bboxes = [box for box in bboxes if xyxy_to_area(box) < mean_area * 2]
                 predictions.append(
                     DetectionResult(
                         boxes=bboxes,
@@ -137,13 +142,8 @@ if __name__ == "__main__":
                         image_dimensions=(height, width),
                     )
                 )
-                result.export_visuals(
-                    export_dir=output_dir,
-                    rect_th=0.5,
-                    file_name=f"Boxes_{stripped}_channel_{i}",
-                    hide_labels=True,
-                    hide_conf=True,
-                )
+                bbox_path = Path(output_dir) / f"BBoxes_{stripped}_{i}.png"
+                export_bboxes(chan_img, bboxes, bbox_path)
         else:
             # check if image is BGR
             if channels < 3:
@@ -172,13 +172,8 @@ if __name__ == "__main__":
                     image_dimensions=(height, width),
                 )
             ]
-            result.export_visuals(
-                export_dir=output_dir,
-                rect_th=0.5,
-                file_name=f"Boxes_{stripped}",
-                hide_labels=True,
-                hide_conf=True,
-            )
+            bbox_path = Path(output_dir) / f"BBoxes_{stripped}.png"
+            export_bboxes(img, bboxes, bbox_path)
 
         with open(output_dir / f"Predictions_{stripped}.pkl", "wb") as f:
             pickle.dump(predictions, f)
