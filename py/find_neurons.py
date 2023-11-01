@@ -18,6 +18,13 @@ class DetectionResult:
 
 
 def export_bboxes(image, boxes, output_path):
+    # contrast enhancement
+
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray_image = clahe.apply(gray_image)
+    image = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+
     for box in boxes:
         x1, y1, x2, y2 = [int(b) for b in box]
         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
