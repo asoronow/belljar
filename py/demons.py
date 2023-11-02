@@ -68,7 +68,7 @@ def multimodal_registration(fixed, moving):
     R.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
     R.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        numberOfIterations=200,
+        numberOfIterations=100,
         convergenceMinimumValue=1e-10,
         convergenceWindowSize=5,
         estimateLearningRate=R.EachIteration,
@@ -157,33 +157,6 @@ def resize_image_nearest_neighbor(input_image, new_size):
     return resized_image
 
 
-def apply_log_filter(input_image, sigma):
-    """
-    Apply Laplacian of Gaussian (LoG) filter to the input image.
-
-    Parameters:
-    input_image (SimpleITK.Image): The image to process.
-    sigma (float): The sigma of the Gaussian used in the LoG filter. This controls the amount of smoothing.
-
-    Returns:
-    SimpleITK.Image: The processed image.
-    """
-
-    # The LoG filter is applied in the spatial domain, so we need to ensure the input image is spatial
-    if input_image.GetNumberOfComponentsPerPixel() != 1:
-        raise ValueError(
-            "Input needs to be a single component image (e.g., grayscale)."
-        )
-
-    # Apply Laplacian of Gaussian filter
-    log_filter = sitk.LaplacianRecursiveGaussianImageFilter()
-    log_filter.SetSigma(sigma)
-
-    log_image = log_filter.Execute(input_image)
-
-    return log_image
-
-
 def register_to_atlas(tissue, section, label, structure_map_path):
     """
     Register a section to the atlas using sitk.
@@ -199,6 +172,7 @@ def register_to_atlas(tissue, section, label, structure_map_path):
         numpy.ndarray: The registered atlas image.
         numpy.ndarray: The color label image.
     """
+
     with open(structure_map_path, "rb") as f:
         structure_map = pickle.load(f)
 
@@ -207,7 +181,6 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     label = sitk.GetImageFromArray(label, isVector=False)
 
     moving = match_histograms(fixed, moving)
-
     tx = multimodal_registration(fixed, moving)
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)

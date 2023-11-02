@@ -8,7 +8,6 @@ from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
 import torch
-import math
 import napari
 import argparse
 from qtpy.QtWidgets import (

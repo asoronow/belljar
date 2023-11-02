@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { promisify } = require("util");
 const { PythonShell } = require("python-shell");
 const path = require("path");
@@ -8,6 +8,8 @@ const mv = promisify(fs.rename);
 const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
+const semver = require("semver");
+const serverFetch = require('node-fetch');
 
 var appDir = app.getAppPath();
 
@@ -44,6 +46,47 @@ const envPythonPath = path.join(envPath, envMod);
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
 const pyScriptsPath = path.join(appDir, "/py");
+
+
+const CURRENT_VERSION_TAG = getVersion();
+const GITHUB_API_RELEASES = 'https://api.github.com/repos/asoronow/belljar/releases/latest';
+
+async function checkForUpdates() {
+  try {
+    const response = await serverFetch(GITHUB_API_RELEASES);
+    if (!response.ok) {
+      throw new Error(`GitHub API response status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const latestVersionTag = data.tag_name;
+
+    if (semver.valid(latestVersionTag) && semver.gt(latestVersionTag, CURRENT_VERSION_TAG)) {
+      const userResponse = await dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Available',
+        message: 'A new version of the application is available.',
+        detail: `The latest version is ${latestVersionTag}. Would you like to download it?`,
+        buttons: ['Yes', 'No'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+
+      if (userResponse.response === 0) {
+        shell.openExternal(data.html_url); // URL to the latest release page
+      }
+    } else {
+      await dialog.showMessageBox({
+        type: 'info',
+        title: 'No Updates',
+        message: 'You are using the latest version of the application.',
+      });
+    }
+  } catch (error) {
+    console.error('Failed to check for updates:', error);
+    dialog.showErrorBox('Update Check Failed', 'There was an error checking for updates. Please try again later.');
+  }
+}
 
 // Promise version of file moving
 function move(o: string, t: string) {
@@ -572,7 +615,7 @@ function updatePythonDependencies(win: typeof BrowserWindow) {
 // Ensure all required directories exist and if not, download them
 function fixMissingDirectories(win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
-    win.webContents.send("updateStatus", "Checking for missing files...");
+    win.webContents.send("updateStatus", "Checking for updatess...");
     downloadResources(win, false).then(() => {
       resolve(true);
     });
@@ -638,6 +681,8 @@ app.on("ready", () => {
       logWin.close();
     }
   });
+
+  checkForUpdates();
 
   win.webContents.once("did-finish-load", () => {
     // Make a directory to house enviornment, settings, etc.yarn
