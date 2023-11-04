@@ -76,11 +76,7 @@ async function checkForUpdates() {
         shell.openExternal(data.html_url); // URL to the latest release page
       }
     } else {
-      await dialog.showMessageBox({
-        type: 'info',
-        title: 'No Updates',
-        message: 'You are using the latest version of the application.',
-      });
+      console.log('No updates available.');
     }
   } catch (error) {
     console.error('Failed to check for updates:', error);
@@ -818,7 +814,7 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: [`-i ${data[0]}`, `-s ${structPath}`, `-m ${data[1]}`],
+    args: [`-i ${data[0]}`, `-s ${structPath}`, `-a ${data[1]}`],
   };
 
   let pyshell = new PythonShell("adjust.py", options);
@@ -840,6 +836,7 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
       });
     } else {
       current++;
+      console.log(message);
       event.sender.send("updateLoad", [
         Math.round((current / total) * 100),
         message,

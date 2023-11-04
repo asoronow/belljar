@@ -28,65 +28,61 @@
     <div id="parent" class="container h-100">
       <div class="row align-items-center">
         <div class="col">
-          <h1>Adjustments</h1>
-          <p>
+          <h1>Viewer</h1>
+          <p >
             <br />
-            Allows you to adjust your alignments with a simple brush tool. Add
-            annotation pkls and DAPI files to a folder and select it as your
-            input. The annotation and DAPI files should have the same names as
-            they did in the original alignment step. Right click selects the
-            hovered region, left click paints the selected region over any other
-            region. Z clears all changes. Q advances to the next section. ESC
-            quits the process. WARNING: Annotation files are modified directly.
+            View your annotations alongside or on top of any 2D images you specify. 
+            <br> You may also adjust your annotations to improve the accuracy of your results in specfic regions.
+            <br> Input images should have the same naming scheme used in alignment to ensure proper matching or annotation to image.
+            <br> <b>NOTE:</b> Adjustments will permenantly alter the annotations, a backup is recommended.
           </p>
         </div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
           <h5>
-            Input Path
+            Images Path
             <i
               class="fas fa-circle-question fa-fw fa-xs"
               data-bs-toggle="tooltip"
               data-bs-placement="right"
-              title="Path to pkl and DAPI images"
+              title="Path to cell stain images"
             ></i>
           </h5>
         </div>
-        <div class="col d-grid"></div>
-      </div>
-      <div class="row align-items-center m-1">
-        <div class="col d-grid">
-          <input
-            type="url"
-            id="indir"
-            placeholder="Click to select directory or cancel to enter manually"
-          />
+        <div class="row align-items-center">
+          <div class="col d-grid">
+            <input
+              type="url"
+              id="imdir"
+              placeholder="Click to select directory or cancel to enter manually"
+            />
+          </div>
         </div>
       </div>
-      <div class="row align-items-center m-1">
+    
+      <div class="row align-items-center m-1 mt-2">
         <div class="col d-grid justify-content-start">
           <h5>
-            Affine or Paint
+            Annotations Path
             <i
               class="fas fa-circle-question fa-fw fa-xs"
               data-bs-toggle="tooltip"
               data-bs-placement="right"
-              title="Select the adjustment you'd like to make. Affine allows you to move and rotate regions. Paint allows you to paint over regions."
+              title="Path to annotations from alignment"
             ></i>
           </h5>
-        <div class="col d-grid justify-content-start">
-          <div class="dropdown">
-            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
-            Affine
-            </button>
-            <ul class="dropdown-menu" aria-labelledby="regions">
-              <li><a class="dropdown-item" id="affine" href="#">Affine</a></li>
-              <li><a class="dropdown-item" id="paint" href="#">Paint</a></li>
-            </ul>
-          </div> 
         </div>
-    </div>
+        <div class="row align-items-center">
+          <div class="col d-grid">
+            <input
+              type="url"
+              id="annodir"
+              placeholder="Click to select directory or cancel to enter manually"
+            />
+          </div>
+        </div>
+    </div> 
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
           <a role="button" class="btn btn-warning" id="back" href="./menu.html"
