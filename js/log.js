@@ -27,10 +27,39 @@ function clearCache(){
     localStorage.removeItem('log');
 }
 
+function checkLogExpiry(){
+    var expiry = new Date();
+    expiry.setDate(expiry.getDate() - 1);
+    var expiryTime = expiry.getTime();
+    var logTime = localStorage.getItem('logTime');
+    if (logTime == null){
+        cacheLogTime();
+        clearCache();
+        loadLog();
+    }
+
+    if(logTime < expiryTime){
+        clearCache();
+    } else {
+        loadLog();
+    }
+}
+
+function cacheLogTime(){
+    // store log time
+    var logTime = new Date().getTime();
+    localStorage.setItem('logTime', logTime);
+}
+
 // on load
 window.onload = function(){
-    loadLog();
+    checkLogExpiry();
 }
+
+ipc.on('savelogs', function(event, response){
+    cacheLog();
+    cacheLogTime();
+});
 
 ipc.on('log', function(event, response){
     console.log(response);
@@ -43,6 +72,4 @@ ipc.on('log', function(event, response){
     });
     // Scroll to bottom of log
     window.scrollTo(0,document.body.scrollHeight);
-
-    cacheLog();
 });

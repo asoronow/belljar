@@ -1,5 +1,3 @@
-const { t } = require("tar");
-
 var ipc = require("electron").ipcRenderer;
 var run = document.getElementById("run");
 var indir = document.getElementById("indir");
@@ -10,7 +8,9 @@ var back = document.getElementById("back");
 var whole = document.getElementById("whole");
 var half = document.getElementById("half");
 var spacing = document.getElementById("spacing");
+var legacy = document.getElementById("legacy");
 var alignmentMethod = "True";
+var useLegacy = "False";
 var methods = document.querySelector("#methods");
 
 whole.addEventListener("click", function () {
@@ -41,13 +41,18 @@ run.addEventListener("click", function () {
 			a = Math.round(a);
 		}
 
+		if (legacy.checked) {
+			useLegacy = "True";
+		} else {
+			useLegacy = "False";
+		}
 		run.classList.add("disabled");
 		back.classList.remove("btn-warning");
 		back.classList.add("btn-danger");
 		back.innerHTML = "Cancel";
 		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
 		loadmessage.innerHTML = "Intializing...";
-		ipc.send("runAlign", [indir.value, outdir.value, alignmentMethod, a]);
+		ipc.send("runAlign", [indir.value, outdir.value, alignmentMethod, a, useLegacy]);
 	}
 });
 

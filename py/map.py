@@ -22,6 +22,57 @@ from qtpy.QtWidgets import (
 )
 
 
+class ImageEraser:
+    def __init__(self, image):
+        self.image = image  # Original image
+        self.mask = None  # Mask to store erased regions
+
+    def erase_regions(self):
+        drawing = False
+
+        img = self.image.copy()
+        mask = np.zeros_like(img)
+        # Ensure image is in color
+        if len(img.shape) == 2:
+            img = img.astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+        def draw_circle(event, x, y, flags, param):
+            nonlocal drawing
+            if event == cv2.EVENT_LBUTTONDOWN:
+                drawing = True
+            elif event == cv2.EVENT_MOUSEMOVE:
+                if drawing:
+                    # Color erased regions red in the preview
+                    cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
+                    cv2.circle(mask, (x, y), 5, 255, -1)
+            elif event == cv2.EVENT_LBUTTONUP:
+                drawing = False
+                # Color the final point red as well
+                cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
+                cv2.circle(mask, (x, y), 5, 255, -1)
+
+        # Load image
+        if img is None:
+            print(f"Could not open or find the image")
+            return
+
+        cv2.namedWindow("Erase regions | Press Q when done")
+        cv2.setMouseCallback("Erase regions | Press Q when done", draw_circle)
+
+        while True:
+            cv2.imshow("Erase regions | Press Q when done", img)
+            k = cv2.waitKey(1) & 0xFF
+            if k == ord("q"):
+                break
+
+        # all non-zero values become 1
+        mask[mask > 0] = 1
+        self.mask = np.logical_not(mask).astype(np.uint8)
+
+        cv2.destroyAllWindows()
+
+
 class AtlasSlice:
     """
     Helper object to manage atlas slices
@@ -44,56 +95,10 @@ class AtlasSlice:
         self.mask = None
 
     def set_mask(self):
-        drawing = False
-        pts = []
-
-        img = self.image.copy()
-        # ensure image is color
-        if len(img.shape) == 2:
-            # convert to 8bit from float64
-            img = (img).astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-        def draw_circle(event, x, y, flags, param):
-            nonlocal drawing, pts
-            if event == cv2.EVENT_LBUTTONDOWN:
-                drawing = True
-                pts.append((x, y))
-            elif event == cv2.EVENT_MOUSEMOVE:
-                if drawing:
-                    cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                    pts.append((x, y))
-            elif event == cv2.EVENT_LBUTTONUP:
-                drawing = False
-                cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                pts.append((x, y))
-
-        # Load image
-        if img is None:
-            print(f"Could not open or find the image")
-            return None
-
-        mask = np.zeros(img.shape[:2], dtype=np.uint8)
-
-        cv2.namedWindow("Click and hold to outline | Press Q to finish")
-        cv2.setMouseCallback(
-            "Click and hold to outline | Press Q to finish", draw_circle
-        )
-
-        while True:
-            cv2.imshow("Click and hold to outline | Press Q to finish", img)
-            k = cv2.waitKey(1) & 0xFF
-            if k == ord("q"):
-                break
-
-        # Filling the closed shape
-        if len(pts) > 2:
-            cv2.fillPoly(mask, [np.array(pts)], 1)
-
-        mask = np.logical_not(mask).astype(np.uint8)
-
-        cv2.destroyAllWindows()
-        self.mask = mask
+        """Set the mask of the slice"""
+        eraser = ImageEraser(self.image)
+        eraser.erase_regions()
+        self.mask = eraser.mask
 
     def set_slice(self, atlas, annotation):
         """
@@ -127,8 +132,12 @@ class AtlasSlice:
             numpy.ndarray: the color annotation slice
         """
         if self.mask is not None:
-            self.image = self.image * self.mask
-            self.label = self.label * self.mask
+            try:
+                self.image = self.image * self.mask
+                self.label = self.label * self.mask
+            except:
+                self.mask = None
+                print("Bad mask! Reset next alignment.")
 
         warped_labels, warped_atlas, color_label = register_to_atlas(
             tissue,
@@ -163,6 +172,7 @@ class AlignmentController:
         model_path,
         spacing=None,
         is_whole=True,
+        use_legacy=False,
     ):
         self.nrrd_path = nrrd_path
         self.input_path = input_path
@@ -171,16 +181,21 @@ class AlignmentController:
         self.model_path = model_path
         self.spacing = spacing
         self.is_whole = is_whole
-
+        self.use_legacy = use_legacy
         self.viewer = napari.Viewer(
             title="Atlas Alignment",
         )
 
+        atlas_name = "reconstructed_atlas.nrrd" if use_legacy else "atlas_10.nrrd"
+        annotation_name = (
+            "reconstructed_annotation.nrrd" if use_legacy else "annotation_10.nrrd"
+        )
+
         self.atlas = nrrd.read(
-            Path(self.nrrd_path) / "atlas_10.nrrd",
+            Path(self.nrrd_path) / atlas_name,
         )[0]
         self.annotation = nrrd.read(
-            Path(self.nrrd_path) / "annotation_10.nrrd",
+            Path(self.nrrd_path) / annotation_name,
         )[0]
 
         if not self.is_whole:
@@ -229,7 +244,10 @@ class AlignmentController:
         self.link_angles_button.stateChanged.connect(self.set_all_angles)
 
         self.ap_position_spinbox = QDoubleSpinBox()
-        self.ap_position_spinbox.setRange(0, 1319)
+        if not self.use_legacy:
+            self.ap_position_spinbox.setRange(0, 1319)
+        else:
+            self.ap_position_spinbox.setRange(0, 528)
         self.ap_position_spinbox.setSingleStep(5)
         # no decimal places
         self.ap_position_spinbox.setDecimals(0)
@@ -360,10 +378,10 @@ class AlignmentController:
         tissue_predictor.to(device)
         tissue_predictor.eval()
 
-        def restore_label(self, label):
+        def restore_label(label, legacy=False):
             pos, x_angle, y_angle = label
             # restore target values
-            pos_max = 1324
+            pos_max = 1324 if not legacy else 528
             pos_min = 0
             pos = pos * (pos_max - pos_min) + pos_min
             x_angle_max = 10
@@ -392,7 +410,7 @@ class AlignmentController:
                 pred = pred.cpu().numpy()
 
                 # restore pred to regular space
-                pred = restore_label(self, pred[0])
+                pred = restore_label(pred[0], self.use_legacy)
                 predicted_slice = AtlasSlice(
                     self.file_list[i],
                     pred[0],
@@ -610,6 +628,8 @@ class AlignmentController:
                 warped_atlas,
             )
             color_label = add_outlines(warped_labels, color_label)
+            # make label rgb
+            color_label = cv2.cvtColor(color_label, cv2.COLOR_BGR2RGB)
             cv2.imwrite(
                 str(Path(self.output_path) / f"Label_{stripped_filename}.png"),
                 color_label,
@@ -666,6 +686,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-a", "--spacing", help="override predicted spacing", default=False
     )
+    parser.add_argument("-l", "--legacy", help="use legacy atlas", default=False)
     parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
     args = parser.parse_args()
 
@@ -677,4 +698,5 @@ if __name__ == "__main__":
         args.model.strip(),
         args.spacing if args.spacing else None,
         eval(args.whole),
+        use_legacy=eval(args.legacy),
     )

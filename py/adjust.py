@@ -1,5 +1,3 @@
-import typing
-from PyQt6 import QtGui
 import numpy as np
 import argparse
 import os, sys, time
@@ -14,6 +12,7 @@ from qtpy.QtWidgets import (
     QPushButton,
     QHBoxLayout,
     QWidget,
+    QLabel,
     QSlider,
     QStatusBar,
     QCheckBox,
@@ -83,12 +82,9 @@ class AnnotationViewer(QMainWindow):
         self.originals = []
         self.was_changed = False
         self.brush_size = 5
-        self.update_timer = QTimer(self)
-        self.update_timer.setSingleShot(True)
-        self.update_timer.setInterval(200)
-        self.update_timer.timeout.connect(self.show_image_with_overlay)
         self.overlay_visible = False
-        self.opacity = 25
+        self.opacity = 100
+        self.zoom_level = 100
         self.selected_region_id = None
         self.selected_region_name = "None"
         # Load images and annotations
@@ -171,9 +167,31 @@ class AnnotationViewer(QMainWindow):
         opacity_layout.addWidget(self.overlay_toggle)
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(0, 255)
-        self.opacity_slider.setValue(25)
+        self.opacity_slider.setValue(self.opacity)
         self.opacity_slider.valueChanged.connect(self.update_opacity)
+        self.opacity_label = QLabel("Opacity", self)
+        opacity_layout.addWidget(self.opacity_label)
         opacity_layout.addWidget(self.opacity_slider)
+        # slider for zoom level
+        zoom_layout = QHBoxLayout()
+        self.zoom_label = QLabel(f"Zoom {self.zoom_level}%", self)
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setRange(100, 1000)
+        self.zoom_slider.setValue(self.zoom_level)
+        self.zoom_slider.valueChanged.connect(self.update_zoom)
+        zoom_layout.addWidget(self.zoom_label)
+        zoom_layout.addWidget(self.zoom_slider)
+        controls_layout.addLayout(zoom_layout)
+        # slider for brush size
+        brush_layout = QHBoxLayout()
+        self.brush_label = QLabel(f"Brush Size {self.brush_size}", self)
+        self.brush_slider = QSlider(Qt.Horizontal)
+        self.brush_slider.setRange(1, 10)
+        self.brush_slider.setValue(self.brush_size)
+        self.brush_slider.valueChanged.connect(self.update_brush)
+        brush_layout.addWidget(self.brush_label)
+        brush_layout.addWidget(self.brush_slider)
+        controls_layout.addLayout(brush_layout)
         adjustment_layout = QHBoxLayout()
         self.allow_adjustment = QCheckBox("Allow Adjustment", self)
         self.allow_adjustment.setChecked(False)
@@ -211,6 +229,16 @@ class AnnotationViewer(QMainWindow):
 
         self.show_image_with_overlay()
 
+    def update_zoom(self):
+        self.zoom_level = self.zoom_slider.value()
+        self.zoom_label.setText(f"Zoom {self.zoom_level}%")
+        self.img_view.resetTransform()
+        self.img_view.scale(self.zoom_level / 100, self.zoom_level / 100)
+
+    def update_brush(self):
+        self.brush_size = self.brush_slider.value()
+        self.brush_label.setText(f"Brush Size {self.brush_size}")
+
     def convert_to_parents(self):
         """For the current labels convert all labels with layer to their parents"""
         # First dump current selections, could be children of a layer
@@ -234,14 +262,21 @@ class AnnotationViewer(QMainWindow):
 
     def update_opacity(self):
         self.opacity = self.opacity_slider.value()
-        self.update_timer.stop()
-        self.update_timer.start()
+        if self.overlay_visible:
+            anno_pix = self.anno_scene.items()[0].pixmap()
+            overlayed = self.img_pixmap.copy()
+            painter = QPainter(overlayed)
+            painter.setOpacity(self.opacity / 255)
+            painter.drawPixmap(0, 0, anno_pix)
+            painter.end()
+            self.img_scene.removeItem(self.img_scene.items()[0])
+            self.img_scene.addPixmap(overlayed)
 
     def toggle_overlay(self):
         self.overlay_visible = not self.overlay_visible
         self.img_scene.removeItem(self.img_scene.items()[0])
         self.img_scene.addPixmap(self.img_pixmap)
-        self.show_image_with_overlay()
+        self.repaint_selected_only()
 
     def show_image_with_overlay(self):
         # Create a blank annotation image with the same dimensions
@@ -257,10 +292,8 @@ class AnnotationViewer(QMainWindow):
             if label_value not in present_labels:
                 continue
 
-            if label_value == self.selected_region_id:
-                color = QColor(218, 112, 214)
-            else:
-                color = QColor(*info["color"])
+            color = QColor(*info["color"])
+
             painter.setPen(color)
 
             # Create a mask where the label array matches the current label value
@@ -289,26 +322,27 @@ class AnnotationViewer(QMainWindow):
             self.img_scene.removeItem(self.img_scene.items()[0])
             self.img_scene.addPixmap(overlayed)
 
+        self.repaint_selected_only()
+
     def paint_deltas(self, points):
         # Update the annotation pixmap with the new points
-        painter = QPainter(self.anno_pixmap)
+        new_annos = self.anno_scene.items()[0].pixmap().copy()
+        painter = QPainter(new_annos)
         color = QColor(218, 112, 214)
         painter.setPen(color)
         painter.drawPoints(points)
         painter.end()
         if self.overlay_visible:
-            overlayed = self.img_scene.items()[0].pixmap().copy()
+            overlayed = self.img_pixmap.copy()
             painter = QPainter(overlayed)
             painter.setOpacity(self.opacity / 255)
-            painter.drawPoints(points)
+            painter.drawPixmap(0, 0, new_annos)
             painter.end()
             self.img_scene.removeItem(self.img_scene.items()[0])
             self.img_scene.addPixmap(overlayed)
 
         self.anno_scene.removeItem(self.anno_scene.items()[0])
-        self.anno_scene.addPixmap(self.anno_pixmap)
-        self.update_timer.stop()
-        self.update_timer.start()
+        self.anno_scene.addPixmap(new_annos)
 
     def warn_unsaved_changes(self):
         dialog = QMessageBox(self)
@@ -475,7 +509,36 @@ class AnnotationViewer(QMainWindow):
             self.current_delta -= 1  # Decrease the current delta index
 
             # Reflect the changes in the image
-            self.show_image_with_overlay()
+            self.repaint_selected_only()
+
+    def repaint_selected_only(self):
+        """Repaint the selected region only"""
+
+        # make a copy of the annotation pixmap
+        anno_pixmap = self.anno_pixmap.copy()
+        painter = QPainter(anno_pixmap)
+        color = QColor(218, 112, 214)
+        painter.setPen(color)
+
+        # Create a mask where the label array matches the current label value
+        mask = self.current_label == self.selected_region_id
+        points = [QPoint(j, i) for i, j in zip(*np.where(mask))]
+        painter.drawPoints(points)
+        painter.end()
+
+        if self.overlay_visible:
+            # paint the annotation pixmap on the overlayed image
+            overlayed = self.img_pixmap.copy()
+            painter = QPainter(overlayed)
+            painter.setOpacity(self.opacity / 255)
+            painter.drawPixmap(0, 0, anno_pixmap)
+            painter.end()
+            self.img_scene.removeItem(self.img_scene.items()[0])
+            self.img_scene.addPixmap(overlayed)
+
+        if len(self.anno_scene.items()) > 0:
+            self.anno_scene.removeItem(self.anno_scene.items()[0])
+        self.anno_scene.addPixmap(anno_pixmap)
 
     def eventFilter(self, source, event):
         if event.type() == QEvent.MouseButtonPress:
@@ -504,7 +567,7 @@ class AnnotationViewer(QMainWindow):
                     self.selected_region_name = self.structure_map.get(
                         label_value, {}
                     ).get("name", "Unknown region")
-                    self.show_image_with_overlay()
+                    self.repaint_selected_only()
 
         elif event.type() == QEvent.MouseMove:
             point = event.pos()
@@ -553,6 +616,8 @@ if __name__ == "__main__":
         help="structures map",
     )
     args = parser.parse_args()
+    print(2, flush=True)
+    print("Viewing...", flush=True)
 
     def on_app_exit():
         print("Done!", flush=True)

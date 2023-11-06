@@ -19,7 +19,7 @@ const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
-const serverFetch = require('node-fetch');
+const serverFetch = require("node-fetch");
 var appDir = app.getAppPath();
 var win = null;
 var logWin = null;
@@ -51,7 +51,7 @@ var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
 const pyScriptsPath = path.join(appDir, "/py");
 const CURRENT_VERSION_TAG = getVersion();
-const GITHUB_API_RELEASES = 'https://api.github.com/repos/asoronow/belljar/releases/latest';
+const GITHUB_API_RELEASES = "https://api.github.com/repos/asoronow/belljar/releases/latest";
 function checkForUpdates() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
@@ -61,13 +61,14 @@ function checkForUpdates() {
             }
             const data = yield response.json();
             const latestVersionTag = data.tag_name;
-            if (semver.valid(latestVersionTag) && semver.gt(latestVersionTag, CURRENT_VERSION_TAG)) {
+            if (semver.valid(latestVersionTag) &&
+                semver.gt(latestVersionTag, CURRENT_VERSION_TAG)) {
                 const userResponse = yield dialog.showMessageBox({
-                    type: 'info',
-                    title: 'Update Available',
-                    message: 'A new version of the application is available.',
+                    type: "info",
+                    title: "Update Available",
+                    message: "A new version of the application is available.",
                     detail: `The latest version is ${latestVersionTag}. Would you like to download it?`,
-                    buttons: ['Yes', 'No'],
+                    buttons: ["Yes", "No"],
                     defaultId: 0,
                     cancelId: 1,
                 });
@@ -76,12 +77,12 @@ function checkForUpdates() {
                 }
             }
             else {
-                console.log('No updates available.');
+                console.log("No updates available.");
             }
         }
         catch (error) {
-            console.error('Failed to check for updates:', error);
-            dialog.showErrorBox('Update Check Failed', 'There was an error checking for updates. Please try again later.');
+            console.error("Failed to check for updates:", error);
+            dialog.showErrorBox("Update Check Failed", "There was an error checking for updates. Please try again later.");
         }
     });
 }
@@ -263,14 +264,6 @@ function downloadResources(win, fresh) {
         if (!fresh) {
             var downloading = [];
             var total = 0;
-            // check if each directory exists and its not empty
-            for (let i = 0; i < requiredDirs.length; i++) {
-                const dir = requiredDirs[i];
-                if (!fs.existsSync(path.join(homeDir, dir)) ||
-                    fs.readdirSync(path.join(homeDir, dir)).length === 0) {
-                    downloading.push(dir);
-                }
-            }
             // check the manifest.json and compare versions
             // if the versions are different, delete the dir and download
             const manifestPath = path.join(homeDir, "manifest.json");
@@ -284,6 +277,17 @@ function downloadResources(win, fresh) {
                 downloading.push("nrrd");
             }
             const manifest = require(manifestPath);
+            // check if each directory exists and its not empty
+            for (let i = 0; i < requiredDirs.length; i++) {
+                const dir = requiredDirs[i];
+                if (!fs.existsSync(path.join(homeDir, dir)) ||
+                    fs.readdirSync(path.join(homeDir, dir)).length === 0) {
+                    // make sure we are not already downloading this dir
+                    if (downloading.indexOf(dir) === -1) {
+                        downloading.push(dir);
+                    }
+                }
+            }
             for (const [key, value] of Object.entries(currnet_versions)) {
                 if (manifest[key] !== value) {
                     downloading.push(key);
@@ -542,6 +546,7 @@ app.on("ready", () => {
     // Uncomment if you want tools on launch
     // win.webContents.toggleDevTools()
     win.on("close", function (e) {
+        logWin.webContents.send("savelogs", []);
         const choice = dialog.showMessageBoxSync(win, {
             type: "question",
             buttons: ["Yes", "Cancel"],
@@ -741,6 +746,7 @@ ipcMain.on("runAlign", function (event, data) {
             `-e ${embedPath}`,
             `-n ${nrrdPath}`,
             `-c ${mapPath}`,
+            `-l ${data[4]}`,
         ],
     };
     let pyshell = new PythonShell("map.py", options);
