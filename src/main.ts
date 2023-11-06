@@ -303,7 +303,7 @@ function setupPython(win: typeof BrowserWindow) {
 function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
   const currnet_versions = {
-    nrrd: "v8",
+    nrrd: "v9",
     models: "v9",
     embeddings: "v6",
   };
@@ -312,7 +312,7 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
     const modelsLink = `${bucketParentPath}/models-v9.tar.gz`; //  Update to v7
-    const nrrdLink = `${bucketParentPath}/nrrd-v8.tar.gz`;
+    const nrrdLink = `${bucketParentPath}/nrrd-v9.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
     if (!fresh) {
