@@ -155,6 +155,7 @@ if __name__ == "__main__":
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
             predicted_size = predictions[0].image_dimensions
+
             # Count the area of each region in the annotation
             annotation_rescaled = resize_image_nearest_neighbor(
                 annotation, predicted_size

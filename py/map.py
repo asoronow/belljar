@@ -103,11 +103,7 @@ class ImageEraser(QMainWindow):
     def draw_on_image(self, qpoint):
         # Convert QGraphicsView coordinates to image coordinates
         image_point = self.img_view.mapToScene(qpoint).toPoint()
-        if (
-            image_point
-            and 0 <= image_point.x() < self.image.shape[0]
-            and 0 <= image_point.y() < self.image.shape[1]
-        ):
+        if image_point:
             # Calculate the points to draw using a helper function
             points_to_draw = self.points_in_circle(
                 (image_point.x(), image_point.y()), self.brush_size
@@ -199,8 +195,6 @@ class AtlasSlice:
 
     def on_exit(self):
         self.mask = self.eraser_window.mask_image
-        cv2.imshow("Mask", self.mask * 255)
-        cv2.waitKey(0)
 
     def set_slice(self, atlas, annotation):
         """
@@ -474,6 +468,7 @@ class AlignmentController:
                 old_y = atlas_slice.y_angle
                 old_pos = atlas_slice.ap_position
                 old_region = atlas_slice.region
+                old_mask = atlas_slice.mask
 
                 self.atlas_slices[old_name] = AtlasSlice(
                     old_name,
@@ -482,6 +477,7 @@ class AlignmentController:
                     old_y,
                     region=old_region,
                 )
+                self.atlas_slices[old_name].mask = old_mask
                 self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
 
             print("Found prior alignment!")
@@ -634,8 +630,7 @@ class AlignmentController:
         )
         self.mask_button.setText(
             "Set Mask"
-            if self.atlas_slices[self.file_list[self.current_section]].eraser_window
-            is None
+            if self.atlas_slices[self.file_list[self.current_section]].mask is None
             else "Update Mask"
         )
 

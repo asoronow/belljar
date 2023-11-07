@@ -31,6 +31,7 @@ def export_bboxes(image, boxes, output_path):
 
     cv2.imwrite(str(output_path), image)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
@@ -102,7 +103,7 @@ if __name__ == "__main__":
                     raise Exception("Image has more than 3 dimensions!")
             else:
                 img = cv2.imread(file_path)
-                height, width, channels = img.shape
+                width, height, channels = img.shape
         except Exception as e:
             print(f"Error reading {file}!", flush=True)
             print(e, flush=True)
@@ -158,9 +159,7 @@ if __name__ == "__main__":
 
             # Make sure image is 8bit or float32
             if img.dtype != np.uint8:
-                img = cv2.normalize(
-                    img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
-                )
+                img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
             result = get_sliced_prediction(
                 img,
