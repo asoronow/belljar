@@ -1,6 +1,6 @@
 import numpy as np
 import argparse
-import os, sys, time
+import os, sys
 import pickle
 from pathlib import Path
 from qtpy.QtWidgets import (
@@ -19,7 +19,7 @@ from qtpy.QtWidgets import (
     QMessageBox,
 )
 from qtpy.QtGui import QImage, QPixmap, QPainter, QColor
-from qtpy.QtCore import Qt, QPoint, QEvent, QTimer
+from qtpy.QtCore import Qt, QPoint, QEvent
 from slice_atlas import add_outlines
 
 

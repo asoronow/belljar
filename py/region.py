@@ -2,7 +2,6 @@ import os
 import pickle
 import argparse
 from pathlib import Path
-import cv2
 import tifffile
 import numpy as np
 from demons import resize_image_nearest_neighbor
@@ -60,7 +59,7 @@ if __name__ == "__main__":
     intensityPath = args.images.strip()
     intensityFiles = os.listdir(intensityPath)
     intensityFiles.sort()
-
+    is_whole = eval(args.whole.strip())
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
     annotationFiles = os.listdir(annotationPath)
@@ -101,7 +100,6 @@ if __name__ == "__main__":
                 "VISpm",
                 "VISpor",
                 "VISrl",
-                "TEa",
                 "RSPagl",
                 "RSPd",
                 "RSPv",
@@ -135,7 +133,13 @@ if __name__ == "__main__":
                     # Get the vertex of the child
                     verts = np.where(annotation_recaled == child_id)
                     for point in verts:
-                        intensities[parent_id][point] = intensity[point]
+                        # check if whole
+                        if not is_whole:
+                            intensities[parent_id][point] = intensity[point]
+                        else:
+                            # take only points in the left half
+                            if point[1] < width // 2:
+                                intensities[parent_id][point] = intensity[point]
 
             # Save the intensity values and the verticies as ROI package pkls
             for region in intensities.keys():

@@ -9,8 +9,11 @@ from model import TissuePredictor
 import nrrd
 import torch
 import napari
+import copy
 import argparse
 from qtpy.QtWidgets import (
+    QGraphicsView,
+    QGraphicsScene,
     QPushButton,
     QProgressBar,
     QLabel,
@@ -18,59 +21,148 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QVBoxLayout,
+    QSlider,
     QWidget,
+    QMainWindow,
 )
 
+from qtpy import QtCore, QtGui
+from adjust import numpy_array_to_qimage
 
-class ImageEraser:
+
+class ImageEraser(QMainWindow):
+    closed = QtCore.Signal()
+
     def __init__(self, image):
-        self.image = image  # Original image
-        self.mask = None  # Mask to store erased regions
+        super().__init__()
+        self.image = image
+        self.mask_image = np.zeros_like(self.image)
+        self.drawing = False
+        self.brush_size = 3
+        self.init_ui()
 
-    def erase_regions(self):
-        drawing = False
+    def init_ui(self):
+        self.setWindowTitle("Image Eraser")
+        container = QWidget()
+        ui_layout = QVBoxLayout()
+        self.img_view = QGraphicsView(self)
+        self.img_view.setMouseTracking(True)
+        self.img_view.viewport().installEventFilter(self)
 
-        img = self.image.copy()
-        mask = np.zeros_like(img)
-        # Ensure image is in color
-        if len(img.shape) == 2:
-            img = img.astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        self.img_scene = QGraphicsScene(self)
+        self.qimg = numpy_array_to_qimage(self.image)
+        self.img_pixmap = QtGui.QPixmap.fromImage(self.qimg)
+        self.img_scene.addPixmap(self.img_pixmap)
+        self.img_view.setScene(self.img_scene)
+        # Slider for brush size
+        self.brush_size_slider = QSlider(QtCore.Qt.Horizontal, self)
+        # Set label
+        self.brush_size_slider_label = QLabel("Brush Size")
+        self.brush_size_slider_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeading)
+        self.brush_size_slider.setMinimum(1)
+        self.brush_size_slider.setMaximum(10)
+        self.brush_size_slider.setValue(self.brush_size)
+        self.brush_size_slider.valueChanged.connect(self.update_brush_size)
 
-        def draw_circle(event, x, y, flags, param):
-            nonlocal drawing
-            if event == cv2.EVENT_LBUTTONDOWN:
-                drawing = True
-            elif event == cv2.EVENT_MOUSEMOVE:
-                if drawing:
-                    # Color erased regions red in the preview
-                    cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                    cv2.circle(mask, (x, y), 5, 255, -1)
-            elif event == cv2.EVENT_LBUTTONUP:
-                drawing = False
-                # Color the final point red as well
-                cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                cv2.circle(mask, (x, y), 5, 255, -1)
+        # Buttons
+        self.save_button = QPushButton("Save", self)
+        self.cancel_button = QPushButton("Cancel", self)
+        self.save_button.clicked.connect(self.save_mask)
+        self.cancel_button.clicked.connect(self.cancel_changes)
 
-        # Load image
-        if img is None:
-            print(f"Could not open or find the image")
-            return
+        ui_layout.addWidget(self.img_view)
+        ui_layout.addWidget(self.brush_size_slider_label)
+        ui_layout.addWidget(self.brush_size_slider)
+        ui_layout.addWidget(self.save_button)
+        ui_layout.addWidget(self.cancel_button)
+        container.setLayout(ui_layout)
+        self.setCentralWidget(container)
 
-        cv2.namedWindow("Erase regions | Press Q when done")
-        cv2.setMouseCallback("Erase regions | Press Q when done", draw_circle)
+    def eventFilter(self, source, event):
+        if source is self.img_view.viewport():
+            if event.type() == QtCore.QEvent.MouseMove and self.drawing:
+                self.draw_on_image(event.pos())
+                return True  # Indicate that the event is handled
+            elif (
+                event.type() == QtCore.QEvent.MouseButtonPress
+                and event.button() == QtCore.Qt.LeftButton
+            ):
+                self.drawing = True
+                self.draw_on_image(event.pos())
+                return True
+            elif (
+                event.type() == QtCore.QEvent.MouseButtonRelease
+                and event.button() == QtCore.Qt.LeftButton
+            ):
+                self.drawing = False
+                return True
 
-        while True:
-            cv2.imshow("Erase regions | Press Q when done", img)
-            k = cv2.waitKey(1) & 0xFF
-            if k == ord("q"):
-                break
+        # Call base class method to continue normal event processing
+        return super().eventFilter(source, event)
 
-        # all non-zero values become 1
-        mask[mask > 0] = 1
-        self.mask = np.logical_not(mask).astype(np.uint8)
+    def draw_on_image(self, qpoint):
+        # Convert QGraphicsView coordinates to image coordinates
+        image_point = self.img_view.mapToScene(qpoint).toPoint()
+        if (
+            image_point
+            and 0 <= image_point.x() < self.image.shape[0]
+            and 0 <= image_point.y() < self.image.shape[1]
+        ):
+            # Calculate the points to draw using a helper function
+            points_to_draw = self.points_in_circle(
+                (image_point.x(), image_point.y()), self.brush_size
+            )
 
-        cv2.destroyAllWindows()
+            # Draw on the mask and image
+            painter = QtGui.QPainter(self.img_pixmap)
+            pen = QtGui.QPen(
+                QtGui.QColor(255, 0, 0), self.brush_size * 2
+            )  # *2 for diameter
+            painter.setPen(pen)
+            for pt in points_to_draw:
+                try:
+                    # Draw red point on the image
+                    painter.drawPoint(pt[0], pt[1])
+                    # Set corresponding point in the mask
+                    self.mask_image[pt[1], pt[0]] = 1
+                except:
+                    pass
+            painter.end()
+
+            # Update the scene to reflect the changes
+            self.img_scene.update()
+
+            self.update_image()
+
+    def points_in_circle(self, center, radius):
+        """Return a list of points in a circle"""
+        points = []
+        for x in range(center[0] - radius, center[0] + radius + 1):
+            for y in range(center[1] - radius, center[1] + radius + 1):
+                if (x - center[0]) ** 2 + (y - center[1]) ** 2 <= radius**2:
+                    points.append((x, y))
+        return points
+
+    def update_image(self):
+        # Update the QGraphicsScene with the new QPixmap
+        self.img_scene.clear()
+        self.img_scene.addPixmap(self.img_pixmap)
+        self.img_view.setScene(self.img_scene)
+
+    def update_brush_size(self, value):
+        self.brush_size = value
+
+    def save_mask(self):
+        self.mask_image = np.logical_not(self.mask_image).astype(np.uint8)
+        self.close()
+
+    def cancel_changes(self):
+        self.mask_image = np.zeros_like(self.image)
+        self.close()
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        event.accept()
 
 
 class AtlasSlice:
@@ -78,9 +170,11 @@ class AtlasSlice:
     Helper object to manage atlas slices
 
     Parameters:
+        section_name (str): the filename of the slice
         ap_position (int): the ap position of the slice
         x_angle (float): the x angle of the slice
         y_angle (float): the y angle of the slice
+        region (str): the region of the slice
     """
 
     def __init__(self, section_name, ap_position, x_angle, y_angle, region="A"):
@@ -93,12 +187,20 @@ class AtlasSlice:
         self.image = None
         self.label = None
         self.mask = None
+        self.eraser_window = None
 
     def set_mask(self):
         """Set the mask of the slice"""
-        eraser = ImageEraser(self.image)
-        eraser.erase_regions()
-        self.mask = eraser.mask
+        self.eraser_window = ImageEraser(self.image)
+        self.eraser_window.show()
+
+        # on exit
+        self.eraser_window.closed.connect(self.on_exit)
+
+    def on_exit(self):
+        self.mask = self.eraser_window.mask_image
+        cv2.imshow("Mask", self.mask * 255)
+        cv2.waitKey(0)
 
     def set_slice(self, atlas, annotation):
         """
@@ -363,6 +465,25 @@ class AlignmentController:
             with open(Path(self.input_path) / "alignment.pkl", "rb") as f:
                 self.atlas_slices = pickle.load(f)
             self.prior_alignment = True
+
+            # reload slices and refresh class definition
+            for _, atlas_slice in self.atlas_slices.items():
+                # re-init with old values
+                old_name = atlas_slice.section_name
+                old_x = atlas_slice.x_angle
+                old_y = atlas_slice.y_angle
+                old_pos = atlas_slice.ap_position
+                old_region = atlas_slice.region
+
+                self.atlas_slices[old_name] = AtlasSlice(
+                    old_name,
+                    old_pos,
+                    old_x,
+                    old_y,
+                    region=old_region,
+                )
+                self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
+
             print("Found prior alignment!")
         except:
             print("No comptabile alignment found...")
@@ -422,8 +543,17 @@ class AlignmentController:
 
     def save_alignment(self):
         """Save the slices to a pickle file"""
+        # get rid of image and label
+        saved_copy = {}
+        for section_name, atlas_slice in self.atlas_slices.items():
+            atlas_slice.eraser_window = None
+            this_copy = copy.deepcopy(atlas_slice)
+            this_copy.image = None
+            this_copy.label = None
+            saved_copy[section_name] = this_copy
+
         with open(Path(self.input_path) / "alignment.pkl", "wb") as f:
-            pickle.dump(self.atlas_slices, f)
+            pickle.dump(saved_copy, f)
 
     def update_mask(self):
         """Update the mask of the current slice"""
@@ -504,7 +634,8 @@ class AlignmentController:
         )
         self.mask_button.setText(
             "Set Mask"
-            if self.atlas_slices[self.file_list[self.current_section]].mask is None
+            if self.atlas_slices[self.file_list[self.current_section]].eraser_window
+            is None
             else "Update Mask"
         )
 
