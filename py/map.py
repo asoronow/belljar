@@ -474,6 +474,7 @@ class AlignmentController:
                 old_y = atlas_slice.y_angle
                 old_pos = atlas_slice.ap_position
                 old_region = atlas_slice.region
+                old_mask = atlas_slice.mask
 
                 self.atlas_slices[old_name] = AtlasSlice(
                     old_name,
@@ -482,6 +483,7 @@ class AlignmentController:
                     old_y,
                     region=old_region,
                 )
+                self.atlas_slices[old_name].mask = old_mask
                 self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
 
             print("Found prior alignment!")
@@ -634,8 +636,7 @@ class AlignmentController:
         )
         self.mask_button.setText(
             "Set Mask"
-            if self.atlas_slices[self.file_list[self.current_section]].eraser_window
-            is None
+            if self.atlas_slices[self.file_list[self.current_section]].mask is None
             else "Update Mask"
         )
 
