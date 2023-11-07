@@ -33,6 +33,7 @@
     "@electron-forge/maker-zip": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^4.29.0",
     "@typescript-eslint/parser": "^4.29.0",
+    "dotenv": "^16.3.1",
     "electron": "18.1.0",
     "eslint": "^7.32.0",
     "prettier": "^2.7.1",
@@ -41,37 +42,5 @@
   "build": {
     "appId": "com.belljar.app",
     "productName": "Bell Jar"
-  },
-  "config": {
-    "forge": {
-      "packagerConfig": {
-        "asar": false,
-        "icon": "assets/icons/icon",
-        "ignore": [
-          "src",
-          "tsconfig.json",
-          "yarn.lock",
-          "README.md",
-          "LICENSE"
-        ]
-      },
-      "makers": [
-        {
-          "name": "@electron-forge/maker-zip",
-          "platforms": [
-            "win32"
-          ]
-        },
-        {
-          "name": "@electron-forge/maker-dmg",
-          "config": {
-            "format": "ULFO"
-          }
-        },
-        {
-          "name": "@electron-forge/maker-deb"
-        }
-      ]
-    }
   }
 }

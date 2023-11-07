@@ -103,11 +103,7 @@ class ImageEraser(QMainWindow):
     def draw_on_image(self, qpoint):
         # Convert QGraphicsView coordinates to image coordinates
         image_point = self.img_view.mapToScene(qpoint).toPoint()
-        if (
-            image_point
-            and 0 <= image_point.x() < self.image.shape[0]
-            and 0 <= image_point.y() < self.image.shape[1]
-        ):
+        if image_point:
             # Calculate the points to draw using a helper function
             points_to_draw = self.points_in_circle(
                 (image_point.x(), image_point.y()), self.brush_size
@@ -199,8 +195,6 @@ class AtlasSlice:
 
     def on_exit(self):
         self.mask = self.eraser_window.mask_image
-        cv2.imshow("Mask", self.mask * 255)
-        cv2.waitKey(0)
 
     def set_slice(self, atlas, annotation):
         """

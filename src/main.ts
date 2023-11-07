@@ -687,6 +687,10 @@ app.on("ready", () => {
     }
   });
 
+  logWin.on("close", function (e: any) {
+    logWin = null;
+  });
+  
   checkForUpdates();
 
   win.webContents.once("did-finish-load", () => {
