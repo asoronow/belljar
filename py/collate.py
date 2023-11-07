@@ -6,19 +6,7 @@ from tkinter import *
 from pathlib import Path
 from belljarGUI import Page, GuiController
 import argparse
-
-parser = argparse.ArgumentParser(description='Process z-stack images')
-parser.add_argument(
-    '-o', '--output', help="output directory, only use if graphical false", default='')
-parser.add_argument(
-    '-i', '--input', help="input directory, only use if graphical false", default='')
-parser.add_argument('-r', '--regions',
-                    help="which regions to include in output", default='')
-parser.add_argument('-s', '--structures', help="structures file", default='')
-parser.add_argument('-g', '--graphical',
-                    help='provides prompts when true', default=True)
-
-args = parser.parse_args()
+import pickle
 
 
 class FileLocations(ttk.Frame, Page):
@@ -46,58 +34,69 @@ class FileLocations(ttk.Frame, Page):
         self.structuresEntry = ttk.Entry(self)
         self.structuresEntry.grid(row=2, column=1, padx=10, pady=10)
 
-        button2 = ttk.Button(self, text="Browse",
-                             command=lambda: self.browseObjectFiles(self.objectsEntry))
+        button2 = ttk.Button(
+            self,
+            text="Browse",
+            command=lambda: self.browseObjectFiles(self.objectsEntry),
+        )
 
         button2.grid(row=0, column=2, padx=10, pady=10)
 
-        button3 = ttk.Button(self, text="Save As",
-                             command=lambda: self.saveFiles(self.resultEntry))
+        button3 = ttk.Button(
+            self, text="Save As", command=lambda: self.saveFiles(self.resultEntry)
+        )
 
         button3.grid(row=1, column=2)
 
-        button4 = ttk.Button(self, text="Browse",
-                             command=lambda: self.browseStructuresFiles(self.structuresEntry))
+        button4 = ttk.Button(
+            self,
+            text="Browse",
+            command=lambda: self.browseStructuresFiles(self.structuresEntry),
+        )
 
         button4.grid(row=2, column=2, padx=10, pady=10)
 
-        button1 = ttk.Button(self, text="Done",
-                             command=lambda: collateCount(self.controller.objectsFile, self.controller.structuresFile, self.controller.resultsFile))
+        button1 = ttk.Button(
+            self,
+            text="Done",
+            command=lambda: collateCount(
+                self.controller.objectsFile,
+                self.controller.structuresFile,
+                self.controller.resultsFile,
+            ),
+        )
 
         button1.grid(row=3, column=2, padx=10, pady=20)
 
     def browseObjectFiles(self, entry):
-        filename = filedialog.askopenfilename(initialdir="Z:/",
-                                              title="Select a File",
-                                              filetypes=(("CSV Files",
-                                                          "*.csv"),
-                                                         ("all files",
-                                                          "*.*")))
+        filename = filedialog.askopenfilename(
+            initialdir="Z:/",
+            title="Select a File",
+            filetypes=(("CSV Files", "*.csv"), ("all files", "*.*")),
+        )
         # Change label contents
         entry.delete(0, END)
         entry.insert(0, filename)
         self.controller.objectsFile = filename
 
     def browseStructuresFiles(self, entry):
-        filename = filedialog.askopenfilename(initialdir="../csv",
-                                              title="Select a File",
-                                              filetypes=(("CSV Files",
-                                                          "*.csv"),
-                                                         ("all files",
-                                                          "*.*")))
+        filename = filedialog.askopenfilename(
+            initialdir="../csv",
+            title="Select a File",
+            filetypes=(("CSV Files", "*.csv"), ("all files", "*.*")),
+        )
         # Change label contents
         entry.delete(0, END)
         entry.insert(0, filename)
         self.controller.structuresFile = filename
 
     def saveFiles(self, entry):
-        filename = filedialog.asksaveasfilename(initialdir="Z:/",
-                                                defaultextension=".csv",
-                                                title="Select a File",
-                                                filetypes=(("CSV Files",
-                                                            "*.csv"),
-                                                           ("all files",
-                                                            "*.*")))
+        filename = filedialog.asksaveasfilename(
+            initialdir="Z:/",
+            defaultextension=".csv",
+            title="Select a File",
+            filetypes=(("CSV Files", "*.csv"), ("all files", "*.*")),
+        )
         # Change label contents
         entry.delete(0, END)
         entry.insert(0, filename)
@@ -122,40 +121,21 @@ def collateCount(objectsFile, safeRegions, resultFile):
                 else:
                     objects[section][row[6]] = 1
             else:
-                objects[section] = {
-                    row[6]: 1
-                }
+                objects[section] = {row[6]: 1}
 
     # Reading in regions
     regions = {}
-    nameToRegion = {}
-    with open(args.structures.strip()) as structureFile:
-        structureReader = csv.reader(structureFile, delimiter=",")
-
-        header = next(structureReader)  # skip header
-        root = next(structureReader)  # skip atlas root region
-        # manually set root, due to weird values
-        regions[997] = {"acronym": "undefined",
-                        "name": "undefined", "parent": "N/A"}
-        regions[0] = {"acronym": "LIW",
-                      "name": "Lost in Warp", "parent": "N/A"}
-        nameToRegion["undefined"] = 997
-        nameToRegion["Lost in Warp"] = 0
-        # store all other atlas regions and their linkages
-        for row in structureReader:
-            regions[int(row[0])] = {"acronym": row[3],
-                                    "name": row[2], "parent": int(row[8])}
-            nameToRegion[row[2]] = int(row[0])
-
+    with open(args.structures.strip(), "rb") as f:
+        regions = pickle.load(f)
     # Now count things up
     sums = {}
     total = 0
     for obj in objects.items():
         for data in obj[1].items():
             region, count = int(data[0]), data[1]
-            parent = regions[region]['parent']
+            parent = regions[region]["parent"]
             total += count
-            if 'layer' in regions[region]['name'].lower():
+            if "layer" in regions[region]["name"].lower():
                 if parent != None:
                     if sums.get(parent) != None:
                         sums[parent] += count
@@ -181,7 +161,7 @@ def collateCount(objectsFile, safeRegions, resultFile):
 
         lines.append(["Totals"])
         for r, count in runningTotals.items():
-            lines.append([regions[r]['name'], regions[r]["acronym"], count])
+            lines.append([regions[r]["name"], regions[r]["acronym"], count])
         # Write out the rows
         resultWriter = csv.writer(resultFile)
         resultWriter.writerows(lines)
@@ -189,7 +169,26 @@ def collateCount(objectsFile, safeRegions, resultFile):
         print("Done!", flush=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process z-stack images")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="output directory, only use if graphical false",
+        default="",
+    )
+    parser.add_argument(
+        "-i", "--input", help="input directory, only use if graphical false", default=""
+    )
+    parser.add_argument(
+        "-r", "--regions", help="which regions to include in output", default=""
+    )
+    parser.add_argument("-s", "--structures", help="structures file", default="")
+    parser.add_argument(
+        "-g", "--graphical", help="provides prompts when true", default=True
+    )
+
+    args = parser.parse_args()
 
     if args.graphical == True:
         globals = {
@@ -198,13 +197,14 @@ if __name__ == '__main__':
             "structuresFile": "",
         }
 
-        app = GuiController(pages=[
-                            FileLocations,
-                            ],
-                            firstPage=FileLocations,
-                            globals=globals)
+        app = GuiController(
+            pages=[
+                FileLocations,
+            ],
+            firstPage=FileLocations,
+            globals=globals,
+        )
         app.mainloop()
     else:
         print("2", flush=True)
-        collateCount(args.input.strip(), args.structures.strip(),
-                     args.output.strip())
+        collateCount(args.input.strip(), args.structures.strip(), args.output.strip())

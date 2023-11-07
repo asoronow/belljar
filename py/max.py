@@ -7,34 +7,6 @@ import numpy as np
 import argparse
 import cv2
 
-parser = argparse.ArgumentParser(description="Process z-stack images")
-parser.add_argument(
-    "-o", "--output", help="output directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-i", "--input", help="input directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-g", "--graphical", help="provides prompts when true", default=True
-)
-parser.add_argument(
-    "-d", "--dendrite", help="remove dendrites when true", default=False
-)
-parser.add_argument(
-    "-t", "--tophat", help="apply tophat filter when true", default=False
-)
-args = parser.parse_args()
-
-if args.graphical == True:
-    root = tk.Tk()
-    root.withdraw()
-
-    inputDirectory = filedialog.askdirectory(title="Select input directory")
-    outputDirectory = filedialog.askdirectory(title="Select output directory")
-else:
-    inputDirectory = args.input.strip()
-    outputDirectory = args.output.strip()
-
 
 def process_file(file, outputDirectory, topHat=False, dendrite=False):
     # Update current file
@@ -66,6 +38,37 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process z-stack images")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="output directory, only use if graphical false",
+        default="",
+    )
+    parser.add_argument(
+        "-i", "--input", help="input directory, only use if graphical false", default=""
+    )
+    parser.add_argument(
+        "-g", "--graphical", help="provides prompts when true", default=True
+    )
+    parser.add_argument(
+        "-d", "--dendrite", help="remove dendrites when true", default=False
+    )
+    parser.add_argument(
+        "-t", "--tophat", help="apply tophat filter when true", default=False
+    )
+    args = parser.parse_args()
+
+    if args.graphical == True:
+        root = tk.Tk()
+        root.withdraw()
+
+        inputDirectory = filedialog.askdirectory(title="Select input directory")
+        outputDirectory = filedialog.askdirectory(title="Select output directory")
+    else:
+        inputDirectory = args.input.strip()
+        outputDirectory = args.output.strip()
+
     os.chdir(inputDirectory)
     files = os.listdir(".")
     files.sort()

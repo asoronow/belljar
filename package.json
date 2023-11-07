@@ -1,7 +1,7 @@
 {
   "name": "belljar",
   "description": "A tool for mouse neurohistology",
-  "version": "8.1.0-rc",
+  "version": "9.0.0",
   "main": "main.js",
   "repository": "asoronow/belljar",
   "author": "Alec <a.soronow@gmail.com>",
@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.1.1",
+    "node-fetch": "v2",
     "python-shell": "^3.0.1",
+    "semver": "^7.5.4",
     "tar": "^6.1.11"
   },
   "devDependencies": {

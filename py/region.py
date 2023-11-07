@@ -1,46 +1,65 @@
 import os
 import pickle
 import argparse
-import csv
 from pathlib import Path
-import cv2
 import tifffile
 import numpy as np
+from demons import resize_image_nearest_neighbor
 
-parser = argparse.ArgumentParser(
-    description="Calculate the average intensity of a region in normalized coordinates"
-)
 
-parser.add_argument(
-    "-i", "--images", help="input directory for intensity images", default=""
-)
-parser.add_argument(
-    "-o", "--output", help="output directory for average intensity pkl", default=""
-)
-parser.add_argument(
-    "-a", "--annotations", help="input directory for annotation pkls", default=""
-)
-parser.add_argument(
-    "-s",
-    "--structures",
-    help="structures file",
-    default="../csv/structure_tree_safe_2017.csv",
-)
-parser.add_argument(
-    "-w",
-    "--whole",
-    help="Set True to process a whole brain slice (Default is False)",
-    default=False,
-)
-args = parser.parse_args()
+def reconstruct_region(intensity_data):
+    """
+    Reconstruct a region from its intensity data.
+
+    Args:
+        intensity_data (dict): Dictionary of intensity data. Keys are points, values are pixel intensity.
+
+    Returns:
+        numpy.ndarray: 2D numpy array of reconstructed region.
+    """
+
+    # Get the max x and y values
+    max_x = max([point[0] for point in intensity_data.keys()])
+    max_y = max([point[1] for point in intensity_data.keys()])
+    # Create a blank image
+    blank = np.zeros((max_x + 1, max_y + 1))
+    # Fill in the image
+    for point, intensity in intensity_data.items():
+        blank[point] = intensity
+
+    return blank
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Calculate the average intensity of a region in normalized coordinates"
+    )
+
+    parser.add_argument(
+        "-i", "--images", help="input directory for intensity images", default=""
+    )
+    parser.add_argument(
+        "-o", "--output", help="output directory for average intensity pkl", default=""
+    )
+    parser.add_argument(
+        "-a", "--annotations", help="input directory for annotation pkls", default=""
+    )
+    parser.add_argument(
+        "-m", "--map", help="input directory for structure map", default=""
+    )
+    parser.add_argument(
+        "-w",
+        "--whole",
+        help="Set True to process a whole brain slice (Default is False)",
+        default=False,
+    )
+    args = parser.parse_args()
+
     # Read in the intensity images
     intensityPath = args.images.strip()
     intensityFiles = os.listdir(intensityPath)
     intensityFiles.sort()
-
+    is_whole = eval(args.whole.strip())
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
     annotationFiles = os.listdir(annotationPath)
@@ -49,49 +68,28 @@ if __name__ == "__main__":
 
     print(2 + len(intensityFiles), flush=True)
     print("Setting up...", flush=True)
-    # Read in the regions
-    regions = {}
-    nameToRegion = {}
-    with open(args.structures.strip()) as structureFile:
-        structureReader = csv.reader(structureFile, delimiter=",")
 
-        header = next(structureReader)
-        root = next(structureReader)
-        regions[997] = {"acronym": "undefined", "name": "undefined", "parent": "N/A"}
-        regions[0] = {"acronym": "root", "name": "root", "parent": "N/A"}
-        nameToRegion["undefined"] = 997
-        nameToRegion["root"] = 0
-        for row in structureReader:
-            regions[int(row[0])] = {
-                "acronym": row[3],
-                "name": row[2],
-                "parent": int(row[8]),
-            }
-            nameToRegion[row[3]] = int(row[0])
+    structure_map = pickle.load(open(args.map.strip(), "rb"))
 
     for i, iName in enumerate(intensityFiles):
-        intensities = {}
-        verticies = {}
-
         # load the image
         try:
             intensity = tifffile.imread(intensityPath + "/" + iName)
             # get the image width and height
             height, width = intensity.shape
         except:
+            print(f"Erorr loading {iName}! Channels > 1 or bad image.", flush=True)
             continue
 
         # load the annotation
         with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
-            # print(annotation)
-            # get the annotation width and height
-            aHeight, aWidth = annotation.shape
-            scaleX = width / (aWidth)
-            scaleY = height / (aHeight)
+            annotation_recaled = resize_image_nearest_neighbor(
+                annotation, intensity.shape
+            )
 
-            requiredRegions = [
+            required_regions = [
                 "VISa",
                 "VISal",
                 "VISam",
@@ -102,7 +100,6 @@ if __name__ == "__main__":
                 "VISpm",
                 "VISpor",
                 "VISrl",
-                "TEa",
                 "RSPagl",
                 "RSPd",
                 "RSPv",
@@ -110,76 +107,39 @@ if __name__ == "__main__":
                 "STR",
             ]
 
-            requiredIds = [nameToRegion[region] for region in requiredRegions]
-            # Iterate through the annotation and check if any of the required regions are present
-            for i in range(aHeight):
-                for j in range(aWidth):
-                    # Get to parent acronym
-                    regionId = annotation[i, j]
-                    if regions.get(regionId, False) == False:
-                        regionId = 997
+            required_ids = [
+                atlas_id
+                for atlas_id, data in structure_map.items()
+                if data["acronym"] in required_regions
+            ]
 
-                    if "layer" in regions[regionId]["name"].lower():
-                        regionId = regions[regionId]["parent"]
+            intensities = {required_id: {} for required_id in required_ids}
 
-                    if regionId in requiredIds:
-                        # Get the region name
-                        regionName = regions[regionId]["acronym"]
-                        # Get the region verts
-                        imageX = int(j * scaleX)
-                        imageY = int(i * scaleY)
+            # Get all children of the required regions in a dict
+            # Dict helps us check which parent a child belongs to
+            # Child == Parent in ID_PATH
+            children_ids = {required_id: [] for required_id in required_ids}
+            for required_id in required_ids:
+                for atlas_id, data in structure_map.items():
+                    if required_id in [
+                        int(sub_id) for sub_id in data["id_path"].split("/")
+                    ]:
+                        children_ids[required_id].append(atlas_id)
 
-                        if not verticies.get(regionName, False):
-                            verticies[regionName] = []
-
-                        verticies[regionName].append((imageX, imageY))
-
-            # perserve only left points and create mask for extracting intensity
-            for region in verticies.keys():
-                mask = np.zeros_like(intensity)
-                if eval(args.whole.strip()):
-                    leftPoints = []
-                    for point in verticies[region]:
-                        if point[0] < width / 2:
-                            leftPoints.append(point)
-                    if len(leftPoints) > 3:
-                        leftHull = cv2.convexHull(np.array(leftPoints))
-                        cv2.fillConvexPoly(mask, leftHull, 255)
-                    else:
-                        continue
-                else:
-                    if len(verticies[region]) < 3:
-                        continue
-                    hull = cv2.convexHull(np.array(verticies[region]))
-                    cv2.fillConvexPoly(mask, hull, 255)
-
-                # DEBUG: show mask
-                # cv2.namedWindow("mask", cv2.WINDOW_NORMAL)
-                # cv2.resizeWindow("mask", 600, 600)
-                # resized = cv2.resize(mask, (600, 600))
-                # cv2.imshow("mask", mask)
-                # cv2.waitKey(3000)
-
-                if not intensities.get(region, False):
-                    intensities[region] = {}
-
-                intensityValues = intensity[mask == 255]
-
-                # get the points of the mask'
-                points = np.argwhere(mask == 255)
-
-                for i, point in enumerate(points):
-                    intensities[region][tuple(point)] = intensityValues[i]
-
-                # DEBUG: show intensity on blank image size of mask
-                # blank = np.zeros_like(intensity)
-                # blank[mask == 255] = list(intensities[region].values())
-                # cv2.namedWindow("intensity", cv2.WINDOW_NORMAL)
-                # cv2.resizeWindow("intensity", 600, 600)
-                # resized = cv2.resize(
-                #     blank, (600, 600))
-                # cv2.imshow("intensity", resized)
-                # cv2.waitKey(3000)
+            # Scan resized annotation for any child ids
+            # If found, add its vertex and intensity to the parent
+            for parent_id, children in children_ids.items():
+                for child_id in children:
+                    # Get the vertex of the child
+                    verts = np.where(annotation_recaled == child_id)
+                    for point in verts:
+                        # check if whole
+                        if not is_whole:
+                            intensities[parent_id][point] = intensity[point]
+                        else:
+                            # take only points in the left half
+                            if point[1] < width // 2:
+                                intensities[parent_id][point] = intensity[point]
 
             # Save the intensity values and the verticies as ROI package pkls
             for region in intensities.keys():

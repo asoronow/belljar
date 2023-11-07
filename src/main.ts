@@ -1,5 +1,4 @@
-// Required modules and structures
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { promisify } = require("util");
 const { PythonShell } = require("python-shell");
 const path = require("path");
@@ -9,6 +8,8 @@ const mv = promisify(fs.rename);
 const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
+const semver = require("semver");
+const serverFetch = require("node-fetch");
 
 var appDir = app.getAppPath();
 
@@ -45,6 +46,49 @@ const envPythonPath = path.join(envPath, envMod);
 var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 // Path to our python files
 const pyScriptsPath = path.join(appDir, "/py");
+
+const CURRENT_VERSION_TAG = getVersion();
+const GITHUB_API_RELEASES =
+  "https://api.github.com/repos/asoronow/belljar/releases/latest";
+
+async function checkForUpdates() {
+  try {
+    const response = await serverFetch(GITHUB_API_RELEASES);
+    if (!response.ok) {
+      throw new Error(`GitHub API response status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const latestVersionTag = data.tag_name;
+
+    if (
+      semver.valid(latestVersionTag) &&
+      semver.gt(latestVersionTag, CURRENT_VERSION_TAG)
+    ) {
+      const userResponse = await dialog.showMessageBox({
+        type: "info",
+        title: "Update Available",
+        message: "A new version of the application is available.",
+        detail: `The latest version is ${latestVersionTag}. Would you like to download it?`,
+        buttons: ["Yes", "No"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+
+      if (userResponse.response === 0) {
+        shell.openExternal(data.html_url); // URL to the latest release page
+      }
+    } else {
+      console.log("No updates available.");
+    }
+  } catch (error) {
+    console.error("Failed to check for updates:", error);
+    dialog.showErrorBox(
+      "Update Check Failed",
+      "There was an error checking for updates. Please try again later."
+    );
+  }
+}
 
 // Promise version of file moving
 function move(o: string, t: string) {
@@ -258,25 +302,57 @@ function setupPython(win: typeof BrowserWindow) {
 // Download the required tar files from the bucket
 function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
+  const currnet_versions = {
+    nrrd: "v9",
+    models: "v9",
+    embeddings: "v6",
+  };
+
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models-v72.tar.gz`; //  Update to v7
-    const nrrdLink = `${bucketParentPath}/nrrd-v6.tar.gz`;
+    const modelsLink = `${bucketParentPath}/models-v9.tar.gz`; //  Update to v7
+    const nrrdLink = `${bucketParentPath}/nrrd-v9.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
     if (!fresh) {
       var downloading: Array<string> = [];
       var total = 0;
 
-      // Just check if each directory exists and its not empty
+      // check the manifest.json and compare versions
+      // if the versions are different, delete the dir and download
+      const manifestPath = path.join(homeDir, "manifest.json");
+      // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
+      if (!fs.existsSync(manifestPath)) {
+        // Create manifest from current versions
+        fs.writeFileSync(
+          manifestPath,
+          JSON.stringify(currnet_versions, null, 2)
+        );
+        // Delete existing
+        downloading.push("models");
+        downloading.push("embeddings");
+        downloading.push("nrrd");
+      }
+      const manifest = require(manifestPath);
+
+      // check if each directory exists and its not empty
       for (let i = 0; i < requiredDirs.length; i++) {
         const dir = requiredDirs[i];
         if (
           !fs.existsSync(path.join(homeDir, dir)) ||
           fs.readdirSync(path.join(homeDir, dir)).length === 0
         ) {
-          downloading.push(dir);
+          // make sure we are not already downloading this dir
+          if (downloading.indexOf(dir) === -1) {
+            downloading.push(dir);
+          }
+        }
+      }
+
+      for (const [key, value] of Object.entries(currnet_versions)) {
+        if (manifest[key] !== value) {
+          downloading.push(key);
         }
       }
 
@@ -291,6 +367,14 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         }
       }
 
+      // Delete and update manifest
+      if (downloading.length > 0) {
+        fs.writeFileSync(
+          manifestPath,
+          JSON.stringify(currnet_versions, null, 2)
+        );
+      }
+
       downloading.reduce((promiseChain, dir, i) => {
         return promiseChain
           .then(() => {
@@ -300,7 +384,7 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
             );
 
             if (fs.existsSync(path.join(homeDir, dir))) {
-              fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+              fs.rmSync(path.join(homeDir, dir), { recursive: true });
             }
 
             let downloadPath = "";
@@ -356,11 +440,17 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
         }
       });
 
+      // Creat the manifest
+      fs.writeFileSync(
+        path.join(homeDir, "manifest.json"),
+        JSON.stringify(currnet_versions, null, 2)
+      );
+
       if (!allDirsExist) {
         // Something is missing, delete everything and download again
         requiredDirs.forEach((dir) => {
           if (fs.existsSync(path.join(homeDir, dir))) {
-            fs.rmdirSync(path.join(homeDir, dir), { recursive: true });
+            fs.rmSync(path.join(homeDir, dir), { recursive: true });
           }
         });
 
@@ -529,7 +619,7 @@ function updatePythonDependencies(win: typeof BrowserWindow) {
 // Ensure all required directories exist and if not, download them
 function fixMissingDirectories(win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
-    win.webContents.send("updateStatus", "Checking for missing files...");
+    win.webContents.send("updateStatus", "Checking for updatess...");
     downloadResources(win, false).then(() => {
       resolve(true);
     });
@@ -581,6 +671,7 @@ app.on("ready", () => {
   // Uncomment if you want tools on launch
   // win.webContents.toggleDevTools()
   win.on("close", function (e: any) {
+    logWin.webContents.send("savelogs", []);
     const choice = dialog.showMessageBoxSync(win, {
       type: "question",
       buttons: ["Yes", "Cancel"],
@@ -590,8 +681,13 @@ app.on("ready", () => {
     });
     if (choice === 1) {
       e.preventDefault();
+    } else {
+      // kill log window
+      logWin.close();
     }
   });
+
+  checkForUpdates();
 
   win.webContents.once("did-finish-load", () => {
     // Make a directory to house enviornment, settings, etc.yarn
@@ -721,13 +817,13 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
 
 // Adjust
 ipcMain.on("runAdjust", function (event: any, data: any[]) {
-  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  var structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: [`-i ${data[0]}`, `-s ${structPath}`, `-m ${data[1]}`],
+    args: [`-i ${data[0]}`, `-s ${structPath}`, `-a ${data[1]}`],
   };
 
   let pyshell = new PythonShell("adjust.py", options);
@@ -749,6 +845,7 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
       });
     } else {
       current++;
+      console.log(message);
       event.sender.send("updateLoad", [
         Math.round((current / total) * 100),
         message,
@@ -765,8 +862,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
   const modelPath = path.join(homeDir, "models/predictor.pt");
   const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
   const nrrdPath = path.join(homeDir, "nrrd");
-  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
-  const mapPath = path.join(appDir, "csv/class_map.pkl");
+  const mapPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
@@ -780,8 +876,8 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
       `-m ${modelPath}`,
       `-e ${embedPath}`,
       `-n ${nrrdPath}`,
-      `-s ${structPath}`,
       `-c ${mapPath}`,
+      `-l ${data[4]}`,
     ],
   };
   let pyshell = new PythonShell("map.py", options);
@@ -821,7 +917,7 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
 // Intensity by Region
 
 ipcMain.on("runIntensity", function (event: any, data: any[]) {
-  const structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  const structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let options = {
     mode: "text",
@@ -832,7 +928,7 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
       `-o ${data[1]}`,
       `-a ${data[2]}`,
       `-w ${data[3]}`,
-      `-s ${structPath}`,
+      `-m ${structPath}`,
     ],
   };
 
@@ -869,13 +965,13 @@ ipcMain.on("runIntensity", function (event: any, data: any[]) {
 
 // Counting
 ipcMain.on("runCount", function (event: any, data: any[]) {
-  var structPath = path.join(appDir, "csv/structure_tree_safe_2017.csv");
+  var structPath = path.join(appDir, "csv/structure_map.pkl");
 
   let custom_args = [
     `-p ${data[0]}`,
     `-a ${data[1]}`,
     `-o ${data[2]}`,
-    `-s ${structPath}`,
+    `-m ${structPath}`,
   ];
 
   if (data[3]) {
@@ -975,7 +1071,7 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
       String.raw`-o ${data[1]}`,
       String.raw`-i ${data[0]}`,
       `-r ${data[2]}`,
-      String.raw`-s ${path.join(appDir, "csv/structure_tree_safe_2017.csv")}`,
+      String.raw`-s ${path.join(appDir, "csv/structure_map.pkl")}`,
       "-g False",
     ],
   };

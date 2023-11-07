@@ -4,14 +4,16 @@ import cv2
 import pickle
 from pathlib import Path
 from demons import register_to_atlas
-from slice_atlas import slice_3d_volume, remove_fragments
+from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
 import torch
-import math
 import napari
+import copy
 import argparse
 from qtpy.QtWidgets import (
+    QGraphicsView,
+    QGraphicsScene,
     QPushButton,
     QProgressBar,
     QLabel,
@@ -19,30 +21,148 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QVBoxLayout,
+    QSlider,
     QWidget,
+    QMainWindow,
 )
 
+from qtpy import QtCore, QtGui
+from adjust import numpy_array_to_qimage
 
-parser = argparse.ArgumentParser(description="Map sections to atlas space")
-parser.add_argument(
-    "-o", "--output", help="output directory, only use if graphical false", default=""
-)
-parser.add_argument(
-    "-i", "--input", help="input directory, only use if graphical false", default=""
-)
-parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
-parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
-parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
-parser.add_argument("-w", "--whole", default=False)
-parser.add_argument("-a", "--spacing", help="override predicted spacing", default=False)
-parser.add_argument(
-    "-s",
-    "--structures",
-    help="structures file",
-    default="../csv/structure_tree_safe_2017.csv",
-)
-parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
-args = parser.parse_args()
+
+class ImageEraser(QMainWindow):
+    closed = QtCore.Signal()
+
+    def __init__(self, image):
+        super().__init__()
+        self.image = image
+        self.mask_image = np.zeros_like(self.image)
+        self.drawing = False
+        self.brush_size = 3
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Image Eraser")
+        container = QWidget()
+        ui_layout = QVBoxLayout()
+        self.img_view = QGraphicsView(self)
+        self.img_view.setMouseTracking(True)
+        self.img_view.viewport().installEventFilter(self)
+
+        self.img_scene = QGraphicsScene(self)
+        self.qimg = numpy_array_to_qimage(self.image)
+        self.img_pixmap = QtGui.QPixmap.fromImage(self.qimg)
+        self.img_scene.addPixmap(self.img_pixmap)
+        self.img_view.setScene(self.img_scene)
+        # Slider for brush size
+        self.brush_size_slider = QSlider(QtCore.Qt.Horizontal, self)
+        # Set label
+        self.brush_size_slider_label = QLabel("Brush Size")
+        self.brush_size_slider_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeading)
+        self.brush_size_slider.setMinimum(1)
+        self.brush_size_slider.setMaximum(10)
+        self.brush_size_slider.setValue(self.brush_size)
+        self.brush_size_slider.valueChanged.connect(self.update_brush_size)
+
+        # Buttons
+        self.save_button = QPushButton("Save", self)
+        self.cancel_button = QPushButton("Cancel", self)
+        self.save_button.clicked.connect(self.save_mask)
+        self.cancel_button.clicked.connect(self.cancel_changes)
+
+        ui_layout.addWidget(self.img_view)
+        ui_layout.addWidget(self.brush_size_slider_label)
+        ui_layout.addWidget(self.brush_size_slider)
+        ui_layout.addWidget(self.save_button)
+        ui_layout.addWidget(self.cancel_button)
+        container.setLayout(ui_layout)
+        self.setCentralWidget(container)
+
+    def eventFilter(self, source, event):
+        if source is self.img_view.viewport():
+            if event.type() == QtCore.QEvent.MouseMove and self.drawing:
+                self.draw_on_image(event.pos())
+                return True  # Indicate that the event is handled
+            elif (
+                event.type() == QtCore.QEvent.MouseButtonPress
+                and event.button() == QtCore.Qt.LeftButton
+            ):
+                self.drawing = True
+                self.draw_on_image(event.pos())
+                return True
+            elif (
+                event.type() == QtCore.QEvent.MouseButtonRelease
+                and event.button() == QtCore.Qt.LeftButton
+            ):
+                self.drawing = False
+                return True
+
+        # Call base class method to continue normal event processing
+        return super().eventFilter(source, event)
+
+    def draw_on_image(self, qpoint):
+        # Convert QGraphicsView coordinates to image coordinates
+        image_point = self.img_view.mapToScene(qpoint).toPoint()
+        if (
+            image_point
+            and 0 <= image_point.x() < self.image.shape[0]
+            and 0 <= image_point.y() < self.image.shape[1]
+        ):
+            # Calculate the points to draw using a helper function
+            points_to_draw = self.points_in_circle(
+                (image_point.x(), image_point.y()), self.brush_size
+            )
+
+            # Draw on the mask and image
+            painter = QtGui.QPainter(self.img_pixmap)
+            pen = QtGui.QPen(
+                QtGui.QColor(255, 0, 0), self.brush_size * 2
+            )  # *2 for diameter
+            painter.setPen(pen)
+            for pt in points_to_draw:
+                try:
+                    # Draw red point on the image
+                    painter.drawPoint(pt[0], pt[1])
+                    # Set corresponding point in the mask
+                    self.mask_image[pt[1], pt[0]] = 1
+                except:
+                    pass
+            painter.end()
+
+            # Update the scene to reflect the changes
+            self.img_scene.update()
+
+            self.update_image()
+
+    def points_in_circle(self, center, radius):
+        """Return a list of points in a circle"""
+        points = []
+        for x in range(center[0] - radius, center[0] + radius + 1):
+            for y in range(center[1] - radius, center[1] + radius + 1):
+                if (x - center[0]) ** 2 + (y - center[1]) ** 2 <= radius**2:
+                    points.append((x, y))
+        return points
+
+    def update_image(self):
+        # Update the QGraphicsScene with the new QPixmap
+        self.img_scene.clear()
+        self.img_scene.addPixmap(self.img_pixmap)
+        self.img_view.setScene(self.img_scene)
+
+    def update_brush_size(self, value):
+        self.brush_size = value
+
+    def save_mask(self):
+        self.mask_image = np.logical_not(self.mask_image).astype(np.uint8)
+        self.close()
+
+    def cancel_changes(self):
+        self.mask_image = np.zeros_like(self.image)
+        self.close()
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        event.accept()
 
 
 class AtlasSlice:
@@ -50,14 +170,14 @@ class AtlasSlice:
     Helper object to manage atlas slices
 
     Parameters:
+        section_name (str): the filename of the slice
         ap_position (int): the ap position of the slice
         x_angle (float): the x angle of the slice
         y_angle (float): the y angle of the slice
+        region (str): the region of the slice
     """
 
-    def __init__(
-        self, section_name, ap_position, x_angle, y_angle, whole_brain=False, region="A"
-    ):
+    def __init__(self, section_name, ap_position, x_angle, y_angle, region="A"):
         self.section_name = section_name
         self.ap_position = int(ap_position)
         self.x_angle = float(x_angle)
@@ -67,59 +187,20 @@ class AtlasSlice:
         self.image = None
         self.label = None
         self.mask = None
-        self.whole_brain = whole_brain
+        self.eraser_window = None
 
     def set_mask(self):
-        drawing = False
-        pts = []
+        """Set the mask of the slice"""
+        self.eraser_window = ImageEraser(self.image)
+        self.eraser_window.show()
 
-        img = self.image.copy()
-        # ensure image is color
-        if len(img.shape) == 2:
-            # convert to 8bit from float64
-            img = (img).astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        # on exit
+        self.eraser_window.closed.connect(self.on_exit)
 
-        def draw_circle(event, x, y, flags, param):
-            nonlocal drawing, pts
-            if event == cv2.EVENT_LBUTTONDOWN:
-                drawing = True
-                pts.append((x, y))
-            elif event == cv2.EVENT_MOUSEMOVE:
-                if drawing:
-                    cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                    pts.append((x, y))
-            elif event == cv2.EVENT_LBUTTONUP:
-                drawing = False
-                cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
-                pts.append((x, y))
-
-        # Load image
-        if img is None:
-            print(f"Could not open or find the image")
-            return None
-
-        mask = np.zeros(img.shape[:2], dtype=np.uint8)
-
-        cv2.namedWindow("Click and hold to outline | Press Q to finish")
-        cv2.setMouseCallback(
-            "Click and hold to outline | Press Q to finish", draw_circle
-        )
-
-        while True:
-            cv2.imshow("Click and hold to outline | Press Q to finish", img)
-            k = cv2.waitKey(1) & 0xFF
-            if k == ord("q"):
-                break
-
-        # Filling the closed shape
-        if len(pts) > 2:
-            cv2.fillPoly(mask, [np.array(pts)], 1)
-
-        mask = np.logical_not(mask).astype(np.uint8)
-
-        cv2.destroyAllWindows()
-        self.mask = mask
+    def on_exit(self):
+        self.mask = self.eraser_window.mask_image
+        cv2.imshow("Mask", self.mask * 255)
+        cv2.waitKey(0)
 
     def set_slice(self, atlas, annotation):
         """
@@ -133,34 +214,12 @@ class AtlasSlice:
             numpy.ndarray: the atlas slice
             numpy.ndarray: the annotation slice
         """
-        if self.whole_brain:
-            left_image = slice_3d_volume(
-                atlas, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint8)
-            right_image = slice_3d_volume(
-                atlas[:, :, ::-1], self.ap_position, -1 * self.x_angle, self.y_angle
-            ).astype(np.uint8)
-
-            left_label = slice_3d_volume(
-                annotation, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint32)
-
-            right_label = slice_3d_volume(
-                annotation[:, :, ::-1],
-                self.ap_position,
-                -1 * self.x_angle,
-                self.y_angle,
-            ).astype(np.uint32)
-
-            self.image = np.concatenate((left_image, right_image), axis=1)
-            self.label = np.concatenate((left_label, right_label), axis=1)
-        else:
-            self.image = slice_3d_volume(
-                atlas, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint8)
-            self.label = slice_3d_volume(
-                annotation, self.ap_position, self.x_angle, self.y_angle
-            ).astype(np.uint32)
+        self.image = slice_3d_volume(
+            atlas, self.ap_position, self.x_angle, self.y_angle
+        ).astype(np.uint8)
+        self.label = slice_3d_volume(
+            annotation, self.ap_position, self.x_angle, self.y_angle
+        ).astype(np.uint32)
 
     def get_registered(self, tissue):
         """
@@ -175,8 +234,12 @@ class AtlasSlice:
             numpy.ndarray: the color annotation slice
         """
         if self.mask is not None:
-            self.image = self.image * self.mask
-            self.label = self.label * self.mask
+            try:
+                self.image = self.image * self.mask
+                self.label = self.label * self.mask
+            except:
+                self.mask = None
+                print("Bad mask! Reset next alignment.")
 
         warped_labels, warped_atlas, color_label = register_to_atlas(
             tissue,
@@ -211,6 +274,7 @@ class AlignmentController:
         model_path,
         spacing=None,
         is_whole=True,
+        use_legacy=False,
     ):
         self.nrrd_path = nrrd_path
         self.input_path = input_path
@@ -219,17 +283,26 @@ class AlignmentController:
         self.model_path = model_path
         self.spacing = spacing
         self.is_whole = is_whole
-
+        self.use_legacy = use_legacy
         self.viewer = napari.Viewer(
             title="Atlas Alignment",
         )
 
+        atlas_name = "reconstructed_atlas.nrrd" if use_legacy else "atlas_10.nrrd"
+        annotation_name = (
+            "reconstructed_annotation.nrrd" if use_legacy else "annotation_10.nrrd"
+        )
+
         self.atlas = nrrd.read(
-            Path(self.nrrd_path) / "ara_nissl_10_all.nrrd", index_order="C"
+            Path(self.nrrd_path) / atlas_name,
         )[0]
         self.annotation = nrrd.read(
-            Path(self.nrrd_path) / "annotation_10_all.nrrd", index_order="C"
+            Path(self.nrrd_path) / annotation_name,
         )[0]
+
+        if not self.is_whole:
+            self.atlas = self.atlas[:, :, : self.atlas.shape[2] // 2]
+            self.annotation = self.annotation[:, :, : self.annotation.shape[2] // 2]
 
         # Atlas layer
         self.atlas_layer = self.viewer.add_image(
@@ -246,8 +319,6 @@ class AlignmentController:
             colormap="gray",
             contrast_limits=[0, 255],
         )
-        # make atalas 8 bit
-        self.atlas = cv2.normalize(self.atlas, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
         self.file_list = []
         self.num_slices = 0
@@ -275,7 +346,10 @@ class AlignmentController:
         self.link_angles_button.stateChanged.connect(self.set_all_angles)
 
         self.ap_position_spinbox = QDoubleSpinBox()
-        self.ap_position_spinbox.setRange(0, 1319)
+        if not self.use_legacy:
+            self.ap_position_spinbox.setRange(0, 1319)
+        else:
+            self.ap_position_spinbox.setRange(0, 528)
         self.ap_position_spinbox.setSingleStep(5)
         # no decimal places
         self.ap_position_spinbox.setDecimals(0)
@@ -391,6 +465,25 @@ class AlignmentController:
             with open(Path(self.input_path) / "alignment.pkl", "rb") as f:
                 self.atlas_slices = pickle.load(f)
             self.prior_alignment = True
+
+            # reload slices and refresh class definition
+            for _, atlas_slice in self.atlas_slices.items():
+                # re-init with old values
+                old_name = atlas_slice.section_name
+                old_x = atlas_slice.x_angle
+                old_y = atlas_slice.y_angle
+                old_pos = atlas_slice.ap_position
+                old_region = atlas_slice.region
+
+                self.atlas_slices[old_name] = AtlasSlice(
+                    old_name,
+                    old_pos,
+                    old_x,
+                    old_y,
+                    region=old_region,
+                )
+                self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
+
             print("Found prior alignment!")
         except:
             print("No comptabile alignment found...")
@@ -406,10 +499,10 @@ class AlignmentController:
         tissue_predictor.to(device)
         tissue_predictor.eval()
 
-        def restore_label(self, label):
+        def restore_label(label, legacy=False):
             pos, x_angle, y_angle = label
             # restore target values
-            pos_max = 1324
+            pos_max = 1324 if not legacy else 528
             pos_min = 0
             pos = pos * (pos_max - pos_min) + pos_min
             x_angle_max = 10
@@ -438,21 +531,29 @@ class AlignmentController:
                 pred = pred.cpu().numpy()
 
                 # restore pred to regular space
-                pred = restore_label(self, pred[0])
+                pred = restore_label(pred[0], self.use_legacy)
                 predicted_slice = AtlasSlice(
                     self.file_list[i],
                     pred[0],
                     pred[1],
                     pred[2],
-                    self.is_whole,
                 )
                 predicted_slice.set_slice(self.atlas, self.annotation)
                 self.atlas_slices[self.file_list[i]] = predicted_slice
 
     def save_alignment(self):
         """Save the slices to a pickle file"""
+        # get rid of image and label
+        saved_copy = {}
+        for section_name, atlas_slice in self.atlas_slices.items():
+            atlas_slice.eraser_window = None
+            this_copy = copy.deepcopy(atlas_slice)
+            this_copy.image = None
+            this_copy.label = None
+            saved_copy[section_name] = this_copy
+
         with open(Path(self.input_path) / "alignment.pkl", "wb") as f:
-            pickle.dump(self.atlas_slices, f)
+            pickle.dump(saved_copy, f)
 
     def update_mask(self):
         """Update the mask of the current slice"""
@@ -533,7 +634,8 @@ class AlignmentController:
         )
         self.mask_button.setText(
             "Set Mask"
-            if self.atlas_slices[self.file_list[self.current_section]].mask is None
+            if self.atlas_slices[self.file_list[self.current_section]].eraser_window
+            is None
             else "Update Mask"
         )
 
@@ -564,20 +666,20 @@ class AlignmentController:
         self.update_display()
 
     def adjust_positions(self):
-        """Adjust the positions of all slices based on trend in visted slices"""
-        if not self.prior_alignment:
-            visted_positions = []
+        """Adjust the positions of all slices based on trend in visited slices"""
+        if not self.prior_alignment and self.visited < self.num_slices - 1:
+            visited_positions = []
             for i in range(self.visited):
-                visted_positions.append(
+                visited_positions.append(
                     self.atlas_slices[self.file_list[i]].ap_position,
                 )
 
-            if len(visted_positions) < 2:
+            if len(visited_positions) < 2:
                 return
 
             # fit a line to the visited positions
-            x = np.arange(len(visted_positions))
-            m, b = np.polyfit(x, visted_positions, 1)
+            x = np.arange(len(visited_positions))
+            m, b = np.polyfit(x, visited_positions, 1)
 
             # adjust the positions of all slices after the visited slices
             for i in range(self.visited, self.num_slices):
@@ -625,26 +727,8 @@ class AlignmentController:
 
         # warp images
         print("Warping images...", flush=True)
-        # Check for any non-all regions
-        regions = np.unique([slice.region for slice in self.atlas_slices.values()])
-        # if any non-all regions, load other atlases
-        if "NC" in regions or "C" in regions:
-            other_atlases = {}
-            other_annotations = {}
-
-            other_atlases["NC"] = nrrd.read(
-                Path(self.nrrd_path) / "ara_nissl_10_no_cerebrum.nrrd", index_order="C"
-            )[0]
-            other_atlases["C"] = nrrd.read(
-                Path(self.nrrd_path) / "ara_nissl_10_cerebrum.nrrd", index_order="C"
-            )[0]
-            other_annotations["NC"] = nrrd.read(
-                Path(self.nrrd_path) / "annotation_10_no_cerebrum.nrrd",
-                index_order="C",
-            )[0]
-            other_annotations["C"] = nrrd.read(
-                Path(self.nrrd_path) / "annotation_10_cerebrum.nrrd", index_order="C"
-            )[0]
+        with open(self.structures_path, "rb") as f:
+            structure_map = pickle.load(f)
 
         for i in range(self.num_slices):
             print(f"Warping {self.file_list[i]}...", flush=True)
@@ -655,10 +739,14 @@ class AlignmentController:
             )
 
             if current_slice.region != "A":
-                current_slice.set_slice(
-                    other_atlases[current_slice.region],
-                    other_annotations[current_slice.region],
+                masked_atlas, masked_annotation = mask_slice_by_region(
+                    current_slice.image,
+                    current_slice.label,
+                    structure_map,
+                    current_slice.region,
                 )
+                current_slice.image = masked_atlas
+                current_slice.label = masked_annotation
 
             warped_labels, warped_atlas, color_label = current_slice.get_registered(
                 sample,
@@ -670,6 +758,9 @@ class AlignmentController:
                 str(Path(self.output_path) / f"Atlas_{stripped_filename}.png"),
                 warped_atlas,
             )
+            color_label = add_outlines(warped_labels, color_label)
+            # make label rgb
+            color_label = cv2.cvtColor(color_label, cv2.COLOR_BGR2RGB)
             cv2.imwrite(
                 str(Path(self.output_path) / f"Label_{stripped_filename}.png"),
                 color_label,
@@ -677,18 +768,16 @@ class AlignmentController:
 
             # convert sample to color
             sample = cv2.cvtColor(sample, cv2.COLOR_GRAY2RGB)
-            # convert color_label to 8 bit
-            color_label = cv2.normalize(
-                color_label, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
-            )
+
             # composite image
             composite = cv2.addWeighted(
                 sample,
-                0.5,
+                0.80,
                 color_label,
-                0.5,
+                0.20,
                 0,
             )
+
             cv2.imwrite(
                 str(Path(self.output_path) / f"Composite_{stripped_filename}.png"),
                 composite,
@@ -711,12 +800,34 @@ class AlignmentController:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Map sections to atlas space")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="output directory, only use if graphical false",
+        default="",
+    )
+    parser.add_argument(
+        "-i", "--input", help="input directory, only use if graphical false", default=""
+    )
+    parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
+    parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
+    parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
+    parser.add_argument("-w", "--whole", default=False)
+    parser.add_argument(
+        "-a", "--spacing", help="override predicted spacing", default=False
+    )
+    parser.add_argument("-l", "--legacy", help="use legacy atlas", default=False)
+    parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
+    args = parser.parse_args()
+
     align_controller = AlignmentController(
         args.nrrd.strip(),
         args.input.strip(),
         args.output.strip(),
-        args.structures.strip(),
+        args.map.strip(),
         args.model.strip(),
         args.spacing if args.spacing else None,
         eval(args.whole),
+        use_legacy=eval(args.legacy),
     )

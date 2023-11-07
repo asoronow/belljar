@@ -6,6 +6,7 @@ import cv2
 import pickle
 from pathlib import Path
 from find_neurons import DetectionResult
+from demons import resize_image_nearest_neighbor
 
 
 def iou(boxA, boxB):
@@ -105,10 +106,10 @@ if __name__ == "__main__":
         default="",
     )
     parser.add_argument(
-        "-s",
+        "-m",
         "--structures",
-        help="structures file",
-        default="../csv/structure_tree_safe_2017.csv",
+        help="path to structure map",
+        default="../csv/structure_map.pkl",
     )
     parser.add_argument(
         "-l",
@@ -117,8 +118,8 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
-
     args = parser.parse_args()
+
     prediction_path = Path(args.predictions.strip())
     annotation_path = Path(args.annotations.strip())
     output_path = Path(args.output.strip())
@@ -134,93 +135,80 @@ if __name__ == "__main__":
     # Reading in regions
     regions = {}
     nameToRegion = {}
-    with open(args.structures.strip()) as structureFile:
-        structureReader = csv.reader(structureFile, delimiter=",")
-
-        header = next(structureReader)  # skip header
-        root = next(structureReader)  # skip atlas root region
-        # manually set root, due to weird values
-        regions[997] = {"acronym": "undefined", "name": "undefined", "parent": "N/A"}
-        regions[0] = {"acronym": "LIW", "name": "Lost in Warp", "parent": "N/A"}
-        nameToRegion["undefined"] = 997
-        nameToRegion["Lost in Warp"] = 0
-        # store all other atlas regions and their linkages
-        for row in structureReader:
-            regions[int(row[0])] = {
-                "acronym": row[3],
-                "name": row[2],
-                "parent": int(row[8]),
-            }
-            nameToRegion[row[2]] = int(row[0])
+    with open(args.structures.strip(), "rb") as f:
+        regions = pickle.load(f)
+        for k, v in regions.items():
+            nameToRegion[v["name"]] = k
 
     sums = {}
     colocalized = {}
     region_areas = {}
     for i, pName in enumerate(predictionFiles):
         # divide up the results file by section as well
-        sums[annotation_files[i]] = {}
-        region_areas[annotation_files[i]] = {}
-        local_sums = sums[annotation_files[i]]
-        local_region_areas = region_areas[annotation_files[i]]
+        sums[pName] = {}
+        region_areas[pName] = {}
         with open(prediction_path / pName, "rb") as predictionPkl, open(
             annotation_path / annotation_files[i], "rb"
         ) as annotationPkl:
-            print("Counting...", flush=True)
+            print(f"Counting {annotation_files[i].split('.')[0]}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
             predicted_size = predictions[0].image_dimensions
-            predicted_size = (predicted_size[1], predicted_size[0])
             # Count the area of each region in the annotation
-            annotation_rescaled = cv2.resize(
-                annotation.astype(np.int32),
-                predicted_size,
-                interpolation=cv2.INTER_NEAREST,
+            annotation_rescaled = resize_image_nearest_neighbor(
+                annotation, predicted_size
             )
+
             unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
             for unique_id, count in zip(unique_ids, counts):
-                try:
-                    name = regions[unique_id]["name"]
-                    parent_id = regions[unique_id]["parent"]
-                    parent_name = regions[parent_id]["name"]
-                    local_region_areas[name] = local_region_areas.get(name, 0) + count
-                    local_region_areas[parent_name] = (
-                        local_region_areas.get(parent_name, 0) + count
-                    )
-                except KeyError:
-                    pass
+                name = regions[unique_id]["acronym"]
+                id_path = regions[unique_id]["id_path"].split("/")
+                if len(id_path) >= 2:
+                    parent_id = np.uint32(id_path[-2])
+                else:
+                    parent_id = unique_id
+                parent_name = regions[parent_id]["acronym"]
+                region_areas[pName][name] = count
+
+                if not region_areas[pName].get(parent_name, False):
+                    region_areas[pName][parent_name] = count
+                else:
+                    region_areas[pName][parent_name] += count
 
             all_boxes = {c: [] for c in range(len(predictions))}
             for c, detection in enumerate(predictions):
-                local_sums[c] = {}
+                sums[pName][c] = {}
+                counted_boxes = 0
                 for box in detection.boxes:
+                    counted_boxes += 1
                     all_boxes[c] += [box]
                     x, y, mX, mY = box[0], box[1], box[2], box[3]
                     xPos = int((mX - (mX - x) // 2))
                     yPos = int((mY - (mY - y) // 2))
-                    atlas_id = int(annotation_rescaled[yPos, xPos])
-                    name = regions[atlas_id]["name"]
-                    if "layer" in name.lower():
-                        if args.layers:
-                            if local_sums[c].get(name, False):
-                                local_sums[c][name] += 1
-                            else:
-                                local_sums[c][name] = 1
-                        parent_atlas_id = regions[atlas_id]["parent"]
-                        parent_name = regions[parent_atlas_id]["name"]
-                        if local_sums[c].get(parent_atlas_id, False):
-                            local_sums[c][parent_name] += 1
+                    # draw a circle on the image
+                    atlas_id = annotation_rescaled[yPos, xPos]
+                    acronym = regions[atlas_id]["acronym"]
+                    if args.layers:
+                        if sums[pName][c].get(acronym, False):
+                            sums[pName][c][acronym] += 1
                         else:
-                            local_sums[c][parent_name] = 1
+                            sums[pName][c][acronym] = 1
                     else:
-                        if local_sums[c].get(name, False):
-                            local_sums[c][name] += 1
+                        id_path = regions[atlas_id]["id_path"].split("/")
+                        if len(id_path) >= 2:
+                            parent_id = np.uint32(id_path[-2])
                         else:
-                            local_sums[c][name] = 1
+                            parent_id = atlas_id
+                        parent_acronym = regions[parent_id]["acronym"]
+                        if sums[pName][c].get(parent_acronym, False):
+                            sums[pName][c][parent_acronym] += 1
+                        else:
+                            sums[pName][c][parent_acronym] = 1
 
             # Compute colocalization
-            colocalized[annotation_files[i]] = {}
-            local_colocalized = colocalized[annotation_files[i]]
+            colocalized[pName] = {}
+            local_colocalized = colocalized[pName]
             for c, boxes in all_boxes.items():
                 local_colocalized[c] = {}
                 for c2, boxes2 in all_boxes.items():
@@ -231,56 +219,44 @@ if __name__ == "__main__":
         lines = []
         running_counts = {}
         running_areas = {}
-        sections = list(sums.keys())
-        counts = list(sums.values())
-        areas = list(region_areas.values())
-        for section, counts, areas in zip(sections, counts, areas):
-            lines.append([section])
-            titles = ["Region", "Acronym", "Area (px^2)"]
-            for chan in range(len(counts)):
-                titles.append(f"Channel #{chan}")
-            lines.append(titles)
-
-            for c, channel_count in counts.items():
-                running_counts[c] = {}
-                for region, count in channel_count.items():
-                    if running_counts[c].get(region, False):
-                        running_counts[c][region] += count
-                    else:
-                        running_counts[c][region] = count
-
-            for name, area in areas.items():
-                if running_areas.get(name, False):
-                    running_areas[name] += area
-                else:
-                    running_areas[name] = area
-
-            for region, area in areas.items():
-                line = [region, regions[nameToRegion[region]]["acronym"], area]
+        # Process the sums dictionary to create a unified structure per file
+        for file, channels in sums.items():
+            lines.append([file])
+            all_channel_regions = [channels[channel].keys() for channel in channels]
+            all_channel_regions = [
+                item for sublist in all_channel_regions for item in sublist
+            ]
+            lines.append(
+                ["Region", "Area (px)"]
+                + [f"Channel #{c}" for c in range(len(channels))]
+            )
+            for region in sorted(all_channel_regions):
                 per_channel_counts = []
-                for chan, channel_count in counts.items():
-                    per_channel_counts.append(channel_count.get(region, 0))
-                line.extend(per_channel_counts)
-                lines.append(line)
+                for channel in channels:
+                    if channels[channel].get(region, False):
+                        per_channel_counts.append(channels[channel][region])
+                    else:
+                        per_channel_counts.append(0)
 
+                    if running_counts.get(region, False):
+                        running_counts[region] += per_channel_counts[-1]
+                    else:
+                        running_counts[region] = per_channel_counts[-1]
+
+                lines.append(
+                    [
+                        region,
+                        region_areas[file][region],
+                    ]
+                    + per_channel_counts
+                )
             lines.append([])
 
         lines.append(["Totals"])
-        lines.append(
-            ["Region", "Acronym", "Area (px^2)"]
-            + [f"Channel #{c}" for c in range(len(running_counts))]
-        )
-        for region, area in running_areas.items():
-            per_channel_counts = []
-            for chan, count_result in running_counts.items():
-                per_channel_counts.append(count_result.get(region, 0))
-            line = [
-                region,
-                regions[nameToRegion[region]]["acronym"],
-                area,
-                *per_channel_counts,
-            ]
-            lines.append(line)
+        lines.append(["Region", "Count"])
+        for region, count in sorted(running_counts.items()):
+            lines.append([region, count])
+
         lines.append([])
         # Colocalization
         lines.append(["Colocalization Matrix (by Section)"])

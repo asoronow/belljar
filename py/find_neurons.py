@@ -17,6 +17,20 @@ class DetectionResult:
         self.image_dimensions = image_dimensions
 
 
+def export_bboxes(image, boxes, output_path):
+    # contrast enhancement
+
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray_image = clahe.apply(gray_image)
+    image = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+
+    for box in boxes:
+        x1, y1, x2, y2 = [int(b) for b in box]
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+    cv2.imwrite(str(output_path), image)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
@@ -78,13 +92,20 @@ if __name__ == "__main__":
         try:
             if ext in ["tif", "tiff"]:
                 img = tiff.imread(file_path)
-                channels, height, width = img.shape
-                index_order = "C"
+                if len(img.shape) == 3:
+                    channels, height, width = img.shape
+                    index_order = "C"
+                elif len(img.shape) == 2:
+                    height, width = img.shape
+                    channels = 1
+                else:
+                    raise Exception("Image has more than 3 dimensions!")
             else:
                 img = cv2.imread(file_path)
                 height, width, channels = img.shape
-        except:
+        except Exception as e:
             print(f"Error reading {file}!", flush=True)
+            print(e, flush=True)
             continue
 
         # If multichannel, split into individual channels
@@ -111,12 +132,16 @@ if __name__ == "__main__":
                     detection_model,
                     slice_height=256,
                     slice_width=256,
-                    overlap_height_ratio=0.1,
-                    overlap_width_ratio=0.1,
+                    overlap_height_ratio=0.2,
+                    overlap_width_ratio=0.2,
                 )
+
+                def xyxy_to_area(box):
+                    return (box[2] - box[0]) * (box[3] - box[1])
 
                 bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
                 scores = [obj.score.value for obj in result.object_prediction_list]
+                # Remove any predictions with a oversized box
                 predictions.append(
                     DetectionResult(
                         boxes=bboxes,
@@ -124,24 +149,26 @@ if __name__ == "__main__":
                         image_dimensions=(height, width),
                     )
                 )
-                result.export_visuals(
-                    export_dir=output_dir,
-                    file_name=f"Boxes_{stripped}_channel_{i}",
-                    hide_labels=True,
-                    hide_conf=True,
-                )
+                bbox_path = Path(output_dir) / f"BBoxes_{stripped}_{i}.png"
+                export_bboxes(chan_img, bboxes, bbox_path)
         else:
             # check if image is BGR
             if channels < 3:
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+            # Make sure image is 8bit or float32
+            if img.dtype != np.uint8:
+                img = cv2.normalize(
+                    img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
+                )
 
             result = get_sliced_prediction(
                 img,
                 detection_model,
                 slice_height=256,
                 slice_width=256,
-                overlap_height_ratio=0.1,
-                overlap_width_ratio=0.1,
+                overlap_height_ratio=0.2,
+                overlap_width_ratio=0.2,
             )
             bboxes = [obj.bbox.to_xyxy() for obj in result.object_prediction_list]
             scores = [obj.score.value for obj in result.object_prediction_list]
@@ -152,12 +179,8 @@ if __name__ == "__main__":
                     image_dimensions=(height, width),
                 )
             ]
-            result.export_visuals(
-                export_dir=output_dir,
-                file_name=f"Boxes_{stripped}",
-                hide_labels=True,
-                hide_conf=True,
-            )
+            bbox_path = Path(output_dir) / f"BBoxes_{stripped}.png"
+            export_bboxes(img, bboxes, bbox_path)
 
         with open(output_dir / f"Predictions_{stripped}.pkl", "wb") as f:
             pickle.dump(predictions, f)
