@@ -23,6 +23,7 @@ const serverFetch = require("node-fetch");
 var appDir = app.getAppPath();
 var win = null;
 var logWin = null;
+var isQuitting = false;
 var log = console.log;
 console.log = function () {
     var args = Array.from(arguments);
@@ -33,8 +34,11 @@ console.log = function () {
     let prefix = `[${timestamp}]`;
     let message = [prefix, ...args];
     log.apply(console, message);
-    if (logWin !== null) {
+    try {
         logWin.webContents.send("log", message.join(" "));
+    }
+    catch (error) {
+        // do nothing window was closed
     }
 };
 // Path variables for easy management of execution
@@ -547,9 +551,6 @@ app.on("ready", () => {
     // Uncomment if you want tools on launch
     // win.webContents.toggleDevTools()
     win.on("close", function (e) {
-        if (logWin !== null) {
-            logWin.webContents.send("savelogs", []);
-        }
         const choice = dialog.showMessageBoxSync(win, {
             type: "question",
             buttons: ["Yes", "Cancel"],
@@ -560,14 +561,14 @@ app.on("ready", () => {
             e.preventDefault();
         }
         else {
-            if (logWin !== null) {
+            try {
+                logWin.webContents.send("savelogs", []);
                 logWin.close();
             }
-            app.quit();
+            catch (error) {
+                // do nothing window was closed
+            }
         }
-    });
-    logWin.on("close", function (e) {
-        e.preventDefault();
     });
     checkForUpdates();
     win.webContents.once("did-finish-load", () => {
