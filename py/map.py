@@ -571,8 +571,8 @@ class AlignmentController:
         """
 
         # Calculate the aspect ratio of both images
-        aspect_ratio_img1 = img1.shape[1] / img1.shape[0]
-        aspect_ratio_img2 = img2.shape[1] / img2.shape[0]
+        aspect_ratio_img1 = img1.shape[0] / img1.shape[1]
+        aspect_ratio_img2 = img2.shape[0] / img2.shape[1]
 
         # Set the target height to 1080
         target_height = 1080

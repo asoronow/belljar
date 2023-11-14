@@ -5,18 +5,18 @@ import json
 import pickle
 import cv2
 from slice_atlas import add_outlines, slice_3d_volume
+from demons import resize_image_nearest_neighbor
 
 
 def main():
     # load in the legacy graph
-    graph_path = Path("./csv/legacy_graph.json")
     current_map = Path("./csv/structure_map.pkl")
     # legacy atlas
-    atlas_path = Path("C:/Users/Alec/.belljar/nrrd/reconstructed_atlas.nrrd")
+    atlas_path = Path("~/.belljar/nrrd/reconstructed_atlas.nrrd").expanduser()
     atlas = nrrd.read(atlas_path)[0]
 
     # legacy annotations
-    annotation_path = Path("C:/Users/Alec/.belljar/nrrd/reconstructed_annotation.nrrd")
+    annotation_path = Path("~/.belljar/nrrd/reconstructed_annotation.nrrd").expanduser()
     annotation = nrrd.read(annotation_path)[0]
 
     # load in the current map
@@ -47,9 +47,21 @@ def main():
 
     # # save the reconstructed annotation
     annotation = annotation.astype(np.uint32)
-    print(annotation.shape)
-    midway_slice = slice_3d_volume(annotation, annotation.shape[0] // 2, 0, 10)
-    midway_atlas = slice_3d_volume(atlas, atlas.shape[0] // 2, 0, 10)
+    resized_atlas = []
+    resized_annotation = []
+    new_shape = (1140, 800)
+    for z in range(atlas.shape[0]):
+        new_slice = cv2.resize(atlas[z, :, :], new_shape, interpolation=cv2.INTER_CUBIC)
+        new_annotation = resize_image_nearest_neighbor(annotation[z, :, :], new_shape)
+        resized_annotation.append(new_annotation)
+        resized_atlas.append(new_slice)
+
+    resized_atlas = np.stack(resized_atlas)
+    resized_annotation = np.stack(resized_annotation)
+    nrrd.write(str(atlas_path), resized_atlas)
+    nrrd.write(str(annotation_path), resized_annotation)
+    midway_slice = slice_3d_volume(resized_annotation, annotation.shape[0] // 2, 0, 0)
+    midway_atlas = slice_3d_volume(resized_atlas, atlas.shape[0] // 2, 0, 0)
     colored = np.zeros(midway_slice.shape + (3,), dtype=np.uint8)
     for label in np.unique(midway_slice):
         colored[midway_slice == label] = current_map[label]["color"]

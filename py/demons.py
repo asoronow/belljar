@@ -22,10 +22,9 @@ def match_histograms(fixed, moving):
 
 def multimodal_registration(fixed, moving):
     # Pad
-    padding_size = [64] * fixed.GetDimension()
-    fixed = sitk.ConstantPad(fixed, padding_size)
-    moving = sitk.ConstantPad(moving, padding_size)
-
+    padding_size = 64
+    fixed = sitk.ConstantPad(fixed, (padding_size, padding_size))
+    moving = sitk.ConstantPad(moving, (padding_size, padding_size))
     # Cast
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.Cast(moving, sitk.sitkFloat32)
@@ -38,11 +37,10 @@ def multimodal_registration(fixed, moving):
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(32)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.1,
-        numberOfIterations=300,
-        convergenceMinimumValue=1e-6,
-        convergenceWindowSize=10,
-        estimateLearningRate=R.EachIteration,
+        learningRate=0.001,
+        numberOfIterations=500,
+        convergenceMinimumValue=1e-8,
+        convergenceWindowSize=20,
     )
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
@@ -54,16 +52,13 @@ def multimodal_registration(fixed, moving):
 
     # Resample the moving image using the initial transformation
     resampled_moving = sitk.Resample(
-        moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
+        moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
     )
-
     # B-spline
-    transformDomainMeshSize = [6] * fixed.GetDimension()
+    transformDomainMeshSize = [4] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
     R.SetOptimizerScalesFromPhysicalShift()
-
     R.SetInitialTransform(tx, inPlace=False)
-    R.SetInterpolator(sitk.sitkNearestNeighbor)
 
     outTx2 = R.Execute(fixed, resampled_moving)
 
@@ -166,7 +161,7 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
     moving = sitk.GetImageFromArray(section, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
-
+    # resize atlas to match section
     moving = match_histograms(fixed, moving)
     tx = multimodal_registration(fixed, moving)
     resampler = sitk.ResampleImageFilter()

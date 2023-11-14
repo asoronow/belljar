@@ -33,7 +33,7 @@ console.log = function () {
     let prefix = `[${timestamp}]`;
     let message = [prefix, ...args];
     log.apply(console, message);
-    if (logWin) {
+    if (logWin !== null) {
         logWin.webContents.send("log", message.join(" "));
     }
 };
@@ -251,7 +251,7 @@ function setupPython(win) {
 function downloadResources(win, fresh) {
     // Download the tar files into the homeDir and extract them to their respective folders
     const currnet_versions = {
-        nrrd: "v9",
+        nrrd: "v91",
         models: "v9",
         embeddings: "v6",
     };
@@ -259,7 +259,7 @@ function downloadResources(win, fresh) {
         const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
         const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
         const modelsLink = `${bucketParentPath}/models-v9.tar.gz`; //  Update to v7
-        const nrrdLink = `${bucketParentPath}/nrrd-v9.tar.gz`;
+        const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
         const requiredDirs = ["models", "embeddings", "nrrd"];
         if (!fresh) {
             var downloading = [];
@@ -536,6 +536,7 @@ function createLogWindow() {
         resizable: true,
         autoHideMenuBar: true,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
+        closeable: false,
     });
     logWin.loadFile("pages/log.html");
     return logWin;
@@ -546,7 +547,9 @@ app.on("ready", () => {
     // Uncomment if you want tools on launch
     // win.webContents.toggleDevTools()
     win.on("close", function (e) {
-        logWin.webContents.send("savelogs", []);
+        if (logWin !== null) {
+            logWin.webContents.send("savelogs", []);
+        }
         const choice = dialog.showMessageBoxSync(win, {
             type: "question",
             buttons: ["Yes", "Cancel"],
@@ -557,9 +560,14 @@ app.on("ready", () => {
             e.preventDefault();
         }
         else {
-            // kill log window
-            logWin.close();
+            if (logWin !== null) {
+                logWin.close();
+            }
+            app.quit();
         }
+    });
+    logWin.on("close", function (e) {
+        e.preventDefault();
     });
     checkForUpdates();
     win.webContents.once("did-finish-load", () => {
