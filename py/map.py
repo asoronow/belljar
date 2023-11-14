@@ -747,7 +747,8 @@ class AlignmentController:
                 sample,
             )
 
-            stripped_filename = self.file_list[i].split(".")[0]
+            stripped_filename = self.file_list[i].split(".")
+            stripped_filename = ".".join(stripped_filename[:-1])
 
             cv2.imwrite(
                 str(Path(self.output_path) / f"Atlas_{stripped_filename}.png"),
