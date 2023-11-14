@@ -15,7 +15,7 @@ var appDir = app.getAppPath();
 
 var win: typeof BrowserWindow = null;
 var logWin: typeof BrowserWindow = null;
-
+var isQuitting = false;
 var log = console.log;
 console.log = function () {
   var args = Array.from(arguments);
@@ -28,8 +28,10 @@ console.log = function () {
   let message = [prefix, ...args];
 
   log.apply(console, message);
-  if (logWin !== null) {
+  try {  
     logWin.webContents.send("log", message.join(" "));
+  } catch (error) {
+    // do nothing window was closed
   }
 };
 
@@ -672,9 +674,6 @@ app.on("ready", () => {
   // Uncomment if you want tools on launch
   // win.webContents.toggleDevTools()
   win.on("close", function (e: any) {
-    if (logWin !== null) {
-      logWin.webContents.send("savelogs", []);
-    }
     const choice = dialog.showMessageBoxSync(win, {
       type: "question",
       buttons: ["Yes", "Cancel"],
@@ -685,15 +684,13 @@ app.on("ready", () => {
     if (choice === 1) {
       e.preventDefault();
     } else {
-      if (logWin !== null) {
-        logWin.close();
+      try {
+      logWin.webContents.send("savelogs", []);
+      logWin.close();
+      } catch (error) {
+        // do nothing window was closed
       }
-      app.quit();
     }
-  });
-
-  logWin.on("close", function (e: any) {
-    e.preventDefault();
   });
 
   checkForUpdates();
