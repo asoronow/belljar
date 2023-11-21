@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from pathlib import Path
 import os
-import nrrd
+import pickle
 import cv2
 from PIL import Image
 from math import exp
@@ -138,10 +138,16 @@ class TissuePredictor(nn.Module):
             nn.Conv2d(1, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.conv2 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
@@ -150,18 +156,35 @@ class TissuePredictor(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.conv4 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
-        # Fully connected layers
-        # After 4 rounds of max-pooling on a 512x512 image, we'll have a 32x32 feature map.
-        self.fc1 = nn.Linear(256 * 32 * 32, 1024)
+
+        self.fc1 = nn.Linear(256 * 16 * 16, 1024)
         self.fc2 = nn.Linear(1024, 256)
         self.fc3 = nn.Linear(256, 3)
 
@@ -307,9 +330,12 @@ class AngledAtlasDataset(Dataset):
         self.transform = transform
 
         self.data_path = data_path
-        self.file_list = os.listdir(data_path)
-
-        print("Done generating samples!")
+        self.file_list = [
+            f
+            for f in os.listdir(data_path)
+            if os.path.isfile(os.path.join(data_path, f)) and f.endswith(".png")
+        ]
+        self.metadata = pickle.load(open(data_path / "metadata.pkl", "rb"))
 
     def __len__(self):
         return len(self.file_list)
@@ -347,9 +373,14 @@ class AngledAtlasDataset(Dataset):
             idx = idx.tolist()
 
         image = cv2.imread(
-            os.path.join(self.data_path, self.file_list[idx]), cv2.IMREAD_GRAYSCALE
+            str(self.data_path / self.file_list[idx]), cv2.IMREAD_GRAYSCALE
         )
-        label = self.file_list[idx].replace(".png", "").split("_")
+        label = self.metadata[self.file_list[idx].split(".")[0]]
+        label = [
+            label["pos"],
+            label["x_angle"],
+            label["y_angle"],
+        ]
         label = self._normalize_label(label)
 
         if self.transform:
@@ -375,46 +406,8 @@ class GaussianNoise:
 if __name__ == "__main__":
     from train import Trainer
 
-    # # Create the model
-    # model = TissueAutoencoder()
-
-    # # Create the optimizer
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
-
-    # # Create the criterion
-    # criterion = CombinedLoss(0.80)
-
-    # # Create the dataset
-    # dataset_path = Path(r"c:\Users\Alec\.belljar\dataset")
-    # noisy = transforms.Compose(
-    #     [
-    #         transforms.Grayscale(),
-    #         transforms.ToTensor(),
-    #         GaussianNoise(0.0, 0.0001),
-    #     ]
-    # )
-    # dataset = AtlasDataset(str(dataset_path), transform=noisy)
-
-    # # Split the dataset into train and validation sets
-    # train_size = int(0.75 * len(dataset))
-    # val_size = len(dataset) - train_size
-    # train_dataset, val_dataset = torch.utils.data.random_split(
-    #     dataset, [train_size, val_size]
-    # )
-
-    # # Create the dataloaders
-    # train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=True)
-    # val_dataloader = DataLoader(val_dataset, batch_size=256, shuffle=False)
-
-    # # Train the model
-
-    # trainer = Trainer(
-    #     model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda"
-    # )
-    # trainer.run(epochs=200)
-
     model = TissuePredictor()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001)
     criterion = torch.nn.MSELoss()
 
     transforms = transforms.Compose(
@@ -423,19 +416,19 @@ if __name__ == "__main__":
         ]
     )
     dataset = AngledAtlasDataset(
-        r"C:\Users\Alec\Desktop\angled_data", transform=transforms
+        Path(r"C:\Users\asoro\Desktop\angled_data"), transform=transforms
     )
 
-    train_size = int(0.75 * len(dataset))
+    train_size = int(0.80 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, [train_size, val_size]
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
     trainer = Trainer(
         model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda"
     )
-    trainer.run(epochs=200)
+    trainer.run(epochs=300)

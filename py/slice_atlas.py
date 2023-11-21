@@ -6,7 +6,7 @@ import cv2
 from scipy.ndimage import map_coordinates
 from skimage import measure
 import json
-
+from uuid import uuid4
 
 def slice_3d_volume(volume, z_position, x_angle, y_angle):
     """
@@ -43,40 +43,52 @@ def slice_3d_volume(volume, z_position, x_angle, y_angle):
 
 
 def make_angled_data(samples, atlas):
+    metadata = {}
+    output_path = Path("C:/Users/asoro/Desktop/angled_data/")
+    try:
+        metadata = pickle.load(open(output_path / "metadata.pkl", "rb"))
+    except FileNotFoundError:
+        pass
+
     for _ in range(samples):
-        x_angle, y_angle = np.random.rand(2)
-
-        # convert to single digit float in range -10 to 10
-        x_angle = round((x_angle - 0.5) * 10, 1)
-        y_angle = round((y_angle - 0.5) * 10, 1)
-
+        x_angle, y_angle = np.random.rand(2) * 10 - 5  # angles are now between -5 and 5 degrees
+        scale = np.random.rand() * 0.4 + 0.8  # scale factor between 0.8 and 1.2 for slight scaling
+        shear = np.random.rand() * 0.2 - 0.1  # shear factor between -0.1 and 0.1 for slight skew
+        name = str(uuid4())
+        
         pos = np.random.randint(100, atlas.shape[0] - 100)
+        sample = slice_3d_volume(atlas, pos, x_angle, y_angle)
 
-        # coin toss sample is whole or hemi
         if np.random.rand() > 0.5:
-            sample = slice_3d_volume(atlas, pos, x_angle, y_angle)
+            sample = sample[:, : sample.shape[1] // 2]
 
-            # randomly mirror
-            if np.random.rand() > 0.5:
-                sample = sample[:, ::-1]
+        # Apply rotation
+        center = (sample.shape[1]//2, sample.shape[0]//2)
+        rotation_matrix = cv2.getRotationMatrix2D(center, np.random.uniform(-10, 10), scale)
+        sample = cv2.warpAffine(sample, rotation_matrix, (sample.shape[1], sample.shape[0]))
 
-        else:
-            sample_l = slice_3d_volume(atlas, pos, x_angle, y_angle)
-            sample_r = slice_3d_volume(atlas[:, :, ::-1], pos, -1 * x_angle, y_angle)
-            sample = np.concatenate((sample_l, sample_r), axis=1)
-        # resize to 640x640
-        sample = cv2.resize(sample, (640, 640), interpolation=cv2.INTER_AREA)
+        # Apply shear
+        M = np.float32([
+            [1, shear, 0],
+            [0, 1, 0]
+        ])
+        sample = cv2.warpAffine(sample, M, (sample.shape[1], sample.shape[0]))
 
-        # apply a random rotation
-        angle = np.random.randint(-7, 7)
-        rot_mat = cv2.getRotationMatrix2D((320, 320), angle, 1.0)
-        sample = cv2.warpAffine(sample, rot_mat, (512, 512))
-        print(f"Saving sample {pos}_{x_angle}_{y_angle}.png")
-        # save to disk
-        cv2.imwrite(
-            f"C:/Users/asoro/Desktop/angled_data/{pos}_{x_angle}_{y_angle}.png", sample
-        )
+        # Resize to target dimensions
+        sample = cv2.resize(sample, (256, 256), interpolation=cv2.INTER_LINEAR)
+        
+        metadata[name] = {
+            "x_angle": x_angle,
+            "y_angle": y_angle,
+            "pos": pos,
+            "scale": scale,
+            "shear": shear
+        }
 
+        # Save to disk
+        cv2.imwrite(str(output_path / f"{name}.png"), sample)
+
+    pickle.dump(metadata, open(output_path / "metadata.pkl", "wb"))
 
 def dump_structure_data():
     """Dumps structure graph data to a pickle"""
@@ -184,36 +196,9 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
 
 
 def main():
-    dump_structure_data()
-    # Color
-    structure_map = pickle.load(
-        open(r"C:\Users\Alec\Projects\belljar\csv\structure_map.pkl", "rb")
-    )
-    annotation_path = Path(r"C:\Users\Alec\.belljar\nrrd") / "annotation_10.nrrd"
-    annotation, _ = nrrd.read(annotation_path)
-    atlas_path = Path(r"C:\Users\Alec\.belljar\nrrd") / "atlas_10.nrrd"
-    atlas, _ = nrrd.read(atlas_path)
-    color_annotation_slice = np.zeros(
-        (annotation.shape[1], annotation.shape[2], 3), dtype=np.uint8
-    )
-
-    demo_slice = slice_3d_volume(annotation, 700, 5, 0)
-    atlas_slice = slice_3d_volume(atlas, 700, 5, 0)
-    atlas_slice, demo_slice = mask_slice_by_region(
-        atlas_slice, demo_slice, structure_map, region="C"
-    )
-    ids = np.unique(demo_slice)
-    for i in ids:
-        try:
-            color_annotation_slice[demo_slice == i] = structure_map[i]["color"]
-        except:
-            pass
-
-    color_annotation_slice = add_outlines(demo_slice, color_annotation_slice)
-    cv2.imshow("color", color_annotation_slice)
-    cv2.imshow("atlas", atlas_slice)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    atlas_path = Path(r"C:\Users\asoro\.belljar\nrrd\atlas_10.nrrd")
+    nissl_atlas = nrrd.read(str(atlas_path))[0]
+    make_angled_data(25000, nissl_atlas)
 
 
 if __name__ == "__main__":

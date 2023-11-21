@@ -37,7 +37,7 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item() * samples.size(0)
-        
+        print(f"\nTrain Loss: {train_loss / len(self.train_loader.dataset)}")
         wandb.log({"train_loss": train_loss / len(self.train_loader.dataset)})
 
         self.epoch += 1
@@ -55,27 +55,52 @@ class Trainer:
                 outputs = self.model(samples)
                 loss = self.criterion(outputs, labels)
                 valid_loss += loss.item() * samples.size(0)
-        print(f"Valid Loss: {valid_loss / len(self.valid_loader.dataset)}")
+        print(f"\nValid Loss: {valid_loss / len(self.valid_loader.dataset)}")
         return valid_loss / len(self.valid_loader.dataset)
 
+    def should_continue_training(self, validation_losses, patience=5, min_delta=0.01):
+        """
+        Determine whether training should continue based on validation loss.
+
+        :param validation_losses: List of validation losses for each epoch.
+        :param patience: Number of epochs with no improvement on validation loss to wait before stopping.
+        :param min_delta: Minimum change in validation loss to qualify as an improvement.
+        :return: True if training should continue, False otherwise.
+        """
+        
+        # Check if there are enough epochs to compare
+        if len(validation_losses) < patience:
+            return True
+        
+        # Check the last few entries based on patience
+        latest_losses = validation_losses[-patience:]
+        
+        # Check if the change in loss is less than min_delta for patience epochs
+        if all(abs(latest_losses[i] - latest_losses[i+1]) < min_delta for i in range(len(latest_losses) - 1)):
+            return False  # Stop training if there's no significant improvement
+        
+        return True  # Continue training if there's improvement
+    
     def run(self, epochs):
-        for epoch in range(epochs):
+        prior_loss = []
+        for _ in range(epochs):
             train_loss = self.train_one_epoch()
             valid_loss = self.validate()
-
+            prior_loss.append(valid_loss)
             # Check if this epoch has the best validation loss and save model
             if valid_loss < self.best_loss:
                 self.best_loss = valid_loss
                 time_formated = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
                 torch.save(self.model.state_dict(), f"best_model_predictor.pt")
-
+                
+            # Check if training should continue
+            if not self.should_continue_training(prior_loss, min_delta=1e-8, patience=20):
+                break
             # Log metrics to wandb
             wandb.log(
                 {
-                    "epoch": epoch,
                     "train_loss": train_loss,
                     "valid_loss": valid_loss,
-                    "learning_rate": self.optimizer.param_groups[0]["lr"],
                 }
             )
 

@@ -12,7 +12,15 @@ sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() -
 
 
 def match_histograms(fixed, moving):
-    """Match the moving histogram to the fixed using sitk"""
+    """
+    Match the moving histogram to the fixed using sitk
+    Args:
+        fixed (sitk.Image): The fixed image.
+        moving (sitk.Image): The moving image.
+    Returns:
+        sitk.Image: The matched moving image.
+    """
+    # make sure fixed and moving are sitk images
     matcher = sitk.HistogramMatchingImageFilter()
     matcher.SetNumberOfHistogramLevels(1024)
     matcher.SetNumberOfMatchPoints(10)

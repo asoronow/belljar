@@ -3,10 +3,11 @@ import numpy as np
 import cv2
 import pickle
 from pathlib import Path
-from demons import register_to_atlas
+from demons import register_to_atlas, match_histograms
 from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
+import SimpleITK as sitk
 import torch
 import napari
 import copy
@@ -320,6 +321,8 @@ class AlignmentController:
 
         self.visited = 0  # The index of the furthest visited section
         self.current_section = 0  # The index of the current section
+        self.initial_pos = None # The first section actually selected by the user
+        self.predicted_delta = None # The predicted delta between sections
 
         self.x_angle_spinbox = QDoubleSpinBox()
         self.x_angle_spinbox.setRange(-10, 10)
@@ -510,6 +513,11 @@ class AlignmentController:
             return [pos, x_angle, y_angle]
 
         with torch.no_grad():
+            x_angles = []
+            y_angles = []
+            positions = []
+            atlas_sample = self.atlas[700, :, :]
+            atlas_sample = sitk.GetImageFromArray(atlas_sample)
             for i in range(self.num_slices):
                 # Check if we already loaded a slice with the same name
                 if self.file_list[i] in self.atlas_slices.keys():
@@ -519,7 +527,11 @@ class AlignmentController:
                     str(Path(self.input_path) / self.file_list[i]),
                     cv2.IMREAD_GRAYSCALE,
                 )
-                sample_img = cv2.resize(sample_img, (512, 512))
+                # match histogram
+                sample_img = sitk.GetImageFromArray(sample_img)
+                sample_img = match_histograms(atlas_sample, sample_img)
+                sample_img = sitk.GetArrayFromImage(sample_img)
+                sample_img = cv2.resize(sample_img, (256, 256))
                 sample_img = sample_img.astype(np.float32) / 255.0
                 sample_img = torch.from_numpy(sample_img).unsqueeze(0).unsqueeze(0)
                 sample_img = sample_img.to(device)
@@ -528,12 +540,23 @@ class AlignmentController:
 
                 # restore pred to regular space
                 pred = restore_label(pred[0], self.use_legacy)
+                x_angles.append(pred[1])
+                y_angles.append(pred[2])
+                positions.append(pred[0])
+
+            average_x = np.mean(x_angles)
+            average_y = np.mean(y_angles)
+            delta_pos = np.mean(np.gradient(positions))
+            self.predicted_delta = delta_pos
+            initial_pos = max(200, max(positions) - (len(positions) * delta_pos))
+            for i in range(self.num_slices):
                 predicted_slice = AtlasSlice(
                     self.file_list[i],
-                    pred[0],
-                    pred[1],
-                    pred[2],
+                    initial_pos + i * delta_pos,
+                    average_x,
+                    average_y,
                 )
+
                 predicted_slice.set_slice(self.atlas, self.annotation)
                 self.atlas_slices[self.file_list[i]] = predicted_slice
 
@@ -670,6 +693,12 @@ class AlignmentController:
                 )
 
             if len(visited_positions) < 2:
+                # based on predicted delta and initial position
+                initial_pos = self.atlas_slices[self.file_list[0]].ap_position
+                for i in range(self.visited, self.num_slices):
+                    self.atlas_slices[self.file_list[i]].ap_position = (
+                        initial_pos + i * self.predicted_delta
+                    )
                 return
 
             # fit a line to the visited positions
