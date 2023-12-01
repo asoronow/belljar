@@ -38,7 +38,7 @@ run.addEventListener("click", function () {
 back.addEventListener("click", function (event) {
 	if (back.classList.contains("btn-danger")) {
 		event.preventDefault();
-		ipc.send("killAlign", []);
+		ipc.send("killIntensity", []);
 		back.classList.add("btn-warning");
 		back.classList.remove("btn-danger");
 		back.innerHTML = "Back";
