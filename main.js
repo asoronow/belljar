@@ -813,6 +813,7 @@ ipcMain.on("runIntensity", function (event, data) {
         console.log(stderr);
     });
     pyshell.on("message", (message) => {
+        console.log(message);
         if (total === 0) {
             total = Number(message);
         }

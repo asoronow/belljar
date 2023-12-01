@@ -88,7 +88,8 @@ if __name__ == "__main__":
             annotation_recaled = resize_image_nearest_neighbor(
                 annotation, intensity.shape
             )
-
+            print(height, width, flush=True)
+            print(annotation_recaled.shape, flush=True)
             required_regions = [
                 "VISa",
                 "VISal",
@@ -132,7 +133,10 @@ if __name__ == "__main__":
                 for child_id in children:
                     # Get the vertex of the child
                     verts = np.where(annotation_recaled == child_id)
-                    for point in verts:
+                    if verts[0].size == 0:
+                        continue
+                    for point in zip(*verts):
+                        point = point[::-1]
                         # check if whole
                         if not is_whole:
                             intensities[parent_id][point] = intensity[point]
@@ -145,14 +149,15 @@ if __name__ == "__main__":
             for region in intensities.keys():
                 # split file name
                 name = iName.split(".")[0]
+                region_name = structure_map[region]["acronym"]
                 outputPath = Path(
-                    args.output.strip() + "/" + f"{name}_{region}" + ".pkl"
+                    args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
                 )
                 with open(outputPath, "wb") as f:
                     pickle.dump(
                         {
                             "roi": intensities[region],
-                            "name": region,
+                            "name": region_name,
                         },
                         f,
                     )
