@@ -111,8 +111,6 @@ class AnnotationViewer(QMainWindow):
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("Annotation Viewer")
-
         ui_layout = QVBoxLayout()
 
         # images
@@ -125,6 +123,9 @@ class AnnotationViewer(QMainWindow):
         # Show base image
         self.img_pixmap = QPixmap(self.images[self.current_index])
         self.img_scene = QGraphicsScene(self)
+        self.setWindowTitle(
+            f"Adjustment Viewer - {Path(self.images[self.current_index]).stem}"
+        )
         # Load the current annotation
         # Scale img_pixmap to the size of the label array
         self.img_pixmap = self.img_pixmap.scaled(
@@ -383,6 +384,10 @@ class AnnotationViewer(QMainWindow):
 
     def prev_image(self):
         if self.current_index > 0:
+            self.setWindowTitle(
+                f"Adjustment Viewer - {Path(self.images[self.current_index]).stem}"
+            )
+
             if self.was_changed:
                 if not self.warn_unsaved_changes():
                     return
@@ -402,6 +407,10 @@ class AnnotationViewer(QMainWindow):
 
     def next_image(self):
         if self.current_index < len(self.images) - 1:
+            self.setWindowTitle(
+                f"Adjustment Viewer - {Path(self.images[self.current_index]).stem}"
+            )
+
             if self.was_changed:
                 if not self.warn_unsaved_changes():
                     return
@@ -549,7 +558,7 @@ class AnnotationViewer(QMainWindow):
                 if (
                     event.button() == Qt.MouseButton.LeftButton
                     and self.allow_adjustment.isChecked()
-                    and self.selected_region_id
+                    and self.selected_region_id is not None
                 ):
                     self.is_drawing = True
                     point = event.pos()

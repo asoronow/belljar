@@ -5,6 +5,7 @@ from pathlib import Path
 import tifffile
 import numpy as np
 from demons import resize_image_nearest_neighbor
+import cv2
 
 
 def reconstruct_region(intensity_data):
@@ -85,11 +86,10 @@ if __name__ == "__main__":
         with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
+
             annotation_recaled = resize_image_nearest_neighbor(
-                annotation, intensity.shape
+                annotation, (width, height)
             )
-            print(height, width, flush=True)
-            print(annotation_recaled.shape, flush=True)
             required_regions = [
                 "VISa",
                 "VISal",
@@ -104,8 +104,6 @@ if __name__ == "__main__":
                 "RSPagl",
                 "RSPd",
                 "RSPv",
-                "ACA",
-                "STR",
             ]
 
             required_ids = [
@@ -136,7 +134,6 @@ if __name__ == "__main__":
                     if verts[0].size == 0:
                         continue
                     for point in zip(*verts):
-                        point = point[::-1]
                         # check if whole
                         if not is_whole:
                             intensities[parent_id][point] = intensity[point]
@@ -147,9 +144,27 @@ if __name__ == "__main__":
 
             # Save the intensity values and the verticies as ROI package pkls
             for region in intensities.keys():
-                # split file name
+                # reconstruct the region
+                if intensities[region] == {}:  # skip empty regions
+                    continue
+
                 name = iName.split(".")[0]
                 region_name = structure_map[region]["acronym"]
+
+                # debug = reconstruct_region(intensities[region])
+                # debug = cv2.normalize(debug, None, 0, 255, cv2.NORM_MINMAX)
+                # cv2.imwrite(
+                #     str(
+                #         Path(
+                #             args.output.strip()
+                #             + "/"
+                #             + f"{name}_{region_name}_debug"
+                #             + ".png"
+                #         )
+                #     ),
+                #     debug,
+                # )
+                # split file name
                 outputPath = Path(
                     args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
                 )

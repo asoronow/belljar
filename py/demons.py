@@ -3,6 +3,7 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 import cv2
+from skimage.restoration import rolling_ball
 
 # Check number of cores available
 import multiprocessing
