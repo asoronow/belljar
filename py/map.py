@@ -172,15 +172,19 @@ class AtlasSlice:
         x_angle (float): the x angle of the slice
         y_angle (float): the y angle of the slice
         region (str): the region of the slice
+        hemisphere (str): the hemisphere of the slice
     """
 
-    def __init__(self, section_name, ap_position, x_angle, y_angle, region="A"):
+    def __init__(
+        self, section_name, ap_position, x_angle, y_angle, region="A", hemisphere="W"
+    ):
         self.section_name = section_name
         self.ap_position = int(ap_position)
         self.x_angle = float(x_angle)
         self.y_angle = float(y_angle)
         self.linked = True
         self.region = region
+        self.hemisphere = hemisphere
         self.image = None
         self.label = None
         self.mask = None
@@ -321,8 +325,8 @@ class AlignmentController:
 
         self.visited = 0  # The index of the furthest visited section
         self.current_section = 0  # The index of the current section
-        self.initial_pos = None # The first section actually selected by the user
-        self.predicted_delta = None # The predicted delta between sections
+        self.initial_pos = None  # The first section actually selected by the user
+        self.predicted_delta = None  # The predicted delta between sections
 
         self.x_angle_spinbox = QDoubleSpinBox()
         self.x_angle_spinbox.setRange(-10, 10)
@@ -433,7 +437,8 @@ class AlignmentController:
         self.prior_alignment = False
         self.load_alignment()
 
-        self.predict_sample_slices()
+        if not self.prior_alignment:
+            self.predict_sample_slices()
 
         print("Awaiting fine tuning...", flush=True)
         self.start_viewer()
@@ -549,12 +554,14 @@ class AlignmentController:
             delta_pos = np.mean(np.gradient(positions))
             self.predicted_delta = delta_pos
             initial_pos = max(200, max(positions) - (len(positions) * delta_pos))
+            hemi = "W" if self.is_whole else "L"
             for i in range(self.num_slices):
                 predicted_slice = AtlasSlice(
                     self.file_list[i],
                     initial_pos + i * delta_pos,
                     average_x,
                     average_y,
+                    hemisphere=hemi,
                 )
 
                 predicted_slice.set_slice(self.atlas, self.annotation)
@@ -581,7 +588,7 @@ class AlignmentController:
     def _find_aspect_constrained_size(self, img1, img2):
         """
         Find the ideal size to resize both images to, ensuring:
-        - The resolution is at least 1080p.
+        - At least one dimension of each image is at least 1080p.
         - The individual aspect ratios of both images are maintained.
         - The sizes are compatible with one another.
 
@@ -593,19 +600,25 @@ class AlignmentController:
         - Tuple (width, height): Ideal dimensions to resize both images to.
         """
 
-        # Calculate the aspect ratio of both images
-        aspect_ratio_img1 = img1.shape[0] / img1.shape[1]
-        aspect_ratio_img2 = img2.shape[0] / img2.shape[1]
+        def calculate_target_size(img):
+            height, width = img.shape[:2]
+            aspect_ratio = width / height
+            if height > width:
+                # Height is the larger dimension
+                target_height = max(height, 1080)
+                target_width = int(target_height * aspect_ratio)
+            else:
+                # Width is the larger dimension
+                target_width = max(width, 1080)
+                target_height = int(target_width / aspect_ratio)
+            return target_width, target_height
 
-        # Set the target height to 1080
-        target_height = 1080
+        target_size_img1 = calculate_target_size(img1)
+        target_size_img2 = calculate_target_size(img2)
 
-        # Calculate the target width for each image based on its aspect ratio
-        target_width_img1 = int(target_height * aspect_ratio_img1)
-        target_width_img2 = int(target_height * aspect_ratio_img2)
-
-        # The target width should be the maximum width obtained from the two images
-        target_width = max(target_width_img1, target_width_img2)
+        # The target size should be the max width and max height obtained from the two images
+        target_width = max(target_size_img1[0], target_size_img2[0])
+        target_height = max(target_size_img1[1], target_size_img2[1])
 
         return (target_width, target_height)
 
@@ -623,6 +636,7 @@ class AlignmentController:
             self.atlas_slices[self.file_list[self.current_section]].image,
         )
         sample_img = cv2.resize(sample_img, new_size)
+
         self.tissue_layer.data = sample_img
         # resize atlas to match tissue
         self.atlas_slices[self.file_list[self.current_section]].set_slice(
