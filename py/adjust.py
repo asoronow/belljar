@@ -484,13 +484,18 @@ class AnnotationViewer(QMainWindow):
             for p in update_points:
                 # Check if this point has already been modified in the current stroke
                 if p not in self.deltas[self.current_delta]:
-                    # If not, record the original value
-                    new_originals[p] = self.current_label[p[1], p[0]]
-                    # And mark it as changed
-                    new_points.add(p)
+                    # Double check if update points are in bounds
+                    if (
+                        0 <= p[0] < self.current_label.shape[1]
+                        and 0 <= p[1] < self.current_label.shape[0]
+                    ):
+                        # If not, record the original value
+                        new_originals[p] = self.current_label[p[1], p[0]]
+                        # And mark it as changed
+                        new_points.add(p)
 
-                    # Then perform the drawing
-                    self.current_label[p[1], p[0]] = self.selected_region_id
+                        # Then perform the drawing
+                        self.current_label[p[1], p[0]] = self.selected_region_id
 
             # Add the new points and their original values
             self.deltas[self.current_delta].update(new_points)
