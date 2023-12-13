@@ -107,13 +107,13 @@ class ImageEraser(QMainWindow):
         if image_point:
             # Calculate the points to draw using a helper function
             points_to_draw = self.points_in_circle(
-                (image_point.x(), image_point.y()), self.brush_size
+                (image_point.x(), image_point.y()), self.brush_size * 2
             )
 
             # Draw on the mask and image
             painter = QtGui.QPainter(self.img_pixmap)
             pen = QtGui.QPen(
-                QtGui.QColor(255, 0, 0), self.brush_size * 2
+                QtGui.QColor(255, 0, 0), self.brush_size * 2, cap=QtCore.Qt.RoundCap
             )  # *2 for diameter
             painter.setPen(pen)
             for pt in points_to_draw:
@@ -122,7 +122,8 @@ class ImageEraser(QMainWindow):
                     painter.drawPoint(pt[0], pt[1])
                     # Set corresponding point in the mask
                     self.mask_image[pt[1], pt[0]] = 1
-                except:
+                except IndexError:
+                    # Ignore any out of bounds points
                     pass
             painter.end()
 
@@ -150,6 +151,14 @@ class ImageEraser(QMainWindow):
         self.brush_size = value
 
     def save_mask(self):
+        self.mask_image = self.mask_image.astype(np.uint8)
+        # close holes
+        kernel = np.ones((5, 5), np.uint8)
+        # dilate
+        self.mask_image = cv2.dilate(self.mask_image, kernel, iterations=5)
+        # erode
+        self.mask_image = cv2.erode(self.mask_image, kernel, iterations=5)
+        # invert
         self.mask_image = np.logical_not(self.mask_image).astype(np.uint8)
         self.close()
 
@@ -439,6 +448,12 @@ class AlignmentController:
 
         if not self.prior_alignment:
             self.predict_sample_slices()
+        else:
+            self.region_selection.setCurrentIndex(
+                list(self.region_tags.values()).index(
+                    self.atlas_slices[self.file_list[self.current_section]].region
+                )
+            )
 
         print("Awaiting fine tuning...", flush=True)
         self.start_viewer()
@@ -457,6 +472,9 @@ class AlignmentController:
         self.num_slices = len(self.file_list)
         print(4 + self.num_slices, flush=True)
         print("Scanned input path for images...", flush=True)
+        if self.num_slices == 0:
+            print("No images found!", flush=True)
+            exit(1)
         self.progress_bar.setRange(1, self.num_slices)
         self.progress_bar.setValue(1)
         self.progress_bar.setFormat(f"1 / {self.num_slices}")
@@ -551,9 +569,13 @@ class AlignmentController:
 
             average_x = np.mean(x_angles)
             average_y = np.mean(y_angles)
-            delta_pos = np.mean(np.gradient(positions))
+            if self.num_slices > 1:
+                delta_pos = np.mean(np.gradient(positions))
+                initial_pos = max(200, max(positions) - (len(positions) * delta_pos))
+            else:
+                delta_pos = 0
+                initial_pos = positions[0]
             self.predicted_delta = delta_pos
-            initial_pos = max(200, max(positions) - (len(positions) * delta_pos))
             hemi = "W" if self.is_whole else "L"
             for i in range(self.num_slices):
                 predicted_slice = AtlasSlice(

@@ -180,8 +180,8 @@ def create_synthetic_experiment(name, num_samples, atlas, annotation):
         ).astype(np.uint32)
 
         # save
-        cv2.imwrite(str(experiment_path / f"{i}.png"), sample)
-        with open(experiment_path / f"{i}.pkl", "wb") as f:
+        cv2.imwrite(str(experiment_path / f"S_{i:03d}.png"), sample)
+        with open(experiment_path / f"S_{i:03d}.pkl", "wb") as f:
             pickle.dump(sample_annotation, f)
 
 
@@ -273,7 +273,7 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
     cerebrum_regions = []
     non_cerebrum_regions = []
     for key, value in structure_map.items():
-        parents = ["567", "1009"]
+        parents = ["567", "971", "940", "443", "1099", "579", "484682520", "484682512"]
         if any(parent in value["id_path"].split("/") for parent in parents):
             cerebrum_regions.append(key)
         else:
@@ -295,7 +295,7 @@ def main():
     annotation_path = Path("~/.belljar/nrrd/annotation_10.nrrd")
     atlas, atlas_header = nrrd.read(str(atlas_path.expanduser()))
     annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
-    create_synthetic_experiment("synthetic_experiment_1", 20, atlas, annotation)
+    create_synthetic_experiment("synthetic_experiment_2", 20, atlas, annotation)
 
 
 if __name__ == "__main__":
