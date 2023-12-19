@@ -1025,49 +1025,6 @@ ipcMain.on("runCount", function (event: any, data: any[]) {
   });
 });
 
-// Top Hat
-ipcMain.on("runTopHat", function (event: any, data: any[]) {
-  let options = {
-    mode: "text",
-    pythonPath: path.join(envPythonPath, pyCommand),
-    scriptPath: pyScriptsPath,
-    args: [
-      `-o ${data[1]}`,
-      `-i ${data[0]}`,
-      `-f ${data[2]}`,
-      `-c ${data[3]}`,
-      "-g False",
-    ],
-  };
-
-  let pyshell = new PythonShell("top_hat.py", options);
-  var total: number = 0;
-  var current: number = 0;
-  pyshell.on("message", (message: string) => {
-    if (total === 0) {
-      total = Number(message);
-    } else if (message == "Done!") {
-      pyshell.end((err: string, code: any, signal: string) => {
-        if (err) throw err;
-        console.log("The exit code was: " + code);
-        console.log("The exit signal was: " + signal);
-        event.sender.send("topHatResult");
-        ipcMain.removeAllListeners("killTopHat");
-      });
-    } else {
-      current++;
-      event.sender.send("updateLoad", [
-        Math.round((current / total) * 100),
-        message,
-      ]);
-    }
-  });
-
-  ipcMain.once("killTopHat", function (event: any, data: any[]) {
-    pyshell.kill();
-  });
-});
-
 // Collate
 ipcMain.on("runCollate", function (event: any, data: any[]) {
   let options = {

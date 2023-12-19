@@ -46,8 +46,8 @@ def multimodal_registration(fixed, moving):
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(32)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.001,
-        numberOfIterations=500,
+        learningRate=0.01,
+        numberOfIterations=100,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
@@ -64,11 +64,16 @@ def multimodal_registration(fixed, moving):
         moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
     )
     # B-spline
-    transformDomainMeshSize = [4] * fixed.GetDimension()
+    transformDomainMeshSize = [5] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
-
+    R.SetOptimizerAsGradientDescent(
+        learningRate=0.01,
+        numberOfIterations=50,
+        convergenceMinimumValue=1e-8,
+        convergenceWindowSize=20,
+    )
     outTx2 = R.Execute(fixed, resampled_moving)
 
     # DEBUG: Quiver plot, uncomment to see plots of each transformation
