@@ -295,8 +295,9 @@ def main():
     annotation_path = Path("~/.belljar/nrrd/annotation_10.nrrd")
     atlas, atlas_header = nrrd.read(str(atlas_path.expanduser()))
     annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
-    create_synthetic_experiment("synthetic_experiment_2", 20, atlas, annotation)
-
-
+    #make_angled_data(20000, atlas)
+    # create_synthetic_experiment("synthetic_experiment_1", 20, atlas, annotation)
+    # test edge detection methods
+   
 if __name__ == "__main__":
     main()
