@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.autograd import Function
 from pathlib import Path
-import os, sys
+import os, itertools
 import pickle
 import cv2
 from PIL import Image
@@ -105,10 +105,8 @@ class TissuePredictor(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)
 
-        features = F.adaptive_avg_pool2d(x, (1, 1))
-        features = torch.flatten(features, 1)
+        features = torch.flatten(x, 1)
 
         return features
 
@@ -269,7 +267,7 @@ class DANNClassifier(nn.Module):
         super(DANNClassifier, self).__init__()
         # Domain classifier layers
         self.domain_classifier = nn.Sequential(
-            nn.Linear(512, 2048),
+            nn.Linear(256**2, 2048),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(2048, 2)  # Binary classification: synthetic or real
@@ -370,8 +368,8 @@ def domain_adaptation():
     val_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
     num_epochs = 200
-    alpha = 0.35
-    lambda_weight = 0.5
+    alpha = 0.05
+    lambda_weight = 0.1
     best_loss = float("inf")
     wandb.init(project="tissue_dann")
     for epoch in range(num_epochs):
@@ -413,6 +411,7 @@ def domain_adaptation():
         # Validation Phase
         train_source_loss /= len(target_train_dataloader)
         train_target_loss /= len(target_train_dataloader)
+        print(f"\nTrain Source Loss: {train_source_loss}, Train Target Loss: {train_target_loss}")
         model.eval()  # Set the model to evaluation mode
         with torch.no_grad():  # Disable gradient computation
             b = 0
@@ -440,16 +439,16 @@ def domain_adaptation():
                 loss_domain = domain_criterion(domain_pred, torch.ones(target_data.size(0)).long().to(device))
                 target_val_loss += loss_domain.item()
                 b += 1
-            
-            if target_val_loss < best_loss:
-                best_loss = target_val_loss
-                torch.save(model.state_dict(), "adapted_model.pt")
-                torch.save(domain_classifier.state_dict(), "domain_classifier.pt")
 
             # Average the loss over all target validation batches
             target_val_loss /= len(target_val_dataloader)
 
+            if source_val_loss < best_loss:
+                best_loss = source_val_loss
+                torch.save(model.state_dict(), "adapted_model.pt")
+                torch.save(domain_classifier.state_dict(), "domain_classifier.pt")
             # Update alpha and lambda_weight
+            alpha, lambda_weight = update_hyperparameters(alpha, lambda_weight, source_val_loss, target_val_loss)
             wandb.log({"source_val_loss": source_val_loss,
             "target_val_loss": target_val_loss,
             "alpha": alpha,
