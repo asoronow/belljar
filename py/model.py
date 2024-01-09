@@ -54,18 +54,12 @@ class TissuePredictor(nn.Module):
         )
 
         # Residual blocks
-        self.layer1 = self._make_layer(64, 64, blocks=2, stride=1)
-        self.layer2 = self._make_layer(64, 128, blocks=2, stride=2)
-        self.layer3 = self._make_layer(128, 256, blocks=2, stride=2)
-        self.layer4 = self._make_layer(256, 512, blocks=2, stride=2)
+        self.layer1 = self._make_layer(64, 64, blocks=3, stride=1)
+        self.layer2 = self._make_layer(64, 128, blocks=4, stride=2)
+        self.layer3 = self._make_layer(128, 256, blocks=23, stride=2)
+        self.layer4 = self._make_layer(256, 512, blocks=3, stride=2)
 
-        # Fully connected layers
-        self.fc1 = nn.Linear(512, 4096)
-        self.fc2 = nn.Linear(4096, 4096)
-        self.fc3 = nn.Linear(4096, 3)
-
-        # Dropout layer
-        self.dropout = nn.Dropout(0.5)
+        self.fc = nn.Linear(512, 3)
 
     def _make_layer(self, in_channels, out_channels, blocks, stride):
         layers = []
@@ -94,9 +88,7 @@ class TissuePredictor(nn.Module):
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = torch.flatten(x, 1)  # Flatten
 
-        x = F.relu(self.dropout(self.fc1(x)))
-        x = F.relu(self.dropout(self.fc2(x)))
-        x = self.fc3(x)
+        x = self.fc(x)
 
         return x
 
@@ -465,14 +457,14 @@ def train_model():
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     criterion = torch.nn.MSELoss()
 
-    transforms = transforms.Compose(
+    tx = transforms.Compose(
         [
             transforms.ToTensor(),
             transforms.Normalize(mean=0.125378, std=0.087051),
         ]
     )
     dataset = AngledAtlasDataset(
-        Path(r"C:\Users\asoro\Desktop\angled_data"), transform=transforms
+        Path(r"C:\Users\asoro\Desktop\angled_data"), transform=tx
     )
 
     train_size = int(0.75 * len(dataset))
@@ -481,14 +473,14 @@ def train_model():
         dataset, [train_size, val_size]
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False)
 
     trainer = Trainer(
         model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda", project_name="tissue_resnet"
     )
-    trainer.run(epochs=100)
+    trainer.run(epochs=200)
 
 
 if __name__ == "__main__":
-   domain_adaptation()
+    train_model()
