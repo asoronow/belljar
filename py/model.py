@@ -15,79 +15,85 @@ class ResidualBlock(nn.Module):
     '''
     Residual Block for ResNet architecture
     '''
-    def __init__(self, in_channels, out_channels, stride = 1, downsample = None):
+    def __init__(self, in_channels, intermediate_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Sequential(
-                        nn.Conv2d(in_channels, out_channels, kernel_size = 3, stride = stride, padding = 1),
-                        nn.BatchNorm2d(out_channels),
-                        nn.ReLU())
-        self.conv2 = nn.Sequential(
-                        nn.Conv2d(out_channels, out_channels, kernel_size = 3, stride = 1, padding = 1),
-                        nn.BatchNorm2d(out_channels))
-        self.downsample = downsample
-        self.relu = nn.ReLU()
-        self.out_channels = out_channels
-        
+        self.conv1 = nn.Conv2d(in_channels, intermediate_channels, kernel_size=1, stride=stride, padding=0)
+        self.bn1 = nn.BatchNorm2d(intermediate_channels)
+        self.conv2 = nn.Conv2d(intermediate_channels, intermediate_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(intermediate_channels)
+        self.conv3 = nn.Conv2d(intermediate_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        self.bn3 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            # This is the projection shortcut to match dimensions
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0),
+                nn.BatchNorm2d(out_channels)
+            )
+            
     def forward(self, x):
-        residual = x
+        residual = self.shortcut(x)
+
         out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
         out = self.conv2(out)
-        if self.downsample:
-            residual = self.downsample(x)
+        out = self.bn2(out)
+        out = self.relu(out)
+        out = self.conv3(out)
+        out = self.bn3(out)
+        
         out += residual
         out = self.relu(out)
         return out
-
+    
 class TissuePredictor(nn.Module):
     '''
-    TissuePredictor is a ResNet-18 based model for predicting tissue type from a histology image
+    TissuePredictor is a ResNet-101 based model for predicting tissue type from a histology image
     '''
     def __init__(self):
         super(TissuePredictor, self).__init__()
 
         # Initial Convolution
-        self.initial = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False),
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=7, stride=2),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            nn.MaxPool2d(kernel_size=3, stride=2)
         )
 
         # Residual blocks
-        self.layer1 = self._make_layer(64, 64, blocks=3, stride=1)
-        self.layer2 = self._make_layer(64, 128, blocks=4, stride=2)
-        self.layer3 = self._make_layer(128, 256, blocks=23, stride=2)
-        self.layer4 = self._make_layer(256, 512, blocks=3, stride=2)
+        self.conv2 = self._make_layer(64, 64, 256, blocks=3, stride=1)
+        self.conv3 = self._make_layer(256, 128, 512, blocks=4, stride=2)
+        self.conv4 = self._make_layer(512, 256, 1024, blocks=23, stride=2)
+        self.conv5 = self._make_layer(1024, 512, 2048, blocks=3, stride=2)
 
-        self.fc = nn.Linear(512, 3)
 
-    def _make_layer(self, in_channels, out_channels, blocks, stride):
+        self.fc = nn.Linear(2048, 3)
+
+    def _make_layer(self, in_channels, intermediate_channels, out_channels, blocks, stride):
         layers = []
-        downsample = None
 
-        if stride != 1 or in_channels != out_channels:
-            downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels),
-            )
+        # The first block in the layer handles downsampling and channel expansion
+        layers.append(ResidualBlock(in_channels, intermediate_channels, out_channels, stride=stride))
 
-        layers.append(ResidualBlock(in_channels, out_channels, stride, downsample))
-
+        # Subsequent blocks in the layer only work with the expanded channel size
         for _ in range(1, blocks):
-            layers.append(ResidualBlock(out_channels, out_channels))
+            layers.append(ResidualBlock(out_channels, intermediate_channels, out_channels))
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.initial(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
 
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = torch.flatten(x, 1)  # Flatten
-
         x = self.fc(x)
 
         return x
@@ -460,7 +466,7 @@ def train_model():
     tx = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize(mean=0.125378, std=0.087051),
+            transforms.Normalize(mean=0.1253, std=0.0986)
         ]
     )
     dataset = AngledAtlasDataset(
@@ -473,13 +479,13 @@ def train_model():
         dataset, [train_size, val_size]
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True, pin_memory=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
     trainer = Trainer(
         model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda", project_name="tissue_resnet"
     )
-    trainer.run(epochs=200)
+    trainer.run(epochs=50)
 
 
 if __name__ == "__main__":
