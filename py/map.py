@@ -9,6 +9,7 @@ from model import TissuePredictor
 import nrrd
 import SimpleITK as sitk
 import torch
+from torchvision import transforms
 import napari
 import copy
 import argparse
@@ -340,14 +341,12 @@ class AlignmentController:
         self.x_angle_spinbox = QDoubleSpinBox()
         self.x_angle_spinbox.setRange(-10, 10)
         self.x_angle_spinbox.setSingleStep(0.1)
-        self.x_angle_spinbox.setValue(0)
         self.x_angle_spinbox.setSuffix("°")
         self.x_angle_spinbox.valueChanged.connect(self.update_slice)
 
         self.y_angle_spinbox = QDoubleSpinBox()
         self.y_angle_spinbox.setRange(-10, 10)
         self.y_angle_spinbox.setSingleStep(0.1)
-        self.y_angle_spinbox.setValue(0)
         self.y_angle_spinbox.setSuffix("°")
         self.y_angle_spinbox.valueChanged.connect(self.update_slice)
 
@@ -535,12 +534,21 @@ class AlignmentController:
             y_angle = y_angle * (y_angle_max - y_angle_min) + y_angle_min
             return [pos, x_angle, y_angle]
 
+        def sobel(image):
+            image = cv2.GaussianBlur(image, (3, 3), sigmaX=0, sigmaY=0)
+            gX = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3, delta=25)
+            gY = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3, delta=25)
+
+            gX = cv2.convertScaleAbs(gX)
+            gY = cv2.convertScaleAbs(gY)
+
+            combined = cv2.addWeighted(gX, 0.5, gY, 0.5, 0)
+            return combined
+
         with torch.no_grad():
             x_angles = []
             y_angles = []
             positions = []
-            atlas_sample = self.atlas[700, :, :]
-            atlas_sample = sitk.GetImageFromArray(atlas_sample)
             for i in range(self.num_slices):
                 # Check if we already loaded a slice with the same name
                 if self.file_list[i] in self.atlas_slices.keys():
@@ -551,12 +559,12 @@ class AlignmentController:
                     cv2.IMREAD_GRAYSCALE,
                 )
                 # match histogram
-                sample_img = sitk.GetImageFromArray(sample_img)
-                sample_img = match_histograms(atlas_sample, sample_img)
-                sample_img = sitk.GetArrayFromImage(sample_img)
                 sample_img = cv2.resize(sample_img, (256, 256))
-                sample_img = sample_img.astype(np.float32) / 255.0
-                sample_img = torch.from_numpy(sample_img).unsqueeze(0).unsqueeze(0)
+                sample_img = sobel(sample_img)
+                sample_img = transforms.ToTensor()(sample_img)
+                sample_img = transforms.Normalize(mean=0.1253, std=0.0986)(sample_img)
+
+                sample_img = sample_img.unsqueeze(0)
                 sample_img = sample_img.to(device)
                 pred = tissue_predictor(sample_img)
                 pred = pred.cpu().numpy()
@@ -570,17 +578,17 @@ class AlignmentController:
             average_x = np.mean(x_angles)
             average_y = np.mean(y_angles)
             if self.num_slices > 1:
-                delta_pos = np.mean(np.gradient(positions))
-                initial_pos = max(200, max(positions) - (len(positions) * delta_pos))
+                delta_pos = np.mean(np.diff(positions))
             else:
                 delta_pos = 0
-                initial_pos = positions[0]
             self.predicted_delta = delta_pos
+
             hemi = "W" if self.is_whole else "L"
+
             for i in range(self.num_slices):
                 predicted_slice = AtlasSlice(
                     self.file_list[i],
-                    initial_pos + i * delta_pos,
+                    positions[i],
                     average_x,
                     average_y,
                     hemisphere=hemi,
@@ -687,6 +695,7 @@ class AlignmentController:
                 self.atlas_slices[self.file_list[self.current_section]].region
             )
         )
+
         self.mask_button.setText(
             "Set Mask"
             if self.atlas_slices[self.file_list[self.current_section]].mask is None
@@ -705,12 +714,13 @@ class AlignmentController:
 
     def update_slice(self):
         """Update the angles and region of the current slice"""
-        current_slice = self.atlas_slices[self.file_list[self.current_section]]
-        current_slice.x_angle = self.x_angle_spinbox.value()
-        current_slice.y_angle = self.y_angle_spinbox.value()
-        current_slice.region = self.region_tags[self.region_selection.currentText()]
-        current_slice.set_slice(self.atlas, self.annotation)
-        self.update_display()
+        if self.visited > 0:
+            current_slice = self.atlas_slices[self.file_list[self.current_section]]
+            current_slice.x_angle = self.x_angle_spinbox.value()
+            current_slice.y_angle = self.y_angle_spinbox.value()
+            current_slice.region = self.region_tags[self.region_selection.currentText()]
+            current_slice.set_slice(self.atlas, self.annotation)
+            self.update_display()
 
     def update_position(self):
         """Update the position of the current slice"""

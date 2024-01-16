@@ -1,7 +1,6 @@
 import wandb
 import torch
 from PIL import Image
-import time
 
 
 class Trainer:
@@ -38,8 +37,6 @@ class Trainer:
             self.optimizer.step()
             train_loss += loss.item() * samples.size(0)
         print(f"\nTrain Loss: {train_loss / len(self.train_loader.dataset)}")
-        wandb.log({"train_loss": train_loss / len(self.train_loader.dataset)})
-
         self.epoch += 1
 
         return train_loss / len(self.train_loader.dataset)
@@ -90,7 +87,7 @@ class Trainer:
             # Check if this epoch has the best validation loss and save model
             if valid_loss < self.best_loss:
                 self.best_loss = valid_loss
-                time_formated = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+                # time_formated = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
                 torch.save(self.model.state_dict(), f"best_model_predictor.pt")
                 
             # Check if training should continue
