@@ -6,6 +6,7 @@ Pillow
 pynrrd
 scikit_learn
 scipy
+imagecodecs
 scikit-image
 tifffile
 torch

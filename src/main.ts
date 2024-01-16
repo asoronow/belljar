@@ -596,11 +596,9 @@ function updatePythonDependencies(win: typeof BrowserWindow) {
   return new Promise((resolve, reject) => {
     win.webContents.send("updateStatus", "Updating packages...");
     // Run pip install -r requirements.txt --no-cache-dir to update the packages
+    let reqsPath = path.join(appDir, "py/requirements.txt");
     exec(
-      `${pyCommand} -m pip install -r ${path.join(
-        appDir,
-        "py/requirements.txt"
-      )} --no-cache-dir  --use-pep517`,
+      `${pyCommand} -m pip install -r "${reqsPath}" --no-cache-dir  --use-pep517`,
       { cwd: envPythonPath }
     )
       .then(({ stdout, stderr }: { stdout: string; stderr: string }) => {

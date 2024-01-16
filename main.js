@@ -488,7 +488,8 @@ function updatePythonDependencies(win) {
     return new Promise((resolve, reject) => {
         win.webContents.send("updateStatus", "Updating packages...");
         // Run pip install -r requirements.txt --no-cache-dir to update the packages
-        exec(`${pyCommand} -m pip install -r ${path.join(appDir, "py/requirements.txt")} --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
+        let reqsPath = path.join(appDir, "py/requirements.txt");
+        exec(`${pyCommand} -m pip install -r "${reqsPath}" --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
             .then(({ stdout, stderr }) => {
             console.log(stdout);
             win.webContents.send("updateStatus", "Update complete!");
@@ -887,49 +888,6 @@ ipcMain.on("runCount", function (event, data) {
         }
     });
     ipcMain.once("killCount", function (event, data) {
-        pyshell.kill();
-    });
-});
-// Top Hat
-ipcMain.on("runTopHat", function (event, data) {
-    let options = {
-        mode: "text",
-        pythonPath: path.join(envPythonPath, pyCommand),
-        scriptPath: pyScriptsPath,
-        args: [
-            `-o ${data[1]}`,
-            `-i ${data[0]}`,
-            `-f ${data[2]}`,
-            `-c ${data[3]}`,
-            "-g False",
-        ],
-    };
-    let pyshell = new PythonShell("top_hat.py", options);
-    var total = 0;
-    var current = 0;
-    pyshell.on("message", (message) => {
-        if (total === 0) {
-            total = Number(message);
-        }
-        else if (message == "Done!") {
-            pyshell.end((err, code, signal) => {
-                if (err)
-                    throw err;
-                console.log("The exit code was: " + code);
-                console.log("The exit signal was: " + signal);
-                event.sender.send("topHatResult");
-                ipcMain.removeAllListeners("killTopHat");
-            });
-        }
-        else {
-            current++;
-            event.sender.send("updateLoad", [
-                Math.round((current / total) * 100),
-                message,
-            ]);
-        }
-    });
-    ipcMain.once("killTopHat", function (event, data) {
         pyshell.kill();
     });
 });
