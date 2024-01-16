@@ -306,14 +306,14 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   // Download the tar files into the homeDir and extract them to their respective folders
   const currnet_versions = {
     nrrd: "v91",
-    models: "v91",
+    models: "v93",
     embeddings: "v6",
   };
 
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models-v91.tar.gz`; //  Update to v7
+    const modelsLink = `${bucketParentPath}/models-v93.tar.gz`; //  Update to v7
     const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
