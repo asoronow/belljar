@@ -917,6 +917,53 @@ ipcMain.on("runCollate", function (event, data) {
         pyshell.kill();
     });
 });
+// Collate
+ipcMain.on("runSharpen", function (event, data) {
+    let custom = [
+        String.raw `-o ${data[1]}`,
+        String.raw `-i ${data[0]}`,
+        `-r ${data[2]}`,
+        `-a ${data[3]}`,
+    ];
+    if (data[4]) {
+        custom.push(`--equalize`);
+    }
+    let options = {
+        mode: "text",
+        pythonPath: path.join(envPythonPath, pyCommand),
+        scriptPath: pyScriptsPath,
+        args: custom,
+    };
+    let pyshell = new PythonShell("sharpen.py", options);
+    var total = 0;
+    var current = 0;
+    pyshell.on("message", (message) => {
+        console.log(message);
+        if (total === 0) {
+            total = Number(message);
+        }
+        else if (message == "Done!") {
+            pyshell.end((err, code, signal) => {
+                if (err)
+                    throw err;
+                console.log("The exit code was: " + code);
+                console.log("The exit signal was: " + signal);
+                event.sender.send("sharpenResult");
+                ipcMain.removeAllListeners("killSharpen");
+            });
+        }
+        else {
+            current++;
+            event.sender.send("updateLoad", [
+                Math.round((current / total) * 100),
+                message,
+            ]);
+        }
+    });
+    ipcMain.once("killSharpen", function (event, data) {
+        pyshell.kill();
+    });
+});
 // Cell Detection
 ipcMain.on("runDetection", function (event, data) {
     // Set model path

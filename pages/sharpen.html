@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <link rel="stylesheet" href="../css/style.css" />
     <link
       rel="stylesheet"
       href="../node_modules/@fortawesome/fontawesome-free/css/all.css"
@@ -12,7 +13,6 @@
       integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
       crossorigin="anonymous"
     />
-    <link rel="stylesheet" href="../css/style.css" />
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
@@ -28,13 +28,10 @@
     <div id="parent" class="container h-100">
       <div class="row align-items-center">
         <div class="col">
-          <h1>Isolate Regions</h1>
+          <h1>Sharpen</h1>
           <p>
             <br />
-            Outputs the ROIs for a given Bell Jar aligned brain. The ROI pacakges are only compatible with
-            custom graphin tools at this time. The output is a series of .pkl files that contain the intensity, verticies, and region info.
-            To use select the directory with the intensity images (named in the same scheme as the Bell Jar aligned images), the brain annotation pkls, and your output directory.
-            Do not forget to select whole or hemisphere only, for whole brains only the left hemisphere will be processed.
+            Sharpen and equalize images for better cell detection.
             <br />
           </p>
         </div>
@@ -42,12 +39,12 @@
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
           <h5>
-            Intensity Images Path
+            Input Path
             <i
               class="fas fa-circle-question fa-fw fa-xs"
               data-bs-toggle="tooltip"
               data-bs-placement="right"
-              title="Path to max projection or EFI processed files"
+              title="Path to images"
             ></i>
           </h5>
         </div>
@@ -58,35 +55,12 @@
           <input
             type="url"
             id="indir"
-            placeholder="Click to select directory or cancel to enter manually"
+            placeholder="Click to select file or cancel to enter manually"
           />
         </div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
-          <h5>
-            Annotations Path
-            <i
-              class="fas fa-circle-question fa-fw fa-xs"
-              data-bs-toggle="tooltip"
-              data-bs-placement="right"
-              title="Path to max projection or EFI processed files"
-            ></i>
-          </h5>
-        </div>
-        <div class="col d-grid"></div>
-      </div>
-      <div class="row align-items-center m-1">
-        <div class="col d-grid">
-          <input
-            type="url"
-            id="annodir"
-            placeholder="Click to select directory or cancel to enter manually"
-          />
-        </div>
-      </div>
-      <div class="row align-items-center m-1">
-        <div class="col justify-content-start d-grid">
           <h5>
             Output Path
             <i
@@ -97,7 +71,6 @@
             ></i>
           </h5>
         </div>
-        <div class="col d-grid"></div>
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid">
@@ -108,29 +81,50 @@
           />
         </div>
       </div>
-      <div class="row align-items-center m-1">
+      <div class="row align-items-center m-1 mt-2 justify-content-start">
         <div class="col d-grid justify-content-start">
           <h5>
-            Whole or Hemisphere
+            Equalization
             <i
               class="fas fa-circle-question fa-fw fa-xs"
               data-bs-toggle="tooltip"
               data-bs-placement="right"
-              title="Select the image type to be processed"
+              title="Use adaptive histogram equalization to improve contrast"
             ></i>
+            <input type="checkbox" id="equalize" 
+                checked
+            />
           </h5>
-        <div class="col d-grid justify-content-start">
-          <div class="dropdown">
-            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
-            Whole Slice
-            </button>
-            <ul class="dropdown-menu" aria-labelledby="regions">
-              <li><a class="dropdown-item" id="whole" href="#">Whole Slice</a></li>
-              <li><a class="dropdown-item" id="half" href="#">Hemisphere Only</a></li>
-            </ul>
-          </div> 
         </div>
-    </div>
+        <div class="col d-grid justify-content-start">
+            <h5>
+              Radius
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Use adaptive histogram equalization to improve contrast"
+              ></i>
+              <input type="number" id="radius" 
+                  value="3"
+                />
+            </h5>
+        </div>
+        <div class="col d-grid justify-content-start">
+            <h5>
+              Amount
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Use adaptive histogram equalization to improve contrast"
+              ></i>
+              <input type="number" id="amount" 
+                  value="2"
+                />
+            </h5>
+          </div>
+      </div>
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
           <a role="button" class="btn btn-warning" id="back" href="./menu.html"
@@ -182,6 +176,6 @@
       integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="../js/intensity.js"></script>
+    <script type="module" src="../js/sharpen.js"></script>
   </body>
 </html>

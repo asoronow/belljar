@@ -71,7 +71,8 @@ def percent_colocalized(boxes1, boxes2, threshold=0.5):
     Returns:
     - Percentage of colocalized boxes.
     """
-
+    if len(boxes1) == 0 or len(boxes2) == 0:
+        return 0
     overlaps = compute_overlaps(boxes1, boxes2)
 
     # For each box in boxes1, find the max IoU with any box in boxes2

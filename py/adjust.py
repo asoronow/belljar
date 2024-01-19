@@ -17,6 +17,8 @@ from qtpy.QtWidgets import (
     QStatusBar,
     QCheckBox,
     QMessageBox,
+    QLineEdit,
+    QListWidget,
 )
 from qtpy.QtGui import QImage, QPixmap, QPainter, QColor
 from qtpy.QtCore import Qt, QPoint, QEvent
@@ -67,6 +69,47 @@ def qimage_to_numpy_array(qimage):
     arr = np.array(ptr).reshape((height, width, 4))  # Channels are RGBA
 
     return arr
+
+
+class FileSelector(QMainWindow):
+    """
+    A list of the loaded files with a search bar and buttons to select files
+    """
+
+    def __init__(self, files):
+        super().__init__()
+        self.files = files
+        self.selected_file = None
+        self.selected_file_index = None
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Select a file")
+        self.selected_file = None
+        self.selected_file_index = None
+        self.search_bar = QLineEdit(self)
+        self.search_bar.textChanged.connect(self.search)
+        self.file_list = QListWidget(self)
+        self.file_list.addItems(self.files)
+        self.file_list.itemClicked.connect(self.file_selected)
+        self.file_list.itemDoubleClicked.connect(self.file_selected)
+        self.file_list.setSortingEnabled(True)
+
+        self.setCentralWidget(self.file_list)
+
+    def search(self):
+        search_text = self.search_bar.text()
+        if search_text == "":
+            self.file_list.clear()
+            self.file_list.addItems(self.files)
+        else:
+            self.file_list.clear()
+            self.file_list.addItems([f for f in self.files if search_text in f])
+
+    def file_selected(self, item):
+        self.selected_file = item.text()
+        self.selected_file_index = self.file_list.index(item)
+        self.close()
 
 
 class AnnotationViewer(QMainWindow):
