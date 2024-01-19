@@ -1051,6 +1051,53 @@ ipcMain.on("runCollate", function (event: any, data: any[]) {
   });
 });
 
+// Collate
+ipcMain.on("runSharpen", function (event: any, data: any[]) {
+  let custom = [
+    String.raw`-o ${data[1]}`,
+    String.raw`-i ${data[0]}`,
+    `-r ${data[2]}`,
+    `-a ${data[3]}`,
+  ]
+  if (data[4]) {
+    custom.push(`--equalize`);
+  }
+  let options = {
+    mode: "text",
+    pythonPath: path.join(envPythonPath, pyCommand),
+    scriptPath: pyScriptsPath,
+    args: custom,
+  };
+  let pyshell = new PythonShell("sharpen.py", options);
+  var total: number = 0;
+  var current: number = 0;
+  pyshell.on("message", (message: string) => {
+    console.log(message);
+    if (total === 0) {
+      total = Number(message);
+    } else if (message == "Done!") {
+      pyshell.end((err: string, code: any, signal: string) => {
+        if (err) throw err;
+        console.log("The exit code was: " + code);
+        console.log("The exit signal was: " + signal);
+        event.sender.send("sharpenResult");
+        ipcMain.removeAllListeners("killSharpen");
+      });
+    } else {
+      current++;
+      event.sender.send("updateLoad", [
+        Math.round((current / total) * 100),
+        message,
+      ]);
+    }
+  });    
+
+  ipcMain.once("killSharpen", function (event: any, data: any[]) {
+    pyshell.kill();
+  });
+});
+
+
 // Cell Detection
 ipcMain.on("runDetection", function (event: any, data: any[]) {
   // Set model path

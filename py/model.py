@@ -11,17 +11,29 @@ import cv2
 from PIL import Image
 import numpy as np
 
+
 class ResidualBlock(nn.Module):
-    '''
+    """
     Residual Block for ResNet architecture
-    '''
+    """
+
     def __init__(self, in_channels, intermediate_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, intermediate_channels, kernel_size=1, stride=stride, padding=0)
+        self.conv1 = nn.Conv2d(
+            in_channels, intermediate_channels, kernel_size=1, stride=stride, padding=0
+        )
         self.bn1 = nn.BatchNorm2d(intermediate_channels)
-        self.conv2 = nn.Conv2d(intermediate_channels, intermediate_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(
+            intermediate_channels,
+            intermediate_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+        )
         self.bn2 = nn.BatchNorm2d(intermediate_channels)
-        self.conv3 = nn.Conv2d(intermediate_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv3 = nn.Conv2d(
+            intermediate_channels, out_channels, kernel_size=1, stride=1, padding=0
+        )
         self.bn3 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
@@ -29,10 +41,12 @@ class ResidualBlock(nn.Module):
         if stride != 1 or in_channels != out_channels:
             # This is the projection shortcut to match dimensions
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0),
-                nn.BatchNorm2d(out_channels)
+                nn.Conv2d(
+                    in_channels, out_channels, kernel_size=1, stride=stride, padding=0
+                ),
+                nn.BatchNorm2d(out_channels),
             )
-            
+
     def forward(self, x):
         residual = self.shortcut(x)
 
@@ -44,15 +58,17 @@ class ResidualBlock(nn.Module):
         out = self.relu(out)
         out = self.conv3(out)
         out = self.bn3(out)
-        
+
         out += residual
         out = self.relu(out)
         return out
-    
+
+
 class TissuePredictor(nn.Module):
-    '''
+    """
     TissuePredictor is a ResNet-101 based model for predicting tissue type from a histology image
-    '''
+    """
+
     def __init__(self):
         super(TissuePredictor, self).__init__()
 
@@ -61,7 +77,7 @@ class TissuePredictor(nn.Module):
             nn.Conv2d(1, 64, kernel_size=7, stride=2),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=2)
+            nn.MaxPool2d(kernel_size=3, stride=2),
         )
 
         # Residual blocks
@@ -70,18 +86,25 @@ class TissuePredictor(nn.Module):
         self.conv4 = self._make_layer(512, 256, 1024, blocks=23, stride=2)
         self.conv5 = self._make_layer(1024, 512, 2048, blocks=3, stride=2)
 
-
         self.fc = nn.Linear(2048, 3)
 
-    def _make_layer(self, in_channels, intermediate_channels, out_channels, blocks, stride):
+    def _make_layer(
+        self, in_channels, intermediate_channels, out_channels, blocks, stride
+    ):
         layers = []
 
         # The first block in the layer handles downsampling and channel expansion
-        layers.append(ResidualBlock(in_channels, intermediate_channels, out_channels, stride=stride))
+        layers.append(
+            ResidualBlock(
+                in_channels, intermediate_channels, out_channels, stride=stride
+            )
+        )
 
         # Subsequent blocks in the layer only work with the expanded channel size
         for _ in range(1, blocks):
-            layers.append(ResidualBlock(out_channels, intermediate_channels, out_channels))
+            layers.append(
+                ResidualBlock(out_channels, intermediate_channels, out_channels)
+            )
 
         return nn.Sequential(*layers)
 
@@ -108,6 +131,7 @@ class TissuePredictor(nn.Module):
 
         return features
 
+
 class AtlasDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         """
@@ -129,7 +153,7 @@ class AtlasDataset(Dataset):
         image = cv2.GaussianBlur(image, (3, 3), sigmaX=0, sigmaY=0)
         gX = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3, delta=25)
         gY = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3, delta=25)
-        
+
         gX = cv2.convertScaleAbs(gX)
         gY = cv2.convertScaleAbs(gY)
 
@@ -151,7 +175,6 @@ class AtlasDataset(Dataset):
         image = self.sobel(image)
         if self.transform:
             image = self.transform(image)
-        
 
         return image
 
@@ -174,18 +197,18 @@ class AngledAtlasDataset(Dataset):
 
     def __len__(self):
         return len(self.file_list)
-    
+
     def sobel(self, image):
         image = cv2.GaussianBlur(image, (3, 3), sigmaX=0, sigmaY=0)
         gX = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3, delta=25)
         gY = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3, delta=25)
-        
+
         gX = cv2.convertScaleAbs(gX)
         gY = cv2.convertScaleAbs(gY)
 
         combined = cv2.addWeighted(gX, 0.5, gY, 0.5, 0)
         return combined
-    
+
     def _normalize_label(self, label):
         pos, x_angle, y_angle = [float(l) for l in label]
         # normalize target values
@@ -249,6 +272,7 @@ class GaussianNoise:
     def __repr__(self):
         return self.__class__.__name__ + f"(mean={self.mean}, std={self.std})"
 
+
 class ReverseLayerF(Function):
     @staticmethod
     def forward(ctx, x, alpha):
@@ -260,6 +284,7 @@ class ReverseLayerF(Function):
         output = grad_output.neg() * ctx.alpha
         return output, None
 
+
 class DANNClassifier(nn.Module):
     def __init__(self):
         super(DANNClassifier, self).__init__()
@@ -268,7 +293,7 @@ class DANNClassifier(nn.Module):
             nn.Linear(256**2, 2048),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(2048, 2)  # Binary classification: synthetic or real
+            nn.Linear(2048, 2),  # Binary classification: synthetic or real
         )
 
     def forward(self, x, alpha):
@@ -280,9 +305,17 @@ class DANNClassifier(nn.Module):
 
 def domain_adaptation():
     import wandb
-    def update_hyperparameters(alpha, lambda_weight, source_val_loss, target_val_loss, 
-                            alpha_increment=0.05, lambda_adjust_factor=0.1, update_threshold=0.1,
-                            max_alpha=1.0):
+
+    def update_hyperparameters(
+        alpha,
+        lambda_weight,
+        source_val_loss,
+        target_val_loss,
+        alpha_increment=0.05,
+        lambda_adjust_factor=0.1,
+        update_threshold=0.1,
+        max_alpha=1.0,
+    ):
         """
         Update alpha and lambda_weight based on validation losses.
 
@@ -293,7 +326,7 @@ def domain_adaptation():
         - target_val_loss (float): Validation loss on the target domain.
         - alpha_increment (float): Amount to increment alpha.
         - lambda_adjust_factor (float): Factor to adjust lambda_weight.
-        - update_threshold (float): Minimum relative difference between source and target 
+        - update_threshold (float): Minimum relative difference between source and target
                                     validation losses required to update lambda_weight and alpha.
         - max_alpha (float): Maximum allowable value for alpha.
 
@@ -320,8 +353,6 @@ def domain_adaptation():
 
         return alpha, lambda_weight
 
-
-
     model = TissuePredictor()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     domain_classifier = DANNClassifier()
@@ -345,7 +376,8 @@ def domain_adaptation():
         Path(r"C:\Users\asoro\Desktop\angled_data"), transform=txs
     )
     target_dataset = AtlasDataset(
-       Path (r"C:\Users\asoro\Projects\belljar-figures\downloaded_ish_images"), transform=txs
+        Path(r"C:\Users\asoro\Projects\belljar-figures\downloaded_ish_images"),
+        transform=txs,
     )
     train_size = int(0.75 * len(source_dataset))
     val_size = len(source_dataset) - train_size
@@ -359,7 +391,9 @@ def domain_adaptation():
         target_dataset, [target_train_size, target_val_size]
     )
 
-    target_train_dataloader = DataLoader(target_train_dataset, batch_size=64, shuffle=True)
+    target_train_dataloader = DataLoader(
+        target_train_dataset, batch_size=64, shuffle=True
+    )
     target_val_dataloader = DataLoader(target_val_dataset, batch_size=64, shuffle=False)
 
     train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
@@ -375,22 +409,38 @@ def domain_adaptation():
         model.train()  # Set the model to training mode
         train_source_loss = 0.0
         train_target_loss = 0.0
-        for i, ((source_data, source_labels), target_data) in enumerate(zip(train_dataloader, target_train_dataloader)):
-            print(f"Train | Epoch: {epoch+1}/{num_epochs} Batch: {i+1}/{len(target_train_dataloader)}", end="\r")
+        for i, ((source_data, source_labels), target_data) in enumerate(
+            zip(train_dataloader, target_train_dataloader)
+        ):
+            print(
+                f"Train | Epoch: {epoch+1}/{num_epochs} Batch: {i+1}/{len(target_train_dataloader)}",
+                end="\r",
+            )
             source_data = source_data.to(device)
             source_labels = source_labels.to(device)
             target_data = target_data.to(device)
 
-           # Forward pass for source data
+            # Forward pass for source data
             source_pred = model(source_data)
             loss_main = criterion(source_pred, source_labels)
 
             # Forward pass for domain classification
-            combined_features = torch.cat((model.extract_features(source_data),
-                                        model.extract_features(target_data)), 0)
-            domain_labels = torch.cat((torch.zeros(source_data.size(0)),
-                                    torch.ones(target_data.size(0))), 0).long().to(device)
-            
+            combined_features = torch.cat(
+                (
+                    model.extract_features(source_data),
+                    model.extract_features(target_data),
+                ),
+                0,
+            )
+            domain_labels = (
+                torch.cat(
+                    (torch.zeros(source_data.size(0)), torch.ones(target_data.size(0))),
+                    0,
+                )
+                .long()
+                .to(device)
+            )
+
             domain_pred = domain_classifier(combined_features, alpha)
             loss_domain = domain_criterion(domain_pred, domain_labels)
 
@@ -398,7 +448,6 @@ def domain_adaptation():
             train_target_loss += loss_domain.item()
             # Compute combined loss
             loss_combined = loss_main + lambda_weight * loss_domain
-            
 
             # Backpropagation and optimization
             optimizer.zero_grad()
@@ -409,32 +458,42 @@ def domain_adaptation():
         # Validation Phase
         train_source_loss /= len(target_train_dataloader)
         train_target_loss /= len(target_train_dataloader)
-        print(f"\nTrain Source Loss: {train_source_loss}, Train Target Loss: {train_target_loss}")
+        print(
+            f"\nTrain Source Loss: {train_source_loss}, Train Target Loss: {train_target_loss}"
+        )
         model.eval()  # Set the model to evaluation mode
         with torch.no_grad():  # Disable gradient computation
             b = 0
             # Validation on Source Domain
             source_val_loss = 0.0
             for source_data, source_labels in val_dataloader:
-                print(f"Valid | Epoch: {epoch+1}/{num_epochs} Batch: {b+1}/{len(val_dataloader) + len(target_val_dataloader)}", end="\r")
+                print(
+                    f"Valid | Epoch: {epoch+1}/{num_epochs} Batch: {b+1}/{len(val_dataloader) + len(target_val_dataloader)}",
+                    end="\r",
+                )
                 source_data = source_data.to(device)
                 source_labels = source_labels.to(device)
                 source_pred = model(source_data)
                 loss_main = criterion(source_pred, source_labels)
                 source_val_loss += loss_main.item()
                 b += 1
-            
+
             # Average the loss over all source validation batches
             source_val_loss /= len(val_dataloader)
             # Validation on Target Domain
             target_val_loss = 0.0
             for target_data in target_val_dataloader:
-                print(f"Valid | Epoch: {epoch+1}/{num_epochs} Batch: {b+1}/{len(val_dataloader) + len(target_val_dataloader)}", end="\r")
+                print(
+                    f"Valid | Epoch: {epoch+1}/{num_epochs} Batch: {b+1}/{len(val_dataloader) + len(target_val_dataloader)}",
+                    end="\r",
+                )
                 target_data = target_data.to(device)
                 target_features = model.extract_features(target_data)
                 domain_pred = domain_classifier(target_features, alpha=0)
                 # Assuming you have a criterion for domain validation
-                loss_domain = domain_criterion(domain_pred, torch.ones(target_data.size(0)).long().to(device))
+                loss_domain = domain_criterion(
+                    domain_pred, torch.ones(target_data.size(0)).long().to(device)
+                )
                 target_val_loss += loss_domain.item()
                 b += 1
 
@@ -446,15 +505,24 @@ def domain_adaptation():
                 torch.save(model.state_dict(), "adapted_model.pt")
                 torch.save(domain_classifier.state_dict(), "domain_classifier.pt")
             # Update alpha and lambda_weight
-            alpha, lambda_weight = update_hyperparameters(alpha, lambda_weight, source_val_loss, target_val_loss)
-            wandb.log({"source_val_loss": source_val_loss,
-            "target_val_loss": target_val_loss,
-            "alpha": alpha,
-            "lambda_weight": lambda_weight,
-            "train_source_loss": train_source_loss,
-            "train_target_loss": train_target_loss})
+            alpha, lambda_weight = update_hyperparameters(
+                alpha, lambda_weight, source_val_loss, target_val_loss
+            )
+            wandb.log(
+                {
+                    "source_val_loss": source_val_loss,
+                    "target_val_loss": target_val_loss,
+                    "alpha": alpha,
+                    "lambda_weight": lambda_weight,
+                    "train_source_loss": train_source_loss,
+                    "train_target_loss": train_target_loss,
+                }
+            )
         # Print or log the validation losses
-        print(f'Epoch [{epoch+1}/{num_epochs}], Source Val Loss: {source_val_loss:.4f}, Target Val Loss: {target_val_loss:.4f}')
+        print(
+            f"Epoch [{epoch+1}/{num_epochs}], Source Val Loss: {source_val_loss:.4f}, Target Val Loss: {target_val_loss:.4f}"
+        )
+
 
 def train_model():
     from train import Trainer
@@ -464,10 +532,7 @@ def train_model():
     criterion = torch.nn.MSELoss()
 
     tx = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize(mean=0.1253, std=0.0986)
-        ]
+        [transforms.ToTensor(), transforms.Normalize(mean=0.1253, std=0.0986)]
     )
     dataset = AngledAtlasDataset(
         Path(r"C:\Users\asoro\Desktop\angled_data"), transform=tx
@@ -479,11 +544,21 @@ def train_model():
         dataset, [train_size, val_size]
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True, pin_memory=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=128, shuffle=True, pin_memory=True, num_workers=4
+    )
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4
+    )
 
     trainer = Trainer(
-        model, train_dataloader, val_dataloader, criterion, optimizer, device="cuda", project_name="tissue_resnet"
+        model,
+        train_dataloader,
+        val_dataloader,
+        criterion,
+        optimizer,
+        device="cuda",
+        project_name="tissue_resnet",
     )
     trainer.run(epochs=50)
 
