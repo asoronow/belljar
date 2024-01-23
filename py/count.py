@@ -135,11 +135,11 @@ if __name__ == "__main__":
     predictionFiles.sort()
     # Reading in regions
     regions = {}
-    nameToRegion = {}
+    acronym_to_region = {}
     with open(args.structures.strip(), "rb") as f:
         regions = pickle.load(f)
         for k, v in regions.items():
-            nameToRegion[v["name"]] = k
+            acronym_to_region[v["acronym"]] = k
 
     sums = {}
     colocalized = {}
@@ -199,15 +199,23 @@ if __name__ == "__main__":
                             sums[pName][c][acronym] = 1
                     else:
                         id_path = regions[atlas_id]["id_path"].split("/")
-                        if len(id_path) >= 2:
-                            parent_id = np.uint32(id_path[-2])
+                        # check if layer in name
+                        area_name = regions[atlas_id]["name"]
+                        if "layer" in area_name.lower():
+                            if len(id_path) >= 2:
+                                parent_id = np.uint32(id_path[-2])
+                            else:
+                                parent_id = atlas_id
+                            parent_acronym = regions[parent_id]["acronym"]
+                            if sums[pName][c].get(parent_acronym, False):
+                                sums[pName][c][parent_acronym] += 1
+                            else:
+                                sums[pName][c][parent_acronym] = 1
                         else:
-                            parent_id = atlas_id
-                        parent_acronym = regions[parent_id]["acronym"]
-                        if sums[pName][c].get(parent_acronym, False):
-                            sums[pName][c][parent_acronym] += 1
-                        else:
-                            sums[pName][c][parent_acronym] = 1
+                            if sums[pName][c].get(acronym, False):
+                                sums[pName][c][acronym] += 1
+                            else:
+                                sums[pName][c][acronym] = 1
 
             # Compute colocalization
             colocalized[pName] = {}
@@ -230,7 +238,7 @@ if __name__ == "__main__":
                 item for sublist in all_channel_regions for item in sublist
             ]
             lines.append(
-                ["Region", "Area (px)"]
+                ["Region Acronym", "Region Name", "Area (px)"]
                 + [f"Channel #{c}" for c in range(len(channels))]
             )
             for region in sorted(all_channel_regions):
@@ -246,9 +254,13 @@ if __name__ == "__main__":
                     else:
                         running_counts[region] = per_channel_counts[-1]
 
+                # find name from acronym
+                region_id = acronym_to_region[region]
+                region_name = regions[region_id]["name"]
                 lines.append(
                     [
                         region,
+                        region_name,
                         region_areas[file][region],
                     ]
                     + per_channel_counts
@@ -256,9 +268,11 @@ if __name__ == "__main__":
             lines.append([])
 
         lines.append(["Totals"])
-        lines.append(["Region", "Count"])
+        lines.append(["Region Acronym", "Region Name", "Count"])
         for region, count in sorted(running_counts.items()):
-            lines.append([region, count])
+            region_id = acronym_to_region[region]
+            region_name = regions[region_id]["name"]
+            lines.append([region, region_name, count])
 
         lines.append([])
         # Colocalization
