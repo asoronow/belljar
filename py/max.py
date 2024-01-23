@@ -15,10 +15,6 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         img = tiff.imread(file)
         # Max projection
         img = np.max(img, axis=0)
-
-        # Apply unsharp mask to enhance edges
-        img = unsharp_mask(img, radius=1, amount=2)
-
         # convert to 8 bit tiff if not already
         if img.dtype != np.uint8:
             # if floating point
@@ -33,6 +29,7 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
 
         # Save the processed image
         cv2.imwrite(f"{outputDirectory}/{stem}.tif", img)
+
     except Exception as e:
         print(f"Failed to process {file}. Error: {e}", flush=True)
 

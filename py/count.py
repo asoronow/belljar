@@ -170,6 +170,7 @@ if __name__ == "__main__":
                     parent_id = np.uint32(id_path[-2])
                 else:
                     parent_id = unique_id
+
                 parent_name = regions[parent_id]["acronym"]
                 region_areas[pName][name] = count
 
