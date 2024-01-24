@@ -162,6 +162,8 @@ if __name__ == "__main__":
                 annotation, predicted_size
             )
 
+
+
             unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
             for unique_id, count in zip(unique_ids, counts):
                 name = regions[unique_id]["acronym"]
@@ -189,8 +191,15 @@ if __name__ == "__main__":
                     x, y, mX, mY = box[0], box[1], box[2], box[3]
                     xPos = int((mX - (mX - x) // 2))
                     yPos = int((mY - (mY - y) // 2))
-                    # draw a circle on the image
-                    atlas_id = annotation_rescaled[yPos, xPos]
+                    try:
+                        atlas_id = annotation_rescaled[yPos, xPos]
+                    except IndexError:
+                        # resize was in the wrong order
+                        annotation_rescaled = resize_image_nearest_neighbor(
+                            annotation, predicted_size[::-1]
+                        )
+                        atlas_id = annotation_rescaled[yPos, xPos]
+                        
                     acronym = regions[atlas_id]["acronym"]
                     if args.layers:
                         if sums[pName][c].get(acronym, False):
