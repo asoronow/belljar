@@ -29,7 +29,12 @@ from qtpy.QtWidgets import (
 )
 
 from qtpy import QtCore, QtGui
+from qtpy.QtCore import QTimer
 from adjust import numpy_array_to_qimage
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 
 class ImageEraser(QMainWindow):
@@ -342,17 +347,17 @@ class AlignmentController:
         self.x_angle_spinbox.setRange(-10, 10)
         self.x_angle_spinbox.setSingleStep(0.1)
         self.x_angle_spinbox.setSuffix("°")
-        self.x_angle_spinbox.valueChanged.connect(self.update_slice)
+        self.x_angle_spinbox.valueChanged.connect(self.que_update_slice)
 
         self.y_angle_spinbox = QDoubleSpinBox()
         self.y_angle_spinbox.setRange(-10, 10)
         self.y_angle_spinbox.setSingleStep(0.1)
         self.y_angle_spinbox.setSuffix("°")
-        self.y_angle_spinbox.valueChanged.connect(self.update_slice)
+        self.y_angle_spinbox.valueChanged.connect(self.que_update_slice)
 
         self.link_angles_button = QCheckBox("Link Angles")
         self.link_angles_button.setChecked(True)
-        self.link_angles_button.stateChanged.connect(self.set_all_angles)
+        self.link_angles_button.stateChanged.connect(self.update_linkage)
 
         self.ap_position_spinbox = QDoubleSpinBox()
         if not self.use_legacy:
@@ -362,7 +367,7 @@ class AlignmentController:
         self.ap_position_spinbox.setSingleStep(5)
         # no decimal places
         self.ap_position_spinbox.setDecimals(0)
-        self.ap_position_spinbox.valueChanged.connect(self.update_position)
+        self.ap_position_spinbox.valueChanged.connect(self.que_update_position)
 
         # Region selection
         self.region_tags = {
@@ -378,7 +383,7 @@ class AlignmentController:
                 "No Cerebrum",
             ]
         )
-        self.region_selection.currentIndexChanged.connect(self.update_slice)
+        self.region_selection.currentIndexChanged.connect(self.que_update_slice)
 
         self.mask_button = QPushButton("Set Mask")
         self.mask_button.clicked.connect(self.update_mask)
@@ -415,6 +420,9 @@ class AlignmentController:
         ap_position_layout.addWidget(self.ap_position_spinbox)
         ap_position_widget.setLayout(ap_position_layout)
 
+        # Timers
+        self.slice_update_timer = QTimer()
+        self.pos_update_timer = QTimer()
         self.viewer.window.add_dock_widget(
             [
                 x_angle_widget,
@@ -680,6 +688,11 @@ class AlignmentController:
         self.atlas_layer.data = temp_data
         self.viewer.grid.enabled = True
 
+        # Set linkage
+        self.link_angles_button.setChecked(
+            self.atlas_slices[self.file_list[self.current_section]].linked
+        )
+
         # Set the angles and position
         self.x_angle_spinbox.setValue(
             self.atlas_slices[self.file_list[self.current_section]].x_angle
@@ -702,25 +715,48 @@ class AlignmentController:
             else "Update Mask"
         )
 
+    def update_linkage(self):
+        """Update the linkage of the current slice"""
+        self.atlas_slices[self.file_list[self.current_section]].linked = (
+            self.link_angles_button.isChecked()
+        )
+
     def set_all_angles(self):
         """Update every slice with the current angles"""
+        # Check if current slice is linked
         current_slice = self.atlas_slices[self.file_list[self.current_section]]
-        current_slice.linked = self.link_angles_button.isChecked()
-        for this_slice in self.atlas_slices.values():
-            if this_slice.linked:
-                this_slice.x_angle = self.x_angle_spinbox.value()
-                this_slice.y_angle = self.y_angle_spinbox.value()
-        self.update_display()
+        if current_slice.linked:
+            for this_slice in self.atlas_slices.values():
+                if this_slice.linked:
+                    this_slice.x_angle = self.x_angle_spinbox.value()
+                    this_slice.y_angle = self.y_angle_spinbox.value()
+            self.update_display()
+
+    def que_update_slice(self):
+        """Queue an update to the display"""
+        # Check if timer active
+        if self.slice_update_timer.isActive():
+            self.slice_update_timer.stop()
+
+        self.slice_update_timer.singleShot(500, self.update_slice)
+
+    def que_update_position(self):
+        """Queue an update to the display"""
+        # Check if timer active
+        if self.pos_update_timer.isActive():
+            self.pos_update_timer.stop()
+
+        self.pos_update_timer.singleShot(500, self.update_position)
 
     def update_slice(self):
         """Update the angles and region of the current slice"""
-        if self.visited > 0:
-            current_slice = self.atlas_slices[self.file_list[self.current_section]]
-            current_slice.x_angle = self.x_angle_spinbox.value()
-            current_slice.y_angle = self.y_angle_spinbox.value()
-            current_slice.region = self.region_tags[self.region_selection.currentText()]
-            current_slice.set_slice(self.atlas, self.annotation)
-            self.update_display()
+        current_slice = self.atlas_slices[self.file_list[self.current_section]]
+        current_slice.x_angle = self.x_angle_spinbox.value()
+        current_slice.y_angle = self.y_angle_spinbox.value()
+        current_slice.region = self.region_tags[self.region_selection.currentText()]
+        current_slice.set_slice(self.atlas, self.annotation)
+        self.set_all_angles()
+        self.update_display()
 
     def update_position(self):
         """Update the position of the current slice"""
@@ -739,24 +775,31 @@ class AlignmentController:
                 )
 
             if len(visited_positions) < 2:
-                # based on predicted delta and initial position
-                initial_pos = self.atlas_slices[self.file_list[0]].ap_position
-                for i in range(self.visited, self.num_slices):
-                    self.atlas_slices[self.file_list[i]].ap_position = (
-                        initial_pos + i * self.predicted_delta
-                    )
                 return
 
-            # fit a line to the visited positions
-            x = np.arange(len(visited_positions))
-            m, b = np.polyfit(x, visited_positions, 1)
+            degree = 2
+            poly_model = make_pipeline(
+                StandardScaler(), PolynomialFeatures(degree), Ridge()
+            )
 
-            # adjust the positions of all slices after the visited slices
-            for i in range(self.visited, self.num_slices):
-                self.atlas_slices[self.file_list[i]].ap_position = m * i + b
+            x = np.arange(len(visited_positions)).reshape(-1, 1)
+            y = np.array(visited_positions)
 
-            # update all the linked angles to the average x and y
-        self.set_all_angles()
+            # Fit the model
+            poly_model.fit(x, y)
+
+            # Use the model for predictions
+            x_predict = np.arange(self.visited, self.num_slices).reshape(-1, 1)
+            predictions = poly_model.predict(x_predict)
+
+            # Adjust positions
+            for i, new_position in enumerate(predictions, start=self.visited):
+                if self.spacing is not None:
+                    self.atlas_slices[self.file_list[i]].ap_position = max(
+                        new_position, int(self.spacing) // 10
+                    )
+                else:
+                    self.atlas_slices[self.file_list[i]].ap_position = new_position
 
     def next_section(self):
         """Move to next section"""
@@ -784,10 +827,10 @@ class AlignmentController:
     def finish(self):
         """Finish alignment"""
         # disconnect signals
-        self.x_angle_spinbox.valueChanged.disconnect(self.update_slice)
-        self.y_angle_spinbox.valueChanged.disconnect(self.update_slice)
-        self.ap_position_spinbox.valueChanged.disconnect(self.update_position)
-        self.region_selection.currentIndexChanged.disconnect(self.update_slice)
+        self.x_angle_spinbox.valueChanged.disconnect(self.que_update_slice)
+        self.y_angle_spinbox.valueChanged.disconnect(self.que_update_slice)
+        self.ap_position_spinbox.valueChanged.disconnect(self.que_update_position)
+        self.region_selection.currentIndexChanged.disconnect(self.que_update_slice)
         self.next_button.clicked.disconnect(self.next_section)
         self.previous_button.clicked.disconnect(self.previous_section)
         self.finish_button.clicked.disconnect(self.finish)

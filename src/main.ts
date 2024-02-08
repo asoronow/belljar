@@ -627,7 +627,6 @@ function fixMissingDirectories(win: typeof BrowserWindow) {
 }
 
 // Makes the local user writable folder
-// TODO: Version checking to see if we need to update the files
 function checkLocalDir() {
   if (!fs.existsSync(homeDir)) {
     fs.mkdirSync(homeDir, {
@@ -773,6 +772,21 @@ ipcMain.on("openFileDialog", function (event: any, data: any) {
     .catch((err: Error) => {
       console.log(err);
     });
+});
+
+function openPDF(relativePath: string) {
+  const pdfPath = path.join(appDir, relativePath);
+  shell.openPath(pdfPath)
+    .then(() => {
+      console.log("Guide opened");
+    })
+    .catch((error: any) => {
+      console.log(error);
+    })
+}
+
+ipcMain.on("openGuide", function (event: any, data: any) {
+  openPDF("docs/belljar_guide.pdf");
 });
 
 // Max Projection

@@ -24,9 +24,10 @@ def export_bboxes(image, boxes, output_path):
 
     cv2.imwrite(str(output_path), image)
 
+
 def xyxy_to_area(box):
-        return (box[2] - box[0]) * (box[3] - box[1])
-    
+    return (box[2] - box[0]) * (box[3] - box[1])
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
@@ -79,7 +80,6 @@ if __name__ == "__main__":
         device=device,
     )
 
-    
     for file in files:
         file_path = os.path.join(input_dir, file)
         stripped, ext = file.split(".")[0], file.split(".")[-1]
@@ -128,28 +128,16 @@ if __name__ == "__main__":
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
-                    slice_height=256,
-                    slice_width=256,
+                    slice_height=320,
+                    slice_width=320,
                     overlap_height_ratio=0.2,
                     overlap_width_ratio=0.2,
                 )
 
- 
-
                 predicted_objects = result.object_prediction_list
-                good_objects = []
-                avg_area = np.mean(
-                    [xyxy_to_area(obj.bbox.to_xyxy()) for obj in predicted_objects]
-                )
-                for obj in predicted_objects:
-                    bbox = obj.bbox.to_xyxy()
-                    area = xyxy_to_area(bbox)
-                    if area > 0.5 * avg_area and area < 2.5 * avg_area:
-                        good_objects.append(obj)
+                bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
+                scores = [obj.score.value for obj in predicted_objects]
 
-                bboxes = [obj.bbox.to_xyxy() for obj in good_objects]
-                scores = [obj.score.value for obj in good_objects]
-                # Remove any predictions with a oversized box
                 predictions.append(
                     DetectionResult(
                         boxes=bboxes,
@@ -171,24 +159,14 @@ if __name__ == "__main__":
             result = get_sliced_prediction(
                 img,
                 detection_model,
-                slice_height=256,
-                slice_width=256,
+                slice_height=320,
+                slice_width=320,
                 overlap_height_ratio=0.2,
                 overlap_width_ratio=0.2,
             )
             predicted_objects = result.object_prediction_list
-            good_objects = []
-            avg_area = np.mean(
-                [xyxy_to_area(obj.bbox.to_xyxy()) for obj in predicted_objects]
-            )
-            for obj in predicted_objects:
-                bbox = obj.bbox.to_xyxy()
-                area = xyxy_to_area(bbox)
-                if area > 0.5 * avg_area and area < 2.5 * avg_area:
-                    good_objects.append(obj)
-
-            bboxes = [obj.bbox.to_xyxy() for obj in good_objects]
-            scores = [obj.score.value for obj in good_objects]
+            bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
+            scores = [obj.score.value for obj in predicted_objects]
 
             predictions = [
                 DetectionResult(
