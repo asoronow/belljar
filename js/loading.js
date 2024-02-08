@@ -1,5 +1,5 @@
 var ipc = require("electron").ipcRenderer;
-
+var guide = document.getElementById("guide");
 let lastUpdateTimestamp = 0;
 
 ipc.on("updateStatus", function (event, response) {
@@ -11,6 +11,11 @@ ipc.on("updateStatus", function (event, response) {
 		status.innerHTML = response.message || response;
 	}
 });
+
+guide.addEventListener("click", function () {
+	ipc.send("openGuide");
+});
+
 // get version from ipc
 ipc.send("getVersion");
 ipc.on("version", function (event, response) {

@@ -514,7 +514,6 @@ function fixMissingDirectories(win) {
     });
 }
 // Makes the local user writable folder
-// TODO: Version checking to see if we need to update the files
 function checkLocalDir() {
     if (!fs.existsSync(homeDir)) {
         fs.mkdirSync(homeDir, {
@@ -650,6 +649,19 @@ ipcMain.on("openFileDialog", function (event, data) {
         .catch((err) => {
         console.log(err);
     });
+});
+function openPDF(relativePath) {
+    const pdfPath = path.join(appDir, relativePath);
+    shell.openPath(pdfPath)
+        .then(() => {
+        console.log("Guide opened");
+    })
+        .catch((error) => {
+        console.log(error);
+    });
+}
+ipcMain.on("openGuide", function (event, data) {
+    openPDF("docs/belljar_guide.pdf");
 });
 // Max Projection
 ipcMain.on("runMax", function (event, data) {
