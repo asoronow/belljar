@@ -87,6 +87,23 @@
       </div>
       <div class="row align-items-center m-1">
         <div class="col d-grid justify-content-start">
+          <h5>
+            Detection Model
+            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Select the detection method for your data-type."></i>
+          </h5>
+          <div class="dropdown text-start">
+            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
+            Somata
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="regions">
+              <li><a class="dropdown-item" id="somata" href="#">Somata</a></li>
+              <li><a class="dropdown-item" id="nuclei" href="#">Nuclei</a></li>
+            </ul>
+          </div> 
+        </div>
+      </div>
+      <div class="row align-items-center m-1">
+        <div class="col d-grid justify-content-start">
           <a
             id="advance"
             data-bs-toggle="collapse"

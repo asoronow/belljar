@@ -1115,7 +1115,13 @@ ipcMain.on("runSharpen", function (event: any, data: any[]) {
 // Cell Detection
 ipcMain.on("runDetection", function (event: any, data: any[]) {
   // Set model path
-  var modelPath = path.join(homeDir, "models/chaosdruid.pt");
+  var models: { [key: string]: string } = {
+    "somata": "models/chaosdruid.pt",
+    "nuclei": "models/ankou.pt",
+  }
+
+  let selected = data[6] as string;
+  var modelPath = path.join(homeDir, models[selected]);
   // Switch over to custom if necessary
   if (data[4].length > 0) {
     modelPath = data[4];
