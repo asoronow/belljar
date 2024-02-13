@@ -981,7 +981,7 @@ ipcMain.on("runDetection", function (event, data) {
     // Set model path
     var models = {
         "somata": "models/chaosdruid.pt",
-        "nuclei": "models/nuclei.pt",
+        "nuclei": "models/ankou.pt",
     };
     let selected = data[6];
     var modelPath = path.join(homeDir, models[selected]);
