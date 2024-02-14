@@ -106,34 +106,12 @@ def tile_image(image, tile_size, overlap=0):
 
     # Adjusted calculation for the number of tiles considering the overlap
     stride = tile_size - overlap
-    tiles_x = (width + stride - 1) // stride
-    tiles_y = (height + stride - 1) // stride
-
-    # Calculate new padded image size
-    new_width = stride * tiles_x + overlap
-    new_height = stride * tiles_y + overlap
-
-    # Pad the image to fit the tile size and number exactly
-    pad_right = new_width - width
-    pad_bottom = new_height - height
-    pad_top = pad_bottom // 2
-    pad_left = pad_right // 2
-    image_padded = cv2.copyMakeBorder(
-        image,
-        pad_top,
-        pad_bottom - pad_top,
-        pad_left,
-        pad_right - pad_left,
-        cv2.BORDER_CONSTANT,
-        value=[0, 0, 0],
-    )
-
     # Create the tiles
-    for y in range(0, new_height - overlap, stride):
-        for x in range(0, new_width - overlap, stride):
-            tile = image_padded[y : y + tile_size, x : x + tile_size]
-            x_center = x + pad_left + tile_size // 2
-            y_center = y + pad_top + tile_size // 2
+    for y in range(0, height - overlap, stride):
+        for x in range(0, width - overlap, stride):
+            tile = image[y : y + tile_size, x : x + tile_size]
+            x_center = x  + tile_size // 2
+            y_center = y  + tile_size // 2
             tiles.append(ImageTile(tile, x_center, y_center, tile_size, tile_size))
 
     return tiles
@@ -222,6 +200,55 @@ def load_predictions(input_dir):
     return bboxes
 
 
+def pull_images(input_dir, output_dir):
+    """
+    Pulls and tiles images from the input directory.
+
+    Parameters
+    ----------
+    input_dir : str
+        The input directory.
+    output_dir : str
+        The output directory.
+    bboxes : list
+        A list of bboxes.
+    """
+    # Path
+    input_dir = Path(input_dir).expanduser()
+    output_dir = Path(output_dir).expanduser()
+
+    # Check the input dir for any sub directories calld "Max Projection"
+    max_projection_dirs = list(input_dir.rglob("*/Max Projection"))
+    # Get all the tifs in these directories
+    images = []
+    for max_projection_dir in max_projection_dirs:
+        images += list(max_projection_dir.rglob("*.tiff"))
+    
+    print(f"Found {len(images)} images")
+    # make 640x640 tiles of every image
+    tile_num = 0
+    for image in images:
+        # Load the image
+        image = cv2.imread(str(image), cv2.IMREAD_GRAYSCALE)
+        # convert to 8 bit
+        image = cv2.convertScaleAbs(image, alpha=1.5, beta=0)
+
+        # Tile the image
+        tiles = []
+        width, height = image.shape
+        for y in range(0, height, 640):
+            for x in range(0, width, 640):
+                tile = image[y : y + 640, x : x + 640]
+                tiles.append(tile)
+        print(f"Made {len(tiles)} tiles")
+        # Write the tiles to the output directory
+        for tile in tiles:
+            tile_path = output_dir / f"tile_{tile_num}.png"
+            tile_num += 1
+            if np.mean(tile) > 10:
+                cv2.imwrite(str(tile_path), tile)
+
+
 def main():
     # Parse the arguments
     parser = argparse.ArgumentParser(description="Tile an image and write YOLO labels.")
@@ -253,20 +280,8 @@ def main():
     # Find all the tifs
     images_path = Path(args.images_path).expanduser()
     images = list(images_path.rglob("*.tif"))
-    print(f"Found {len(images)} images")
     # Load the predictions
-    bboxes = load_predictions(args.detection_dir)
-
-    # Tile and label the images
-    for image_path in images:
-        # Load the image
-        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-
-        # Tile the image
-        tiles = tile_image(image, args.tile_size, args.overlap)
-        print(f"Made {len(tiles)} tiles")
-        # Write the tiles and labels
-        write_tiles_labels(tiles, bboxes, args.output_dir)
+    pull_images(args.images_path, args.output_dir)
 
 
 if __name__ == "__main__":
