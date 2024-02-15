@@ -11,6 +11,20 @@ var back = document.getElementById("back");
 var advance = document.getElementById("advance");
 var arrow = document.getElementById("arrow");
 var multichannel = document.getElementById("multichannel");
+var methods = document.querySelector("#methods");
+var somata = document.getElementById("somata");
+var nuclei = document.getElementById("nuclei");
+var detectionMethod = "somata";
+
+somata.addEventListener("click", function () {
+	methods.textContent = "Somata";
+	detectionMethod = "somata";
+});
+
+nuclei.addEventListener("click", function () {
+	// methods.textContent = "Nuclei";
+	// detectionMethod = "nuclei";
+});
 
 advance.addEventListener("click", function () {
 	arrow.classList.toggle("down");
@@ -26,7 +40,7 @@ function checkNumber(value, message) {
 }
 
 run.addEventListener("click", function () {
-	var c = 0.5;
+	var c = 0.25;
 	var t = 640;
 	var m = "";
 	var mc = false;
@@ -59,7 +73,15 @@ run.addEventListener("click", function () {
 		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
 		loadmessage.innerHTML = "Intializing...";
 
-		ipc.send("runDetection", [indir.value, outdir.value, c, t, m, mc]);
+		ipc.send("runDetection", [
+			indir.value,
+			outdir.value,
+			c,
+			t,
+			m,
+			mc,
+			detectionMethod,
+		]);
 	}
 });
 

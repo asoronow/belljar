@@ -882,7 +882,6 @@ class AlignmentController:
 
             # convert sample to color
             sample = cv2.cvtColor(sample, cv2.COLOR_GRAY2RGB)
-
             # composite image
             composite = cv2.addWeighted(
                 sample,

@@ -256,13 +256,13 @@ function downloadResources(win, fresh) {
     // Download the tar files into the homeDir and extract them to their respective folders
     const currnet_versions = {
         nrrd: "v91",
-        models: "v93",
+        models: "v95",
         embeddings: "v6",
     };
     return new Promise((resolve, reject) => {
         const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
         const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-        const modelsLink = `${bucketParentPath}/models-v93.tar.gz`; //  Update to v7
+        const modelsLink = `${bucketParentPath}/models-v95.tar.gz`; //  Update to v7
         const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
         const requiredDirs = ["models", "embeddings", "nrrd"];
         if (!fresh) {
@@ -979,7 +979,12 @@ ipcMain.on("runSharpen", function (event, data) {
 // Cell Detection
 ipcMain.on("runDetection", function (event, data) {
     // Set model path
-    var modelPath = path.join(homeDir, "models/chaosdruid.pt");
+    var models = {
+        "somata": "models/chaosdruid.pt",
+        "nuclei": "models/ankou.pt",
+    };
+    let selected = data[6];
+    var modelPath = path.join(homeDir, models[selected]);
     // Switch over to custom if necessary
     if (data[4].length > 0) {
         modelPath = data[4];

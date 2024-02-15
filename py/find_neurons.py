@@ -119,6 +119,9 @@ if __name__ == "__main__":
         if len(split_channels) > 0:
             for i, chan_img in enumerate(split_channels):
                 # convert to BGR
+                # equalize the image
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
+                img = clahe.apply(img)
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
                 # if dtype not uint8, convert
                 if chan_img.dtype != np.uint8:
@@ -128,10 +131,10 @@ if __name__ == "__main__":
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
-                    slice_height=320,
-                    slice_width=320,
-                    overlap_height_ratio=0.2,
-                    overlap_width_ratio=0.2,
+                    slice_height=640,
+                    slice_width=640,
+                    overlap_height_ratio=0.5,
+                    overlap_width_ratio=0.5,
                 )
 
                 predicted_objects = result.object_prediction_list
@@ -150,19 +153,23 @@ if __name__ == "__main__":
         else:
             # check if image is BGR
             if channels < 3:
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
+                img = clahe.apply(img)
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             # Make sure image is 8bit or float32
             if img.dtype != np.uint8:
                 img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
+   
+
             result = get_sliced_prediction(
                 img,
                 detection_model,
-                slice_height=320,
-                slice_width=320,
-                overlap_height_ratio=0.2,
-                overlap_width_ratio=0.2,
+                slice_height=640,
+                slice_width=640,
+                overlap_height_ratio=0.5,
+                overlap_width_ratio=0.5,
             )
             predicted_objects = result.object_prediction_list
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]

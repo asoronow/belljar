@@ -12,13 +12,13 @@ ipc.on("updateStatus", function (event, response) {
 	}
 });
 
-guide.addEventListener("click", function () {
-	ipc.send("openGuide");
-});
-
 // get version from ipc
 ipc.send("getVersion");
 ipc.on("version", function (event, response) {
 	var version = document.getElementById("version");
 	version.innerHTML = response;
+});
+
+guide.addEventListener("click", function () {
+	ipc.send("openGuide");
 });
