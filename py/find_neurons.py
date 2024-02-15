@@ -120,7 +120,7 @@ if __name__ == "__main__":
             for i, chan_img in enumerate(split_channels):
                 # convert to BGR
                 # equalize the image
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
                 img = clahe.apply(img)
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
                 # if dtype not uint8, convert
@@ -128,8 +128,6 @@ if __name__ == "__main__":
                     chan_img = cv2.normalize(
                         chan_img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
                     )
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                chan_img = clahe.apply(chan_img)
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
@@ -155,6 +153,8 @@ if __name__ == "__main__":
         else:
             # check if image is BGR
             if channels < 3:
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
+                img = clahe.apply(img)
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             # Make sure image is 8bit or float32
