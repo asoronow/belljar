@@ -30,10 +30,6 @@ def match_histograms(fixed, moving):
 
 
 def multimodal_registration(fixed, moving):
-    # Pad
-    padding_size = 64
-    fixed = sitk.ConstantPad(fixed, (padding_size, padding_size))
-    moving = sitk.ConstantPad(moving, (padding_size, padding_size))
     # Cast
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.Cast(moving, sitk.sitkFloat32)
@@ -115,6 +111,46 @@ def multimodal_registration(fixed, moving):
     return composite_transform
 
 
+def resize_image_by_height(image, target_height):
+    """
+    Resize a SimpleITK image to a specified target height while maintaining the aspect ratio.
+
+    Parameters:
+    - image: The input SimpleITK image.
+    - target_height: The desired height of the output image.
+
+    Returns:
+    - Resized SimpleITK image.
+    """
+    # Get the original size and spacing of the image
+    original_size = image.GetSize()
+    original_spacing = image.GetSpacing()
+
+    # Calculate the aspect ratio
+    aspect_ratio = original_size[0] / original_size[1]
+
+    # Calculate the new width to maintain aspect ratio
+    new_width = int(target_height * aspect_ratio)
+
+    # Calculate new spacing to maintain aspect ratio
+    new_spacing = [
+        original_spacing[0] * (original_size[0] / new_width),
+        original_spacing[1] * (original_size[1] / target_height),
+    ] + list(original_spacing[2:])
+
+    # New size
+    new_size = [new_width, target_height] + list(original_size[2:])
+
+    # Resample the image
+    resample_filter = sitk.ResampleImageFilter()
+    resample_filter.SetOutputSpacing(new_spacing)
+    resample_filter.SetSize(new_size)
+    resample_filter.SetTransform(sitk.Transform())
+    resample_filter.SetInterpolator(sitk.sitkLinear)
+
+    return resample_filter.Execute(image)
+
+
 def resize_image_nearest_neighbor(input_image, new_size):
     """
     Resize an image using nearest-neighbor interpolation, maintaining the original data type.
@@ -175,9 +211,16 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     fixed = sitk.GetImageFromArray(tissue, isVector=False)
     moving = sitk.GetImageFromArray(section, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
-    # resize atlas to match section
+
+    # resize fixed to match moving
+    old_size = fixed.GetSize()
+    fixed = resize_image_by_height(fixed, 512)
     moving = match_histograms(fixed, moving)
     tx = multimodal_registration(fixed, moving)
+    fixed = sitk.GetArrayFromImage(fixed)
+    fixed = resize_image_nearest_neighbor(fixed, old_size)
+    fixed = sitk.GetImageFromArray(fixed, isVector=False)
+
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)
     resampler.SetInterpolator(sitk.sitkNearestNeighbor)
