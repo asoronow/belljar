@@ -17,16 +17,16 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         img = np.max(img, axis=0)
         # convert to 8 bit tiff if not already
         if img.dtype != np.uint8:
-            # if floating point
             if img.dtype == np.float32 or img.dtype == np.float64:
                 img = img * 255
                 img = img.astype(np.uint8)
+            elif img.dtype == np.uint16:
+                img = (img / 256).astype(np.uint8)
             else:
-                img = img.astype(np.uint8)
+                raise Exception(f"Unsupported dtype: {img.dtype}")
 
         # Get filename stem
         stem = file.split(".")[0]
-
         # Save the processed image
         cv2.imwrite(f"{outputDirectory}/{stem}.tif", img)
 
@@ -69,6 +69,10 @@ if __name__ == "__main__":
     os.chdir(inputDirectory)
     files = os.listdir(".")
     files.sort()
+    if len(files) == 0:
+        print(1, flush=True)
+        print("No files found in input directory", flush=True)
+        exit(1)
     # Pass number of files to electron
     print(len(files), flush=True)
     for file in files:
