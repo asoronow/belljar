@@ -50,3 +50,19 @@ yarn install
 // 4. Run the Electron app to use Bell Jar
 yarn start
 ```
+
+# How to work with annotations
+
+If you want to use the annotations in your own workflows you can load them using python's built in pickle library and numpy. Annotations are just 32 bit usigned integer arrays, each index representing an Allen Atlas region id at that pixel in your aligned tissue. Each id is mapped to its region in the 'structure_graph.json' file availble in the csv folder of this repo.
+
+_Note: Bell Jar uses the 'id' field not the 'atlas_id' field for its annotations._
+
+```
+import pickle
+import numpy as np
+
+with open("Annotation_MyBrain_s001.pkl", "rb") as file:
+    annotation = pickle.load(file)
+
+# Do stuff with the annotation
+```

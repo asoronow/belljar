@@ -29,6 +29,39 @@ def match_histograms(fixed, moving):
     return matcher.Execute(moving, fixed)
 
 
+# DEBUG: Quiver plot, uncomment to see plots of each transformation
+# Calculate displacement field from the composite transform
+# displacement_field = sitk.TransformToDisplacementField(
+#     composite_transform,
+#     sitk.sitkVectorFloat64,
+#     fixed.GetSize(),
+#     fixed.GetOrigin(),
+#     fixed.GetSpacing(),
+#     fixed.GetDirection(),
+# )
+
+# # Convert the displacement field to numpy arrays
+# displacements = sitk.GetArrayFromImage(displacement_field)
+
+# # Get the x and y components of the displacements
+# dy, dx = displacements[..., 0], displacements[..., 1]
+
+# # For visualization purposes, it may be helpful to sample every k'th point to avoid overcrowding in the quiver plot
+# k = 10
+# grid_y, grid_x = np.mgrid[
+#     0 : displacements.shape[0] : k, 0 : displacements.shape[1] : k
+# ]
+# disp_y, disp_x = dy[::k, ::k], dx[::k, ::k]
+
+# # Use quiver plot to visualize the displacements
+# plt.figure(figsize=(10, 10))
+# plt.imshow(sitk.GetArrayFromImage(fixed), cmap="gray")
+# plt.quiver(grid_x, grid_y, disp_x, disp_y, angles="xy", scale_units="xy", color="r")
+# # turn off axis to remove clutter
+# plt.axis("off")
+# plt.show()
+
+
 def multimodal_registration(fixed, moving):
     # Cast
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
@@ -40,16 +73,16 @@ def multimodal_registration(fixed, moving):
     )
 
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation(32)
+    R.SetMetricAsMattesMutualInformation()
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=100,
+        numberOfIterations=300,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[3, 2, 0])
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
 
@@ -60,95 +93,64 @@ def multimodal_registration(fixed, moving):
         moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
     )
     # B-spline
-    transformDomainMeshSize = [5] * fixed.GetDimension()
+    transformDomainMeshSize = [4] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
+    R.SetMetricAsANTSNeighborhoodCorrelation(16)
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=50,
+        numberOfIterations=300,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
     outTx2 = R.Execute(fixed, resampled_moving)
 
-    # DEBUG: Quiver plot, uncomment to see plots of each transformation
     # Combine the transformations: Affine followed by B-spline.
     composite_transform = sitk.CompositeTransform(outTx1)
     composite_transform.AddTransform(outTx2)
 
-    # Calculate displacement field from the composite transform
-    # displacement_field = sitk.TransformToDisplacementField(
-    #     composite_transform,
-    #     sitk.sitkVectorFloat64,
-    #     fixed.GetSize(),
-    #     fixed.GetOrigin(),
-    #     fixed.GetSpacing(),
-    #     fixed.GetDirection(),
-    # )
-
-    # # Convert the displacement field to numpy arrays
-    # displacements = sitk.GetArrayFromImage(displacement_field)
-
-    # # Get the x and y components of the displacements
-    # dy, dx = displacements[..., 0], displacements[..., 1]
-
-    # # For visualization purposes, it may be helpful to sample every k'th point to avoid overcrowding in the quiver plot
-    # k = 10
-    # grid_y, grid_x = np.mgrid[
-    #     0 : displacements.shape[0] : k, 0 : displacements.shape[1] : k
-    # ]
-    # disp_y, disp_x = dy[::k, ::k], dx[::k, ::k]
-
-    # # Use quiver plot to visualize the displacements
-    # plt.figure(figsize=(10, 10))
-    # plt.imshow(sitk.GetArrayFromImage(fixed), cmap="gray")
-    # plt.quiver(grid_x, grid_y, disp_x, disp_y, angles="xy", scale_units="xy", color="r")
-    # # turn off axis to remove clutter
-    # plt.axis("off")
-    # plt.show()
-
     return composite_transform
 
 
-def resize_image_by_height(image, target_height):
+def resize_image_to_width(image, target_width):
     """
-    Resize a SimpleITK image to a specified target height while maintaining the aspect ratio.
+    Resize an image to a target width while maintaining the aspect ratio.
 
     Parameters:
     - image: The input SimpleITK image.
-    - target_height: The desired height of the output image.
+    - target_width: The desired width of the image after resizing.
 
     Returns:
-    - Resized SimpleITK image.
+    - The resized SimpleITK image.
     """
     # Get the original size and spacing of the image
     original_size = image.GetSize()
     original_spacing = image.GetSpacing()
 
-    # Calculate the aspect ratio
-    aspect_ratio = original_size[0] / original_size[1]
+    # Calculate the new height maintaining the aspect ratio
+    aspect_ratio = original_size[1] / original_size[0]
+    new_height = int(target_width * aspect_ratio)
 
-    # Calculate the new width to maintain aspect ratio
-    new_width = int(target_height * aspect_ratio)
-
-    # Calculate new spacing to maintain aspect ratio
+    # Calculate the new spacing to maintain the aspect ratio
     new_spacing = [
-        original_spacing[0] * (original_size[0] / new_width),
-        original_spacing[1] * (original_size[1] / target_height),
-    ] + list(original_spacing[2:])
+        original_size[0] / target_width * original_spacing[0],
+        original_size[1] / new_height * original_spacing[1],
+    ]
 
-    # New size
-    new_size = [new_width, target_height] + list(original_size[2:])
+    # Set up the resampling filter
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetSize((target_width, new_height))
+    resampler.SetOutputSpacing(new_spacing)
+    resampler.SetOutputOrigin(image.GetOrigin())
+    resampler.SetOutputDirection(image.GetDirection())
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
 
-    # Resample the image
-    resample_filter = sitk.ResampleImageFilter()
-    resample_filter.SetOutputSpacing(new_spacing)
-    resample_filter.SetSize(new_size)
-    resample_filter.SetTransform(sitk.Transform())
-    resample_filter.SetInterpolator(sitk.sitkLinear)
+    # Perform the resampling
+    resized_image = resampler.Execute(image)
 
-    return resample_filter.Execute(image)
+    return resized_image
 
 
 def resize_image_nearest_neighbor(input_image, new_size):
@@ -213,13 +215,8 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     label = sitk.GetImageFromArray(label, isVector=False)
 
     # resize fixed to match moving
-    old_size = fixed.GetSize()
-    fixed = resize_image_by_height(fixed, 512)
     moving = match_histograms(fixed, moving)
     tx = multimodal_registration(fixed, moving)
-    fixed = sitk.GetArrayFromImage(fixed)
-    fixed = resize_image_nearest_neighbor(fixed, old_size)
-    fixed = sitk.GetImageFromArray(fixed, isVector=False)
 
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed)

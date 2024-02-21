@@ -364,7 +364,7 @@ class AlignmentController:
             self.ap_position_spinbox.setRange(0, 1319)
         else:
             self.ap_position_spinbox.setRange(0, 528)
-        self.ap_position_spinbox.setSingleStep(5)
+        self.ap_position_spinbox.setSingleStep(1)
         # no decimal places
         self.ap_position_spinbox.setDecimals(0)
         self.ap_position_spinbox.valueChanged.connect(self.que_update_position)
@@ -514,6 +514,13 @@ class AlignmentController:
                 self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
 
             print("Found prior alignment!")
+            # Check if we have any new slices in our input
+            # Compare files names to keys in atlas_slices
+            new_files = set(self.file_list) - set(self.atlas_slices.keys())
+            if new_files:
+                print("New slices found, re-predicting...", flush=True)
+                self.predict_sample_slices()
+
         except:
             print("No comptabile alignment found...")
 
@@ -557,9 +564,13 @@ class AlignmentController:
             x_angles = []
             y_angles = []
             positions = []
+
             for i in range(self.num_slices):
                 # Check if we already loaded a slice with the same name
                 if self.file_list[i] in self.atlas_slices.keys():
+                    x_angles += [self.atlas_slices[self.file_list[i]].x_angle]
+                    y_angles += [self.atlas_slices[self.file_list[i]].y_angle]
+                    positions += [self.atlas_slices[self.file_list[i]].ap_position]
                     continue
 
                 sample_img = cv2.imread(
