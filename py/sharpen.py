@@ -5,7 +5,6 @@ from skimage.filters import unsharp_mask
 import argparse
 import tifffile as tiff
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process z-stack images")
     parser.add_argument(
@@ -37,26 +36,39 @@ if __name__ == "__main__":
     input_files.sort()
     print(f"{len(input_files)}", flush=True)
     for file in input_files:
-        print(f"Processing {file}", flush=True)
-        img = tiff.imread(file)
-        # Apply unsharp mask to enhance edges
-        img = unsharp_mask(img, radius=radius, amount=amount)
-        # convert to 8 bit tiff if not already
-        if img.dtype != np.uint8:
-            # if floating point
-            if img.dtype == np.float32 or img.dtype == np.float64:
-                img = img * 255
-                img = img.astype(np.uint8)
-            else:
-                img = img.astype(np.uint8)
+        try:
+            print(f"Processing {file}", flush=True)
+            img = tiff.imread(file)
+            # Apply unsharp mask to enhance edges
+            img = unsharp_mask(img, radius=radius, amount=amount)
+
+
+            # convert to 8 bit tiff if not already
+            if img.dtype != np.uint8:
+                # if floating point
+                if img.dtype == np.float32 or img.dtype == np.float64:
+                    img = img * 255
+                    img = img.astype(np.uint8)
+                elif img.dtype == np.uint16:
+                    img = (img / 256).astype(np.uint8)
+                else:
+                    raise Exception(f"Unsupported dtype: {img.dtype}")
+        except Exception as e:
+            print(f"Failed to process {file}. Error: {e}", flush=True)
+            continue
 
         # Get filename stem
         stem = file.stem
 
         if args.equalize:
-            clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+            # Equalize the histogram
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
             img = clahe.apply(img)
-
+            # adjust brightness
+            mask = cv2.threshold(img, 60, 255, cv2.THRESH_BINARY)[1]
+            enhanced = np.where(mask == 255, img + 30, img)
+            enhanced = np.clip(enhanced, 0, 255).astype(np.uint8)
+            img = enhanced
         # Save the processed image
         cv2.imwrite(str(output_path / f"{stem}.tif"), img)
 
