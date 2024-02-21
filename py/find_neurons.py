@@ -133,8 +133,8 @@ if __name__ == "__main__":
                     detection_model,
                     slice_height=640,
                     slice_width=640,
-                    overlap_height_ratio=0.5,
-                    overlap_width_ratio=0.5,
+                    overlap_height_ratio=0.25,
+                    overlap_width_ratio=0.25,
                 )
 
                 predicted_objects = result.object_prediction_list
@@ -168,8 +168,8 @@ if __name__ == "__main__":
                 detection_model,
                 slice_height=640,
                 slice_width=640,
-                overlap_height_ratio=0.5,
-                overlap_width_ratio=0.5,
+                overlap_height_ratio=0.25,
+                overlap_width_ratio=0.25,
             )
             predicted_objects = result.object_prediction_list
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]

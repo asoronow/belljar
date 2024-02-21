@@ -73,16 +73,16 @@ def multimodal_registration(fixed, moving):
     )
 
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation(32)
+    R.SetMetricAsMattesMutualInformation()
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=100,
+        numberOfIterations=300,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[3, 2, 0])
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
 
@@ -95,11 +95,12 @@ def multimodal_registration(fixed, moving):
     # B-spline
     transformDomainMeshSize = [4] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
+    R.SetMetricAsANTSNeighborhoodCorrelation(16)
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=100,
+        numberOfIterations=300,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
