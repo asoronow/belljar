@@ -128,8 +128,8 @@ if __name__ == "__main__":
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
-                    slice_height=640,
-                    slice_width=640,
+                    slice_height=tile_size,
+                    slice_width=tile_size,
                     overlap_height_ratio=0.25,
                     overlap_width_ratio=0.25,
                 )
@@ -159,8 +159,8 @@ if __name__ == "__main__":
             result = get_sliced_prediction(
                 img,
                 detection_model,
-                slice_height=640,
-                slice_width=640,
+                slice_height=tile_size,
+                slice_width=tile_size,
                 overlap_height_ratio=0.25,
                 overlap_width_ratio=0.25,
             )
