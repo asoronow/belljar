@@ -29,6 +29,15 @@ def xyxy_to_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
+def screen_predictions(prediction_objects, area_threshold=200):
+    """Screen predictions for objects below a certain area"""
+    return [
+        obj
+        for obj in prediction_objects
+        if xyxy_to_area(obj.bbox.to_xyxy()) > area_threshold
+    ]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
@@ -118,7 +127,7 @@ if __name__ == "__main__":
         predictions = []
         if len(split_channels) > 0:
             for i, chan_img in enumerate(split_channels):
-                # convert to BGR                
+                # convert to BGR
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
                 # if dtype not uint8, convert
                 if chan_img.dtype != np.uint8:
@@ -134,7 +143,7 @@ if __name__ == "__main__":
                     overlap_width_ratio=0.25,
                 )
 
-                predicted_objects = result.object_prediction_list
+                predicted_objects = screen_predictions(result.object_prediction_list)
                 bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
                 scores = [obj.score.value for obj in predicted_objects]
 
@@ -164,7 +173,8 @@ if __name__ == "__main__":
                 overlap_height_ratio=0.25,
                 overlap_width_ratio=0.25,
             )
-            predicted_objects = result.object_prediction_list
+            predicted_objects = screen_predictions(result.object_prediction_list)
+
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
             scores = [obj.score.value for obj in predicted_objects]
 

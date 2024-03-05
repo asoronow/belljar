@@ -164,10 +164,12 @@ if __name__ == "__main__":
                 #     ),
                 #     debug,
                 # )
+
                 # split file name
                 outputPath = Path(
                     args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
                 )
+                
                 with open(outputPath, "wb") as f:
                     pickle.dump(
                         {
