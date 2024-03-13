@@ -2,8 +2,47 @@ import cv2
 from pathlib import Path
 import numpy as np
 from skimage.filters import unsharp_mask
+from skimage.morphology import white_tophat, disk
 import argparse
 import tifffile as tiff
+
+
+def enhance_contrast(image, saturation_level=0.05):
+    """
+    Enhance the contrast of an image by saturating a certain percentage of pixels,
+    agnostic of the image's data type.
+
+    Parameters:
+    - image: NumPy array of the image.
+    - saturation_level: Percentage of pixels to saturate at both low and high ends of the intensity spectrum.
+
+    Returns:
+    - The image with enhanced contrast.
+    """
+    # Ensure the saturation level is expressed as a fraction.
+    saturation_point = saturation_level / 100
+
+    # Flatten the image array to work with intensity values linearly.
+    flat_image = image.ravel()
+
+    # Determine the intensity values at the low and high saturation points.
+    low_saturation_value = np.percentile(flat_image, saturation_point)
+    high_saturation_value = np.percentile(flat_image, 100 - saturation_point)
+
+    # Clip the intensity values to the determined range.
+    clipped_image = np.clip(flat_image, low_saturation_value, high_saturation_value)
+
+    # Dynamically determine the min and max intensity values based on the data type of the input image.
+    dtype_min, dtype_max = np.iinfo(image.dtype).min, np.iinfo(image.dtype).max if np.issubdtype(image.dtype, np.integer) else (np.finfo(image.dtype).min, np.finfo(image.dtype).max)
+
+    # Rescale the intensity values to span the full range of the data type.
+    rescaled_image = np.interp(clipped_image, (clipped_image.min(), clipped_image.max()), (dtype_min, dtype_max))
+
+    # Reshape the flat array back to the original image shape.
+    enhanced_image = rescaled_image.reshape(image.shape)
+
+    # Ensure the enhanced image has the same data type as the input image.
+    return enhanced_image.astype(image.dtype)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process z-stack images")
@@ -39,37 +78,26 @@ if __name__ == "__main__":
         try:
             print(f"Processing {file}", flush=True)
             img = tiff.imread(file)
+            if args.equalize:
+                # Perform contrast enhancement
+                clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+                img = clahe.apply(img)
+                img = enhance_contrast(img)
+            
+            original_dtype = img.dtype
             # Apply unsharp mask to enhance edges
-            img = unsharp_mask(img, radius=radius, amount=amount)
-
-
-            # convert to 8 bit tiff if not already
-            if img.dtype != np.uint8:
-                # if floating point
-                if img.dtype == np.float32 or img.dtype == np.float64:
-                    img = img * 255
-                    img = img.astype(np.uint8)
-                elif img.dtype == np.uint16:
-                    img = (img / 256).astype(np.uint8)
-                else:
-                    raise Exception(f"Unsupported dtype: {img.dtype}")
+            img = unsharp_mask(img, radius=radius, amount=amount, preserve_range=True)
+            img = white_tophat(img, disk(15))
+            # Convert the image back to its original data type
+            img = img.astype(original_dtype)
+   
         except Exception as e:
             print(f"Failed to process {file}. Error: {e}", flush=True)
             continue
 
         # Get filename stem
         stem = file.stem
-
-        if args.equalize:
-            # Equalize the histogram
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
-            img = clahe.apply(img)
-            # adjust brightness
-            mask = cv2.threshold(img, 60, 255, cv2.THRESH_BINARY)[1]
-            enhanced = np.where(mask == 255, img + 30, img)
-            enhanced = np.clip(enhanced, 0, 255).astype(np.uint8)
-            img = enhanced
         # Save the processed image
-        cv2.imwrite(str(output_path / f"{stem}.tif"), img)
+        cv2.imwrite(f"{output_path}/{stem}.png", img)
 
     print("Done!", flush=True)

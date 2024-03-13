@@ -129,11 +129,6 @@ if __name__ == "__main__":
             for i, chan_img in enumerate(split_channels):
                 # convert to BGR
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
-                # if dtype not uint8, convert
-                if chan_img.dtype != np.uint8:
-                    chan_img = cv2.normalize(
-                        chan_img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
-                    )
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
@@ -157,13 +152,14 @@ if __name__ == "__main__":
                 bbox_path = Path(output_dir) / f"BBoxes_{stripped}_{i}.png"
                 export_bboxes(chan_img, bboxes, bbox_path)
         else:
-            # check if image is BGR
+            # Check data type
+            if img.dtype == np.uint16:
+                img = (img / 256).astype(np.uint8)
+            elif img.dtype == np.float32 or img.dtype == np.float64:
+                img = (img * 255).astype(np.uint8)
+            
             if channels < 3:
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-            # Make sure image is 8bit or float32
-            if img.dtype != np.uint8:
-                img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
             result = get_sliced_prediction(
                 img,

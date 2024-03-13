@@ -22,8 +22,8 @@ somata.addEventListener("click", function () {
 });
 
 nuclei.addEventListener("click", function () {
-	// methods.textContent = "Nuclei";
-	// detectionMethod = "nuclei";
+	methods.textContent = "Nuclei";
+	detectionMethod = "nuclei";
 });
 
 advance.addEventListener("click", function () {
