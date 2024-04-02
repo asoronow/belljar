@@ -5,7 +5,8 @@ from skimage.filters import unsharp_mask
 from skimage.morphology import white_tophat, disk
 import argparse
 import tifffile as tiff
-
+import concurrent.futures
+from functools import partial
 
 def enhance_contrast(image, saturation_level=0.05):
     """
@@ -44,6 +45,30 @@ def enhance_contrast(image, saturation_level=0.05):
     # Ensure the enhanced image has the same data type as the input image.
     return enhanced_image.astype(image.dtype)
 
+def process_file(file, output_path, args, radius, amount):
+    try:
+        print(f"Processing {file}", flush=True)
+        img = tiff.imread(file)
+        if args.equalize:
+            # Perform contrast enhancement
+            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+            img = clahe.apply(img)
+            img = enhance_contrast(img)
+
+        original_dtype = img.dtype
+        # Apply unsharp mask to enhance edges
+        img = unsharp_mask(img, radius=radius, amount=amount, preserve_range=True)
+        img = white_tophat(img, disk(15))
+        # Convert the image back to its original data type
+        img = img.astype(original_dtype)
+
+        # Get filename stem
+        stem = Path(file).stem
+        # Save the processed image
+        cv2.imwrite(f"{output_path}/{stem}.png", img)
+    except Exception as e:
+        print(f"Failed to process {file}. Error: {e}", flush=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process z-stack images")
     parser.add_argument(
@@ -74,30 +99,17 @@ if __name__ == "__main__":
     ]
     input_files.sort()
     print(f"{len(input_files)}", flush=True)
-    for file in input_files:
-        try:
-            print(f"Processing {file}", flush=True)
-            img = tiff.imread(file)
-            if args.equalize:
-                # Perform contrast enhancement
-                clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-                img = clahe.apply(img)
-                img = enhance_contrast(img)
-            
-            original_dtype = img.dtype
-            # Apply unsharp mask to enhance edges
-            img = unsharp_mask(img, radius=radius, amount=amount, preserve_range=True)
-            img = white_tophat(img, disk(15))
-            # Convert the image back to its original data type
-            img = img.astype(original_dtype)
-   
-        except Exception as e:
-            print(f"Failed to process {file}. Error: {e}", flush=True)
-            continue
 
-        # Get filename stem
-        stem = file.stem
-        # Save the processed image
-        cv2.imwrite(f"{output_path}/{stem}.png", img)
+    # Use ProcessPoolExecutor to parallelize file processing
+    with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
+        # Create a partial function to pass the additional arguments
+        fn = partial(process_file, output_path=output_path, args=args, radius=radius, amount=amount)
+        # Map the function over the files and wait for results
+        futures = [executor.submit(fn, file) for file in input_files]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"An error occurred: {e}", flush=True)
 
     print("Done!", flush=True)

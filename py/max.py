@@ -7,7 +7,6 @@ import numpy as np
 import argparse
 import cv2
 
-
 def process_file(file, outputDirectory, topHat=False, dendrite=False):
     # Update current file
     try:
