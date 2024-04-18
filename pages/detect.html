@@ -97,7 +97,7 @@
             </button>
             <ul class="dropdown-menu" aria-labelledby="regions">
               <li><a class="dropdown-item" id="somata" href="#">Somata</a></li>
-              <li><a class="dropdown-item disabled" id="nuclei" href="#">Nuclei</a></li>
+              <li><a class="dropdown-item" id="nuclei" href="#">Nuclei</a></li>
             </ul>
           </div> 
         </div>
@@ -132,12 +132,23 @@
           </div>
           <div class="col d-grid justify-content-start">
             <h5>
-              Confidence Threshold
+              Confidence
               <i
                 class="fas fa-circle-question fa-fw fa-xs"
                 data-bs-toggle="tooltip"
                 data-bs-placement="right"
-                title="At what value confidence do we consider detections cells, default is 0.5. Note: For accuracy adjust only for image quality concerns or custom models!"
+                title="Confidence level to consider detections cells, default is 0.5"
+              ></i>
+            </h5>
+          </div>
+          <div class="col d-grid justify-content-start">
+            <h5>
+              Area Cutoff
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Minimum area of a detection to be considered a cell, default is 200px^2"
               ></i>
             </h5>
           </div>
@@ -177,6 +188,13 @@
               type="text"
               id="confidence"
               placeholder="(Optional) Enter a confidence level"
+            />
+          </div>
+          <div class="col d-grid">
+            <input
+              type="text"
+              id="area"
+              placeholder="(Optional) Enter an area in px"
             />
           </div>
           <div class="col d-grid">

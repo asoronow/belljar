@@ -14,6 +14,7 @@ var multichannel = document.getElementById("multichannel");
 var methods = document.querySelector("#methods");
 var somata = document.getElementById("somata");
 var nuclei = document.getElementById("nuclei");
+var area = document.getElementById("area");
 var detectionMethod = "somata";
 
 somata.addEventListener("click", function () {
@@ -22,8 +23,8 @@ somata.addEventListener("click", function () {
 });
 
 nuclei.addEventListener("click", function () {
-	// methods.textContent = "Nuclei";
-	// detectionMethod = "nuclei";
+	methods.textContent = "Nuclei";
+	detectionMethod = "nuclei";
 });
 
 advance.addEventListener("click", function () {
@@ -41,6 +42,7 @@ function checkNumber(value, message) {
 
 run.addEventListener("click", function () {
 	var c = 0.5;
+	var a = 200;
 	var t = 640;
 	var m = "";
 	var mc = false;
@@ -54,6 +56,13 @@ run.addEventListener("click", function () {
 				? confidence.value
 				: 0.5;
 		}
+
+		if (area.value && area.value > 0) {
+			a = checkNumber(area.value, "Area should be an integer, using default.")
+				? area.value
+				: 200;
+		}
+
 		if (tile.value && tile.value > 0) {
 			t = checkNumber(tile.value, "Tile should be an integer, using default.")
 				? tile.value
@@ -81,6 +90,7 @@ run.addEventListener("click", function () {
 			m,
 			mc,
 			detectionMethod,
+			a,
 		]);
 	}
 });

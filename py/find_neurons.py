@@ -29,6 +29,15 @@ def xyxy_to_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
+def screen_predictions(prediction_objects, area_threshold):
+    """Screen predictions for objects below a certain area"""
+    return [
+        obj
+        for obj in prediction_objects
+        if xyxy_to_area(obj.bbox.to_xyxy()) > area_threshold
+    ]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
@@ -54,7 +63,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
-
+    parser.add_argument(
+        "-a",
+        "--area",
+        help="area threshold for screening",
+        default=200,
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input.strip())
@@ -118,23 +132,18 @@ if __name__ == "__main__":
         predictions = []
         if len(split_channels) > 0:
             for i, chan_img in enumerate(split_channels):
-                # convert to BGR                
+                # convert to BGR
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
-                # if dtype not uint8, convert
-                if chan_img.dtype != np.uint8:
-                    chan_img = cv2.normalize(
-                        chan_img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
-                    )
                 result = get_sliced_prediction(
                     chan_img,
                     detection_model,
-                    slice_height=640,
-                    slice_width=640,
+                    slice_height=tile_size,
+                    slice_width=tile_size,
                     overlap_height_ratio=0.25,
                     overlap_width_ratio=0.25,
                 )
 
-                predicted_objects = result.object_prediction_list
+                predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
                 bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
                 scores = [obj.score.value for obj in predicted_objects]
 
@@ -148,23 +157,25 @@ if __name__ == "__main__":
                 bbox_path = Path(output_dir) / f"BBoxes_{stripped}_{i}.png"
                 export_bboxes(chan_img, bboxes, bbox_path)
         else:
-            # check if image is BGR
+            # Check data type
+            if img.dtype == np.uint16:
+                img = (img / 256).astype(np.uint8)
+            elif img.dtype == np.float32 or img.dtype == np.float64:
+                img = (img * 255).astype(np.uint8)
+            
             if channels < 3:
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-            # Make sure image is 8bit or float32
-            if img.dtype != np.uint8:
-                img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
             result = get_sliced_prediction(
                 img,
                 detection_model,
-                slice_height=640,
-                slice_width=640,
+                slice_height=tile_size,
+                slice_width=tile_size,
                 overlap_height_ratio=0.25,
                 overlap_width_ratio=0.25,
             )
-            predicted_objects = result.object_prediction_list
+            predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
+
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
             scores = [obj.score.value for obj in predicted_objects]
 

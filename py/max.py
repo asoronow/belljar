@@ -7,24 +7,14 @@ import numpy as np
 import argparse
 import cv2
 
-
 def process_file(file, outputDirectory, topHat=False, dendrite=False):
     # Update current file
     try:
         print(f"Processing {file}", flush=True)
         img = tiff.imread(file)
+        channel_dim = np.argmin(img.shape)
         # Max projection
-        img = np.max(img, axis=0)
-        # convert to 8 bit tiff if not already
-        if img.dtype != np.uint8:
-            if img.dtype == np.float32 or img.dtype == np.float64:
-                img = img * 255
-                img = img.astype(np.uint8)
-            elif img.dtype == np.uint16:
-                img = (img / 256).astype(np.uint8)
-            else:
-                raise Exception(f"Unsupported dtype: {img.dtype}")
-
+        img = np.max(img, axis=channel_dim)
         # Get filename stem
         stem = file.split(".")[0]
         # Save the processed image
