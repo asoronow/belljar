@@ -29,7 +29,7 @@ def xyxy_to_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
-def screen_predictions(prediction_objects, area_threshold=200):
+def screen_predictions(prediction_objects, area_threshold):
     """Screen predictions for objects below a certain area"""
     return [
         obj
@@ -63,7 +63,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
-
+    parser.add_argument(
+        "-a",
+        "--area",
+        help="area threshold for screening",
+        default=200,
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input.strip())
@@ -138,7 +143,7 @@ if __name__ == "__main__":
                     overlap_width_ratio=0.25,
                 )
 
-                predicted_objects = screen_predictions(result.object_prediction_list)
+                predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
                 bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
                 scores = [obj.score.value for obj in predicted_objects]
 
@@ -169,7 +174,7 @@ if __name__ == "__main__":
                 overlap_height_ratio=0.25,
                 overlap_width_ratio=0.25,
             )
-            predicted_objects = screen_predictions(result.object_prediction_list)
+            predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
 
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
             scores = [obj.score.value for obj in predicted_objects]

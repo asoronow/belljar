@@ -256,13 +256,13 @@ function downloadResources(win, fresh) {
     // Download the tar files into the homeDir and extract them to their respective folders
     const currnet_versions = {
         nrrd: "v91",
-        models: "v95",
+        models: "v952",
         embeddings: "v6",
     };
     return new Promise((resolve, reject) => {
         const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
         const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-        const modelsLink = `${bucketParentPath}/models-v95.tar.gz`; //  Update to v7
+        const modelsLink = `${bucketParentPath}/models-v952.tar.gz`; //  Update to v7
         const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
         const requiredDirs = ["models", "embeddings", "nrrd"];
         if (!fresh) {
@@ -994,6 +994,7 @@ ipcMain.on("runDetection", function (event, data) {
         `-o ${data[1]}`,
         `-c ${data[2]}`,
         `-t ${data[3]}`,
+        `-a ${data[7]}`,
         `-m ${modelPath}`,
     ];
     if (data[5]) {
