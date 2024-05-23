@@ -8,6 +8,7 @@ export default function ProjectPage() {
   const [project, setProject] = useState(null);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
   const [selectedData, setSelectedData] = useState(null);
+  const [taskQueue, setTaskQueue] = useState([]);
 
   useEffect(() => {
     if (id) {
