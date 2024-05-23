@@ -1,12 +1,10 @@
 // hooks/useIpc.ts
-import { useEffect } from "react";
+import { useCallback } from "react";
 
-export const useIpc = (channel: string, callback: (...args: any[]) => void) => {
-  useEffect(() => {
-    const listener = (...args: any[]) => {
-      callback(...args);
-    };
+export const useIpc = () => {
+  const send = useCallback((channel: string, value: unknown) => {
+    window.ipc.send(channel, value);
+  }, []);
 
-    window.ipc.on(channel, listener);
-  }, [channel, callback]);
+  return { send };
 };

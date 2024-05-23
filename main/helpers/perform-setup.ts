@@ -4,6 +4,7 @@ import fs from "fs";
 import { extract } from "tar";
 import os from "os";
 import { PythonShell, Options } from "python-shell";
+import { exec } from "child_process";
 // User folder
 const homeFolder = os.homedir();
 // Bell Jar folder
@@ -28,7 +29,6 @@ function checkManifest(directoryPath: string, callback: () => void): void {
       console.error("Error reading manifest file:", error);
       return;
     }
-
     try {
       const manifestData = JSON.parse(data);
 
@@ -37,14 +37,13 @@ function checkManifest(directoryPath: string, callback: () => void): void {
         manifestData.nrrd !== manifest.nrrd
       ) {
         // Manifest does not match current manifest
-        callback();
-
         // Replace the manifest file with the current manifest
         fs.writeFile(manifestPath, JSON.stringify(manifest), (error) => {
           if (error) {
             console.error("Error writing manifest file:", error);
           } else {
             console.log("Manifest file updated");
+            callback();
           }
         });
       } else {
@@ -108,7 +107,9 @@ async function extractTarball(
     extract({
       file: filePath,
       cwd: destinationPath,
-    });
+    })
+      .then(resolve)
+      .catch(reject);
   });
 }
 
@@ -137,41 +138,95 @@ const pythonVersions = {
   linux: `${bucket}/cpython-3.10.13%2B20230826-x86_64-unknown-linux-gnu-install_only.tar.gz`,
 };
 
-async function setupPython(): Promise<void> {
-  // check if python folder exists
-  if (fs.existsSync(`${belljarFolder}/benv`)) {
-    return;
-  }
-  const platform = os.platform();
-  const architecture = os.arch();
-  let pythonVersion = pythonVersions[platform];
+async function setupPython(
+  window: BrowserWindow,
+  pythonScriptsPath: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const platform = os.platform();
+    const architecture = os.arch();
+    let pythonVersion = pythonVersions[platform];
 
-  if (platform === "darwin" && architecture === "arm64") {
-    pythonVersion = pythonVersions["darwin-arm64"];
-  }
+    if (platform === "darwin" && architecture === "arm64") {
+      pythonVersion = pythonVersions["darwin-arm64"];
+    }
 
-  // Download Python tarball
-  const pythonTarballPath = `${belljarFolder}/python.tar.gz`;
-  await downloadFile(pythonVersion, belljarFolder, "python.tar.gz");
+    // check if python folder exists
+    if (fs.existsSync(`${belljarFolder}/benv`)) {
+      // try and install dependencies to make sure all packages are installed
+      window.webContents.send("setup-progress", "Updating Python packages...");
+      const requirementsPath = `${pythonScriptsPath}/requirements.txt`;
+      const envPyCommand =
+        platform === "win32"
+          ? `${belljarFolder}/benv/Scripts/python`
+          : `${belljarFolder}/benv/bin/python`;
+      exec(`${envPyCommand} -m pip install -r ${requirementsPath}`, (error) => {
+        if (error) {
+          console.error("Error installing Python packages:", error);
+        } else {
+          resolve();
+        }
+      });
+      return;
+    }
 
-  // Extract Python tarball
-  await extractTarball(pythonTarballPath, belljarFolder);
-
-  // Configure virtual environment
-  const virtualEnvPath = `${belljarFolder}/benv`;
-  let options: Options = {
-    mode: "text",
-    pythonPath: `${belljarFolder}/python`,
-  };
-  PythonShell.runString(`python -m venv ../benv`, options).then((messages) => {
-    console.log("Virtual environment created");
+    // Download Python tarball
+    const pythonTarballPath = `${belljarFolder}/python.tar.gz`;
+    downloadFile(pythonVersion, belljarFolder, "python.tar.gz").then(() => {
+      // Extract Python tarball
+      window.webContents.send("setup-progress", "Extracting Python tarball...");
+      extractTarball(pythonTarballPath, belljarFolder).then(() => {
+        // Delete Python tarball
+        deleteFile(pythonTarballPath).then(() => {
+          window.webContents.send(
+            "setup-progress",
+            "Creating virtual environment..."
+          );
+          // Create Python virtual environment
+          const pyCommand = platform === "win32" ? "python" : "python3";
+          exec(`${pyCommand} -m venv ${belljarFolder}/benv`, (error) => {
+            if (error) {
+              console.error(
+                "Error creating Python virtual environment:",
+                error
+              );
+            } else {
+              // Install Python packages
+              window.webContents.send(
+                "setup-progress",
+                "Installing Python packages..."
+              );
+              const requirementsPath = `${pythonScriptsPath}/requirements.txt`;
+              const envPyCommand =
+                platform === "win32"
+                  ? `${belljarFolder}/benv/Scripts/python`
+                  : `${belljarFolder}/benv/bin/python`;
+              exec(
+                `${envPyCommand} -m pip install -r ${requirementsPath}`,
+                (error) => {
+                  if (error) {
+                    console.error("Error installing Python packages:", error);
+                  } else {
+                    resolve();
+                  }
+                }
+              );
+            }
+          });
+        });
+      });
+    });
   });
 }
 
-export function performSetup(window: BrowserWindow): void {
+export function performSetup(
+  window: BrowserWindow,
+  pythonScriptsPath: string
+): void {
   // Create Bell Jar folder
-  window.webContents.send("setup-progress", "Creating Bell Jar folder...");
   createDirectoryInHomeFolder(".belljar", ["models", "nrrd"]);
 
-  setupPython();
+  setupPython(window, pythonScriptsPath).then(() => {
+    window.webContents.send("setup-progress", "Setup complete!");
+  });
 }

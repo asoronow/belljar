@@ -1,9 +1,11 @@
 import path from "path";
-import { app, ipcMain } from "electron";
+import { app } from "electron";
 import serve from "electron-serve";
 import { createWindow, performSetup } from "./helpers";
-const isProd = process.env.NODE_ENV === "production";
+import { setupHandlers } from "./helpers/handlers";
 
+const isProd = process.env.NODE_ENV === "production";
+let mainWindow: Electron.BrowserWindow;
 if (isProd) {
   serve({ directory: "app" });
 } else {
@@ -13,7 +15,7 @@ if (isProd) {
 (async () => {
   await app.whenReady();
 
-  const mainWindow = createWindow("main", {
+  mainWindow = createWindow("main", {
     width: 1000,
     height: 600,
     autoHideMenuBar: true,
@@ -30,7 +32,12 @@ if (isProd) {
     mainWindow.webContents.openDevTools();
   }
 
-  performSetup(mainWindow);
+  const pythonScriptsPath: string = isProd
+    ? path.join(process.resourcesPath, "py")
+    : path.join(__dirname, "../py");
+
+  setupHandlers(mainWindow);
+  performSetup(mainWindow, pythonScriptsPath);
 })();
 
 app.on("window-all-closed", () => {
