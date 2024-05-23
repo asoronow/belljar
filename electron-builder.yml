@@ -9,4 +9,7 @@ files:
     filter:
       - package.json
       - app
+extraResources:
+  - from: py
+    to: py
 publish: null

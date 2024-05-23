@@ -1,16 +1,20 @@
 // handlers.ts
 
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain } from "electron";
 import {
   createProject,
   loadProject,
   deleteProject,
+  importProject,
+  exportProject,
+  getProjects,
   uploadFile,
   addAnimal,
-} from "./projects";
-import { AnimalMetadata } from "./types";
+} from "./projects-tools";
+import { AnimalMetadata } from "../common/types";
+import { ProjectDataType } from "../common/enums";
 
-export function setupHandlers(mainWindow: BrowserWindow) {
+export function setupHandlers() {
   ipcMain.handle(
     "create-project",
     async (_event, name: string, description: string) => {
@@ -22,6 +26,25 @@ export function setupHandlers(mainWindow: BrowserWindow) {
       }
     }
   );
+
+  ipcMain.handle("import-project", async (_event) => {
+    try {
+      importProject();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("export-project", async (_event, name: string) => {
+    try {
+      exportProject(name).then(() => {
+        return { success: true };
+      });
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 
   ipcMain.handle("load-project", async (_event, name: string) => {
     try {
@@ -43,9 +66,15 @@ export function setupHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle(
     "upload-file",
-    async (_event, projectName: string, filePath: string) => {
+    async (
+      _event,
+      projectName: string,
+      animalName: string,
+      dataType: ProjectDataType,
+      filePath: string
+    ) => {
       try {
-        uploadFile(projectName, filePath);
+        uploadFile(projectName, animalName, dataType, filePath);
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };
@@ -70,3 +99,13 @@ export function setupHandlers(mainWindow: BrowserWindow) {
     }
   );
 }
+
+// Get projects
+ipcMain.handle("get-projects", async () => {
+  try {
+    const projects = getProjects();
+    return { success: true, projects };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
