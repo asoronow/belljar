@@ -36,7 +36,7 @@ if (isProd) {
     ? path.join(process.resourcesPath, "py")
     : path.join(__dirname, "../py");
 
-  setupHandlers();
+  setupHandlers(pythonScriptsPath);
   performSetup(mainWindow, pythonScriptsPath);
 })();
 

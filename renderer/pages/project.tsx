@@ -24,7 +24,7 @@ export default function ProjectPage() {
 
   return (
     <React.Fragment>
-      <div className="flex flex-col items-start justify-start w-full min-h-screen p-6">
+      <div className="flex flex-col items-center justify-start w-full min-h-screen p-6 max-w-7xl mx-auto">
         {project ? (
           <>
             <div className="flex flex-row items-center justify-between w-full">
@@ -60,10 +60,10 @@ export default function ProjectPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 w-full mt-10">
-              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border-y border-l p-4 h-[300px] overflow-y-scroll">
+              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
                 <h1 className="text-xl font-bold">Animals</h1>
               </div>
-              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border-y border-l p-4 h-[300px] overflow-y-scroll">
+              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
                 <h1 className="text-xl font-bold">Data</h1>
                 {selectedAnimal ? (
                   <></>
@@ -73,7 +73,7 @@ export default function ProjectPage() {
                   </p>
                 )}
               </div>
-              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border-y border-l p-4 h-[300px] overflow-y-scroll">
+              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
                 <h1 className="text-xl font-bold">Tools</h1>
               </div>
             </div>
