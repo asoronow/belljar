@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from "axios";
 import { BrowserWindow, ipcMain } from "electron";
 import fs from "fs";
-import { extract } from "tar";
+import { extract, r } from "tar";
 import os from "os";
 import { PythonShell, Options } from "python-shell";
 import { exec } from "child_process";
@@ -15,47 +15,6 @@ const bucket = "https://storage.googleapis.com/belljar_updates";
 const objectPath = (item: string, version: string) =>
   `${bucket}/${item}-${version}.tar.gz`;
 // Manifest file
-const manifest = {
-  models: "v952",
-  nrrd: "v91",
-};
-
-function checkManifest(directoryPath: string, callback: () => void): void {
-  const manifestPath = `${directoryPath}/manifest.json`;
-
-  fs.readFile(manifestPath, "utf8", (error, data) => {
-    if (error) {
-      // Handle error reading manifest file
-      console.error("Error reading manifest file:", error);
-      return;
-    }
-    try {
-      const manifestData = JSON.parse(data);
-
-      if (
-        manifestData.models !== manifest.models ||
-        manifestData.nrrd !== manifest.nrrd
-      ) {
-        // Manifest does not match current manifest
-        // Replace the manifest file with the current manifest
-        fs.writeFile(manifestPath, JSON.stringify(manifest), (error) => {
-          if (error) {
-            console.error("Error writing manifest file:", error);
-          } else {
-            console.log("Manifest file updated");
-            callback();
-          }
-        });
-      } else {
-        // Manifest matches current manifest
-        console.log("Manifest is up to date");
-      }
-    } catch (error) {
-      // Handle error parsing manifest file
-      console.error("Error parsing manifest file:", error);
-    }
-  });
-}
 
 async function downloadFile(
   url: string,
@@ -85,6 +44,87 @@ async function downloadFile(
     writer.on("finish", resolve);
     writer.on("error", reject);
   });
+}
+
+const MANIFEST = {
+  models: "v952",
+  nrrd: "v91",
+};
+
+function checkManifest(directoryPath: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const manifestPath = `${directoryPath}/manifest.json`;
+
+    // check if manufest file exists
+    if (!fs.existsSync(manifestPath)) {
+      // If not, all files are outdated, and create the manifest file
+      fs.writeFile(manifestPath, JSON.stringify(MANIFEST), (error) => {
+        if (error) {
+          console.error("Error writing manifest file:", error);
+        }
+      });
+      resolve(Object.keys(MANIFEST));
+    }
+
+    fs.readFile(manifestPath, "utf8", (error, data) => {
+      if (error) {
+        // Handle error reading manifest file
+        console.error("Error reading manifest file:", error);
+        reject(error);
+        return;
+      }
+      const manifestData = JSON.parse(data);
+      const outdatedItems: string[] = [];
+
+      Object.keys(MANIFEST).forEach((item) => {
+        const version = MANIFEST[item];
+
+        // Check if directory exists
+        if (!fs.existsSync(`${directoryPath}/${item}`)) {
+          outdatedItems.push(item);
+        }
+
+        // Check if version is outdated
+        if (manifestData[item] !== version) {
+          outdatedItems.push(item);
+        }
+      });
+
+      // overwrite manifest file
+      fs.writeFile(manifestPath, JSON.stringify(MANIFEST), (error) => {
+        if (error) {
+          console.error("Error writing manifest file:", error);
+        }
+      });
+      resolve(outdatedItems);
+    });
+  });
+}
+
+async function downloadFromManifest(directoryPath: string): Promise<void> {
+  try {
+    const outdatedItems = await checkManifest(directoryPath);
+
+    const downloadPromises = outdatedItems.map(async (item) => {
+      const version = MANIFEST[item];
+
+      // Download the file
+      const url = objectPath(item, version);
+      const filename = `${item}.tar.gz`;
+      await downloadFile(url, directoryPath, filename);
+
+      // Extract the tarball
+      const tarballPath = `${directoryPath}/${filename}`;
+      await extractTarball(tarballPath, directoryPath);
+
+      // Delete the tarball
+      await deleteFile(tarballPath);
+    });
+
+    await Promise.all(downloadPromises);
+  } catch (error) {
+    console.error("Error downloading from manifest:", error);
+  }
 }
 
 async function deleteFile(filePath: string): Promise<void> {
@@ -224,9 +264,13 @@ export function performSetup(
   pythonScriptsPath: string
 ): void {
   // Create Bell Jar folder
-  createDirectoryInHomeFolder(".belljar", ["models", "nrrd"]);
-
   setupPython(window, pythonScriptsPath).then(() => {
-    window.webContents.send("setup-progress", "Setup complete!");
+    downloadFromManifest(belljarFolder)
+      .then(() => {
+        window.webContents.send("setup-progress", "Setup complete!");
+      })
+      .catch((error) => {
+        console.error("Error performing setup:", error);
+      });
   });
 }

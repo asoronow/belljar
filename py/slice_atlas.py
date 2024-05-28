@@ -6,42 +6,10 @@ import cv2
 from scipy.ndimage import map_coordinates, affine_transform
 from skimage import measure
 import json
+import pandas as pd
 from uuid import uuid4
 from demons import resize_image_nearest_neighbor
-
-
-def slice_3d_volume(volume, z_position, x_angle, y_angle):
-    """
-    Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
-
-    Args:
-        volume (numpy.ndarray): 3D numpy array.
-        z_position (int): Position along the z-axis for the slice.
-        x_angle (float): Angle in degrees to tilt in the x axis.
-        y_angle (float): Angle in degrees to tilt in the y axis.
-
-    Returns:
-        numpy.ndarray: 2D sliced array.
-    """
-
-    # Convert angles to radians
-    x_angle_rad = np.deg2rad(x_angle)
-    y_angle_rad = np.deg2rad(y_angle)
-
-    # Create a coordinate grid
-    x, y = np.meshgrid(np.arange(volume.shape[2]), np.arange(volume.shape[1]))
-
-    # Adjust z-position based on tilt angles
-    # Ensure data type is float to handle decimal computations
-    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
-        np.float32
-    )
-    coords = np.array([z, y, x])
-
-    # Extract slice using nearest-neighbor interpolation
-    slice_2d = map_coordinates(volume, coords, order=0)
-
-    return slice_2d
+import time
 
 
 def make_angled_data(samples, atlas):
@@ -100,6 +68,32 @@ def make_angled_data(samples, atlas):
     pickle.dump(metadata, open(output_path / "metadata.pkl", "wb"))
 
 
+def slice_3d_volume(volume, z_position, x_angle, y_angle):
+    """
+    Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
+
+    Args:
+        volume (numpy.ndarray): 3D numpy array.
+        z_position (int): Position along the z-axis for the slice.
+        x_angle (float): Angle in degrees to tilt in the x axis.
+        y_angle (float): Angle in degrees to tilt in the y axis.
+
+    Returns:
+        numpy.ndarray: 2D sliced array.
+    """
+    x_angle_rad = np.deg2rad(x_angle)
+    y_angle_rad = np.deg2rad(y_angle)
+
+    x, y = np.meshgrid(np.arange(volume.shape[2]), np.arange(volume.shape[1]))
+    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
+        np.float32
+    )
+    coords = np.array([z, y, x])
+    slice_2d = map_coordinates(volume, coords, order=0, mode="nearest")
+
+    return slice_2d
+
+
 def is_transform_in_bounds(image, transform_matrix):
     height, width = image.shape[:2]
     corners = np.array([[0, 0, 1], [width, 0, 1], [width, height, 1], [0, height, 1]])
@@ -113,76 +107,113 @@ def is_transform_in_bounds(image, transform_matrix):
     return min_x >= 0 and max_x <= width and min_y >= 0 and max_y <= height
 
 
+def adjust_brightness_contrast(image, brightness=0, contrast=0):
+    if brightness != 0:
+        if brightness > 0:
+            shadow = brightness
+            highlight = 255
+        else:
+            shadow = 0
+            highlight = 255 + brightness
+        alpha_b = (highlight - shadow) / 255
+        gamma_b = shadow
+        image = cv2.addWeighted(image, alpha_b, image, 0, gamma_b)
+
+    if contrast != 0:
+        f = 131 * (contrast + 127) / (127 * (131 - contrast))
+        alpha_c = f
+        gamma_c = 127 * (1 - f)
+        image = cv2.addWeighted(image, alpha_c, image, 0, gamma_c)
+
+    return image
+
+
 def create_synthetic_experiment(name, num_samples, atlas, annotation):
-    """
-    Make a synthetic experiment with a given number of samples.
-
-    Args:
-        name (str): Name of the experiment.
-        num_samples (int): Number of samples to create.
-        atlas (numpy.ndarray): 3D atlas.
-        annotation (numpy.ndarray): 3D annotation.
-    """
-
-    # Create output directory
     output_path = Path("~/Desktop/synthetic_experiments/").expanduser()
     output_path.mkdir(exist_ok=True)
-    # Create experiment directory
     experiment_path = output_path / name
     experiment_path.mkdir(exist_ok=True)
-    # pick on random x-angle and y-angle between -2 and 2 degrees
-    x_angle, y_angle = np.random.rand(2) * 4 - 2
-    # for number of samples create a representative brain
-    slice_start = np.random.randint(200, 400)
-    slice_end = np.random.randint(800, 1200)
-    slices = np.linspace(slice_start, slice_end, num_samples, dtype=np.int32)
-    for i, position in enumerate(slices):
-        # create a slice from the atlas
-        sample = slice_3d_volume(atlas, position, x_angle, y_angle)
-        sample_annotation = slice_3d_volume(annotation, position, x_angle, y_angle)
-        # apply rotation
+
+    metadata = []
+    start_time = time.time()
+
+    for i in range(num_samples):
+        if i > 0:
+            elapsed_time = time.time() - start_time
+            avg_time_per_sample = elapsed_time / (i + 1)
+            remaining_samples = num_samples - (i + 1)
+            estimated_remaining_time = avg_time_per_sample * remaining_samples
+            estimated_completion_time = time.strftime(
+                "%H:%M:%S", time.gmtime(estimated_remaining_time)
+            )
+            print(
+                f"Generating sample {i+1}/{num_samples} | ETA: {estimated_completion_time}",
+                end="\r",
+            )
+
+        x_angle, y_angle = np.random.uniform(-15, 15, 2)
+        z_position = np.random.randint(200, 1200)
+        sample = slice_3d_volume(atlas, z_position, x_angle, y_angle)
+        sample_annotation = slice_3d_volume(annotation, z_position, x_angle, y_angle)
+
+        # 50% chance of only using half of the brain
+        if np.random.rand() > 0.5:
+            removed_pixels = sample.shape[1] // 2
+            sample = sample[:, : sample.shape[1] // 2]
+            # recenter by padding the removed pixels
+            sample = np.pad(sample, ((0, 0), (0, removed_pixels // 2)), "constant")
+
         center = (sample.shape[1] // 2, sample.shape[0] // 2)
-        rotation_matrix = cv2.getRotationMatrix2D(center, np.random.uniform(-10, 10), 1)
+        rotation_angle = np.random.uniform(-10, 10)
+        rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1)
         sample = cv2.warpAffine(
             sample, rotation_matrix, (sample.shape[1], sample.shape[0])
         )
         sample_annotation = affine_transform(
             sample_annotation, rotation_matrix[:, :2], rotation_matrix[:, 2]
         )
-        # apply shear iteratively
-        shear_in_bounds = False
-        max_attempts = 10
-        attempts = 0
 
-        while not shear_in_bounds and attempts < max_attempts:
-            shear_y = np.random.rand() * 2 - 1
-            shear_matrix = np.float32([[1, 0, 0], [shear_y, 1, 0]])
+        shear_y = np.random.rand() * 0.25 - 0.125
+        shear_matrix = np.float32([[1, 0, 0], [shear_y, 1, 0]])
 
-            if is_transform_in_bounds(sample, shear_matrix):
-                shear_in_bounds = True
-                sample = cv2.warpAffine(
-                    sample, shear_matrix, (sample.shape[1], sample.shape[0])
-                )
-                sample_annotation = affine_transform(
-                    sample_annotation, shear_matrix[:, :2], shear_matrix[:, 2]
-                ).astype(np.uint32)
-            else:
-                attempts += 1
-        # add padding 100px on each side numpy
+        sample = cv2.warpAffine(
+            sample, shear_matrix, (sample.shape[1], sample.shape[0])
+        )
+        sample_annotation = affine_transform(
+            sample_annotation, shear_matrix[:, :2], shear_matrix[:, 2]
+        ).astype(np.uint32)
+
         sample = np.pad(sample, 25, "constant", constant_values=0)
         sample_annotation = np.pad(
             sample_annotation, 25, "constant", constant_values=0
         ).astype(np.uint32)
-        # resize to target dimensions
-        sample = cv2.resize(sample, (512, 512), interpolation=cv2.INTER_LINEAR)
-        sample_annotation = resize_image_nearest_neighbor(
-            sample_annotation, (512, 512)
-        ).astype(np.uint32)
 
-        # save
-        cv2.imwrite(str(experiment_path / f"S_{i:03d}.png"), sample)
-        with open(experiment_path / f"S_{i:03d}.pkl", "wb") as f:
+        sample = cv2.resize(sample, (224, 224), interpolation=cv2.INTER_LINEAR)
+        sample_annotation = resize_image_nearest_neighbor(sample_annotation, (224, 224))
+
+        brightness = np.random.uniform(-50, 50)
+        contrast = np.random.uniform(-50, 50)
+        sample = adjust_brightness_contrast(sample, brightness, contrast)
+
+        random_name = str(uuid4())
+        sample_filename = f"S_{random_name}.png"
+        annotation_filename = f"S_{random_name}.pkl"
+
+        cv2.imwrite(str(experiment_path / sample_filename), sample)
+        with open(experiment_path / annotation_filename, "wb") as f:
             pickle.dump(sample_annotation, f)
+
+        metadata.append(
+            {
+                "filename": sample_filename,
+                "x_angle": x_angle,
+                "y_angle": y_angle,
+                "z_position": z_position,
+            }
+        )
+
+    metadata_df = pd.DataFrame(metadata)
+    metadata_df.to_csv(experiment_path / "metadata.csv", index=False)
 
 
 def dump_structure_data():
@@ -295,9 +326,8 @@ def main():
     annotation_path = Path("~/.belljar/nrrd/annotation_10.nrrd")
     atlas, atlas_header = nrrd.read(str(atlas_path.expanduser()))
     annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
-    make_angled_data(1_000_000, atlas)
-    # create_synthetic_experiment("synthetic_experiment_1", 20, atlas, annotation)
-    # test edge detection methods
-   
+    create_synthetic_experiment("big_random_set", 10_000_000, atlas, annotation)
+
+
 if __name__ == "__main__":
     main()
