@@ -6,10 +6,11 @@ import cv2
 from scipy.ndimage import map_coordinates, affine_transform
 from skimage import measure
 import json
-import pandas as pd
 from uuid import uuid4
 from demons import resize_image_nearest_neighbor
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 def make_angled_data(samples, atlas):
@@ -128,92 +129,103 @@ def adjust_brightness_contrast(image, brightness=0, contrast=0):
     return image
 
 
+def generate_sample(
+    i, num_samples, atlas, annotation, experiment_path, metadata_file, ttrs, lock
+):
+    start_time = time.time()
+    x_angle, y_angle = np.random.uniform(-15, 15, 2)
+    z_position = np.random.randint(200, 1200)
+    sample = slice_3d_volume(atlas, z_position, x_angle, y_angle)
+    sample_annotation = slice_3d_volume(annotation, z_position, x_angle, y_angle)
+
+    # 50% chance of only using half of the brain
+    if np.random.rand() > 0.5:
+        removed_pixels = sample.shape[1] // 2
+        sample = sample[:, : sample.shape[1] // 2]
+        # recenter by padding the removed pixels
+        sample = np.pad(sample, ((0, 0), (0, removed_pixels // 2)), "constant")
+
+    center = (sample.shape[1] // 2, sample.shape[0] // 2)
+    rotation_angle = np.random.uniform(-10, 10)
+    rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1)
+    sample = cv2.warpAffine(sample, rotation_matrix, (sample.shape[1], sample.shape[0]))
+    # sample_annotation = affine_transform(
+    #     sample_annotation, rotation_matrix[:, :2], rotation_matrix[:, 2]
+    # )
+
+    shear_y = np.random.rand() * 0.25 - 0.125
+    shear_matrix = np.float32([[1, 0, 0], [shear_y, 1, 0]])
+
+    sample = cv2.warpAffine(sample, shear_matrix, (sample.shape[1], sample.shape[0]))
+    # sample_annotation = affine_transform(
+    #     sample_annotation, shear_matrix[:, :2], shear_matrix[:, 2]
+    # ).astype(np.uint32)
+
+    sample = np.pad(sample, 25, "constant", constant_values=0)
+    # sample_annotation = np.pad(
+    #     sample_annotation, 25, "constant", constant_values=0
+    # ).astype(np.uint32)
+
+    sample = cv2.resize(sample, (224, 224), interpolation=cv2.INTER_LINEAR)
+    # sample_annotation = resize_image_nearest_neighbor(sample_annotation, (224, 224))
+
+    random_name = str(uuid4())
+    sample_filename = f"S_{random_name}.png"
+    # annotation_filename = f"S_{random_name}.pkl"
+
+    cv2.imwrite(str(experiment_path / sample_filename), sample)
+    # with open(experiment_path / annotation_filename, "wb") as f:
+    #     pickle.dump(sample_annotation, f)
+
+    metadata_entry = f"{sample_filename},{x_angle},{y_angle},{z_position}\n"
+    with lock:
+        with open(metadata_file, "a") as f:
+            f.write(metadata_entry)
+
+        ttrs.append(time.time() - start_time)
+
+        time_remaining = np.mean(ttrs) * (num_samples - i)
+        formatted_time_remaining = time.strftime(
+            "%H:%M:%S", time.gmtime(time_remaining)
+        )
+        if i % 3 == 0:
+            print(
+                f"Samples completed: {i}/{num_samples} | Time remaining: {formatted_time_remaining}",
+                end="\r",
+            )
+
+
 def create_synthetic_experiment(name, num_samples, atlas, annotation):
     output_path = Path("~/Desktop/synthetic_experiments/").expanduser()
     output_path.mkdir(exist_ok=True)
     experiment_path = output_path / name
     experiment_path.mkdir(exist_ok=True)
 
-    metadata = []
-    start_time = time.time()
+    metadata_file = experiment_path / "metadata.csv"
 
-    for i in range(num_samples):
-        if i > 0:
-            elapsed_time = time.time() - start_time
-            avg_time_per_sample = elapsed_time / (i + 1)
-            remaining_samples = num_samples - (i + 1)
-            estimated_remaining_time = avg_time_per_sample * remaining_samples
-            estimated_completion_time = time.strftime(
-                "%H:%M:%S", time.gmtime(estimated_remaining_time)
+    # Open the metadata file in write mode to write the header
+    with open(metadata_file, "w") as f:
+        f.write("filename,x_angle,y_angle,z_position\n")
+
+    lock = threading.Lock()
+    ttrs = []
+    with ThreadPoolExecutor(max_workers=128) as executor:
+        futures = [
+            executor.submit(
+                generate_sample,
+                i,
+                num_samples,
+                atlas,
+                annotation,
+                experiment_path,
+                metadata_file,
+                ttrs,
+                lock,
             )
-            print(
-                f"Generating sample {i+1}/{num_samples} | ETA: {estimated_completion_time}",
-                end="\r",
-            )
-
-        x_angle, y_angle = np.random.uniform(-15, 15, 2)
-        z_position = np.random.randint(200, 1200)
-        sample = slice_3d_volume(atlas, z_position, x_angle, y_angle)
-        sample_annotation = slice_3d_volume(annotation, z_position, x_angle, y_angle)
-
-        # 50% chance of only using half of the brain
-        if np.random.rand() > 0.5:
-            removed_pixels = sample.shape[1] // 2
-            sample = sample[:, : sample.shape[1] // 2]
-            # recenter by padding the removed pixels
-            sample = np.pad(sample, ((0, 0), (0, removed_pixels // 2)), "constant")
-
-        center = (sample.shape[1] // 2, sample.shape[0] // 2)
-        rotation_angle = np.random.uniform(-10, 10)
-        rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1)
-        sample = cv2.warpAffine(
-            sample, rotation_matrix, (sample.shape[1], sample.shape[0])
-        )
-        sample_annotation = affine_transform(
-            sample_annotation, rotation_matrix[:, :2], rotation_matrix[:, 2]
-        )
-
-        shear_y = np.random.rand() * 0.25 - 0.125
-        shear_matrix = np.float32([[1, 0, 0], [shear_y, 1, 0]])
-
-        sample = cv2.warpAffine(
-            sample, shear_matrix, (sample.shape[1], sample.shape[0])
-        )
-        sample_annotation = affine_transform(
-            sample_annotation, shear_matrix[:, :2], shear_matrix[:, 2]
-        ).astype(np.uint32)
-
-        sample = np.pad(sample, 25, "constant", constant_values=0)
-        sample_annotation = np.pad(
-            sample_annotation, 25, "constant", constant_values=0
-        ).astype(np.uint32)
-
-        sample = cv2.resize(sample, (224, 224), interpolation=cv2.INTER_LINEAR)
-        sample_annotation = resize_image_nearest_neighbor(sample_annotation, (224, 224))
-
-        brightness = np.random.uniform(-50, 50)
-        contrast = np.random.uniform(-50, 50)
-        sample = adjust_brightness_contrast(sample, brightness, contrast)
-
-        random_name = str(uuid4())
-        sample_filename = f"S_{random_name}.png"
-        annotation_filename = f"S_{random_name}.pkl"
-
-        cv2.imwrite(str(experiment_path / sample_filename), sample)
-        with open(experiment_path / annotation_filename, "wb") as f:
-            pickle.dump(sample_annotation, f)
-
-        metadata.append(
-            {
-                "filename": sample_filename,
-                "x_angle": x_angle,
-                "y_angle": y_angle,
-                "z_position": z_position,
-            }
-        )
-
-    metadata_df = pd.DataFrame(metadata)
-    metadata_df.to_csv(experiment_path / "metadata.csv", index=False)
+            for i in range(num_samples)
+        ]
+        for future in as_completed(futures):
+            future.result()
 
 
 def dump_structure_data():
@@ -326,7 +338,7 @@ def main():
     annotation_path = Path("~/.belljar/nrrd/annotation_10.nrrd")
     atlas, atlas_header = nrrd.read(str(atlas_path.expanduser()))
     annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
-    create_synthetic_experiment("big_random_set", 10_000_000, atlas, annotation)
+    create_synthetic_experiment("big_random_set_2", 10_000_000, atlas, annotation)
 
 
 if __name__ == "__main__":
