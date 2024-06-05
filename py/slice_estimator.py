@@ -51,29 +51,32 @@ class STN(nn.Module):
             nn.ReLU(True)
         )
         
-        # The fc_loc layers will be defined in the forward method once we know the output size of the localization network
-        self.fc_loc = None
+        # Initialize fc_loc layers but leave them without fixed input size
+        self.fc_loc1 = None
+        self.fc_loc2 = None
 
     def forward(self, x):
         xs = self.localization(x)
         xs_size = xs.size()
-        if self.fc_loc is None:
-            self.fc_loc = nn.Sequential(
-                nn.Linear(xs_size[1] * xs_size[2] * xs_size[3], 32),
-                nn.ReLU(True),
-                nn.Linear(32, 3 * 2)
-            )
-            # Initialize the weights/bias with identity transformation
-            self.fc_loc[2].weight.data.zero_()
-            self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
         
+        if self.fc_loc1 is None or self.fc_loc2 is None:
+            # Compute the size for the fc_loc1 layer dynamically
+            flatten_size = xs_size[1] * xs_size[2] * xs_size[3]
+            self.fc_loc1 = nn.Linear(flatten_size, 32).to(xs.device)
+            self.fc_loc2 = nn.Linear(32, 6).to(xs.device)
+            # Initialize the weights/bias with identity transformation
+            self.fc_loc2.weight.data.zero_()
+            self.fc_loc2.bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
+
         xs = xs.view(xs.size(0), -1)  # Flatten dynamically
-        theta = self.fc_loc(xs)
+        xs = self.fc_loc1(xs)
+        xs = F.relu(xs)
+        theta = self.fc_loc2(xs)
         theta = theta.view(-1, 2, 3)
         grid = F.affine_grid(theta, x.size())
         x = F.grid_sample(x, grid)
         return x
-
+    
 class SliceEstimator(nn.Module):
     def __init__(self, block, layers):
         super(SliceEstimator, self).__init__()
@@ -157,8 +160,8 @@ class SliceEstimator(nn.Module):
         x_cut = self.fc_x(x)
         y_cut = self.fc_y(x)
         z_depth = self.fc_z(x)
-
-        return x_cut, y_cut, z_depth
+        out = torch.stack([z_depth, x_cut, y_cut], dim=1)
+        return out
 
 layers = [9, 36, 67, 9]
 
@@ -179,20 +182,19 @@ class SytheticSliceDataset(Dataset):
         self.metadata = Path(metadata_path)
         self.images = Path(images_path)
         self.transforms = transforms
-        self.data = {}
-
-    def _init_data(self):
-        """Reads metadata csv into a dictionary
-        CSV row format: file_name, x_angle, y_angle, z_position
-        """
+        self.data = []
+ 
         with open(self.metadata, newline="", encoding="utf-8-sig") as csvfile:
             reader = csv.reader(csvfile, delimiter=",", quotechar="|")
-            for row in reader:
-                self.data[row[0]] = {
+            # Skip the header
+            next(reader)
+            for i, row in enumerate(reader):
+                self.data.append({
+                    "file_name": row[0],
                     "x_angle": float(row[1]),
                     "y_angle": float(row[2]),
                     "z_position": float(row[3]),
-                }
+                })
 
     def _load_image(self, file_name):
         """Loads an image from disk
@@ -257,9 +259,9 @@ if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("-m", "--metadata", type=str, required=True)
     args.add_argument("-i", "--images", type=str, required=True)
-    args.add_argument("-e", "--epochs", type=int, required=True, default=10)
-    args.add_argument("-b", "--batch_size", type=int, required=True, default=8)
-    args.add_argument("-l", "--learning_rate", type=float, required=True, default=0.01)
+    args.add_argument("-e", "--epochs", type=int, required=False, default=10)
+    args.add_argument("-b", "--batch_size", type=int, required=False, default=16)
+    args.add_argument("-l", "--learning_rate", type=float, required=False, default=0.01)
     args = args.parse_args()
 
     # Setup training loop
@@ -273,17 +275,18 @@ if __name__ == "__main__":
     # Random contrast and brightness transform
     transforms = transforms.Compose(
         [
+            transforms.ToPILImage(),
             transforms.ColorJitter((0.0, 0.25), (0.0, 0.25)),
             transforms.ToTensor(),
         ]
     )
 
     # Create the data loaders
-    train_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transforms)
+    og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transforms)
     
     # Train/Val split
     train_dataset, val_dataset = torch.utils.data.random_split(
-        train_dataset, [0.8, 0.2]
+        og_dataset, [0.8, 0.2]
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True
@@ -297,6 +300,7 @@ if __name__ == "__main__":
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     
     # Create the optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -306,14 +310,14 @@ if __name__ == "__main__":
         train_loss = 0.0
         for batch, (samples, labels) in enumerate(train_dataloader):
             print(
-                f"Train | Epoch: {epoch}, Batch: {batch}/{len(train_dataloader)}",
+                f"Train | Epoch: {epoch}, Batch: {batch}/{len(train_dataloader)}, Current Train Loss: {train_loss / ((batch + 1) * batch_size)}",
                 end="\r",
             )
             samples = samples.to(device)
             labels = labels.to(device)
             optimizer.zero_grad()
             outputs = model(samples)
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs.squeeze(), labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * samples.size(0)
@@ -323,7 +327,7 @@ if __name__ == "__main__":
         with torch.no_grad():
             for batch, (samples, labels) in enumerate(val_dataloader):
                 print(
-                    f"Valid | Epoch: {epoch}, Batch: {batch}/{len(val_dataloader)}",
+                    f"Valid | Epoch: {epoch}, Batch: {batch}/{len(val_dataloader)}, Current Valid Loss: {valid_loss / ((batch + 1) * batch_size)}",
                     end="\r",
                 )
                 samples = samples.to(device)
