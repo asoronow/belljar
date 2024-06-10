@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from pathlib import Path
 import argparse
 import os
+import logging
+import sys
 
 
 class ResidualBlock(nn.Module):
@@ -253,7 +255,7 @@ class SytheticSliceDataset(Dataset):
         label = self._normalize_label(label)
 
         return image, label
-
+    
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -261,6 +263,16 @@ def setup(rank, world_size):
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+    # Set up logging to file
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(f"log_{rank}.log"),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logging.info("Logging setup complete")
 
 def cleanup():
     dist.destroy_process_group()
@@ -298,7 +310,7 @@ def train(rank, world_size, args):
 
     # Create the loss function and the optimizer
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
     best_loss = float("inf")
     for epoch in range(args.epochs):
@@ -314,7 +326,7 @@ def train(rank, world_size, args):
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * samples.size(0)
-        print(f"Rank {rank} | Train Loss: {train_loss / len(train_dataloader.dataset)}")
+            logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} | Train Loss: {train_loss / batch * args.batch_size}")
 
         model.eval()
         valid_loss = 0.0
@@ -330,7 +342,7 @@ def train(rank, world_size, args):
                 # Save the model only in the rank 0 process
                 if rank == 0:
                     torch.save(model.state_dict(), f"best_model_{epoch}.pt")
-        print(f"Rank {rank} | Valid Loss: {valid_loss / len(val_dataloader.dataset)}")
+            logging.info(f"Rank {rank} | Epoch {epoch} | Valid Loss: {valid_loss / batch * args.batch_size}")
 
     cleanup()
 
