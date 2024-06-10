@@ -326,7 +326,8 @@ def train(rank, world_size, args):
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * samples.size(0)
-            logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} | Train Loss: {train_loss / ((batch + 1)  * args.batch_size)}")
+            if batch % 10 == 0:
+                logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} / {len(train_dataloader)/args.batch_size/world_size} | Train Loss: {train_loss / ((batch + 1)  * args.batch_size)}")
 
         model.eval()
         valid_loss = 0.0
@@ -342,7 +343,8 @@ def train(rank, world_size, args):
                 # Save the model only in the rank 0 process
                 if rank == 0:
                     torch.save(model.state_dict(), f"best_model_{epoch}.pt")
-            logging.info(f"Rank {rank} | Epoch {epoch} | Valid Loss: {valid_loss / ((batch + 1) * args.batch_size)}")
+            if batch % 10 == 0:
+                logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} / {len(val_dataloader)/args.batch_size/world_size} | Valid Loss: {valid_loss / ((batch + 1) * args.batch_size)}")
 
     cleanup()
 
@@ -352,7 +354,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--images", type=str, required=True)
     parser.add_argument("-e", "--epochs", type=int, required=False, default=10)
     parser.add_argument("-b", "--batch_size", type=int, required=False, default=16)
-    parser.add_argument("-l", "--learning_rate", type=float, required=False, default=0.01)
+    parser.add_argument("-l", "--learning_rate", type=float, required=False, default=0.001)
     parser.add_argument("-n", "--nodes", type=int, default=1, help="number of nodes for distributed training")
     parser.add_argument("-g", "--gpus", type=int, default=1, help="number of gpus per node")
     parser.add_argument("-nr", "--nr", type=int, default=0, help="ranking within the nodes")
