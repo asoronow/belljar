@@ -11,6 +11,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from pathlib import Path
 import argparse
+import os
 
 
 class ResidualBlock(nn.Module):
@@ -179,10 +180,10 @@ class SytheticSliceDataset(Dataset):
         metadata_path (str): Path to the metadata file
         images_path (str): Path to the images
     """
-    def __init__(self, metadata_path, images_path, transforms=None):
+    def __init__(self, metadata_path, images_path, transform=None):
         self.metadata = Path(metadata_path)
         self.images = Path(images_path)
-        self.transforms = transforms
+        self.transform = transform
         self.data = []
  
         with open(self.metadata, newline="", encoding="utf-8-sig") as csvfile:
@@ -240,8 +241,8 @@ class SytheticSliceDataset(Dataset):
             idx = idx.tolist()
 
         image = self._load_image(self.data[idx]["file_name"])
-        if transforms is not None:
-            image = transforms(image)
+        if self.transform is not None:
+            image = self.transform(image)
 
         label = [
             self.data[idx]["x_angle"],
@@ -254,11 +255,18 @@ class SytheticSliceDataset(Dataset):
         return image, label
 
 
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
 
+    # initialize the process group
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.destroy_process_group()
 
 def train(rank, world_size, args):
-    # Initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    setup(rank, world_size)
 
     # Set the device
     torch.cuda.set_device(rank)
@@ -276,7 +284,7 @@ def train(rank, world_size, args):
     ])
 
     # Create the dataset and the distributed data loaders
-    og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transform)
+    og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transform=transform)
 
     train_size = int(0.8 * len(og_dataset))
     val_size = len(og_dataset) - train_size
@@ -324,8 +332,7 @@ def train(rank, world_size, args):
                     torch.save(model.state_dict(), f"best_model_{epoch}.pt")
         print(f"Rank {rank} | Valid Loss: {valid_loss / len(val_dataloader.dataset)}")
 
-    # Clean up
-    dist.destroy_process_group()
+    cleanup()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -341,7 +348,3 @@ if __name__ == "__main__":
 
     world_size = args.gpus * args.nodes
     mp.spawn(train, args=(world_size, args), nprocs=args.gpus, join=True)
-        
-
-
-
