@@ -5,10 +5,11 @@ import torch.optim as optim
 from torchvision import transforms
 import csv
 import cv2
-import numpy as np
-from torch.utils.data import DataLoader, Dataset
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from pathlib import Path
-from torchsummary import summary
 import argparse
 
 
@@ -254,65 +255,49 @@ class SytheticSliceDataset(Dataset):
 
 
 
-if __name__ == "__main__":
-    # args
-    args = argparse.ArgumentParser()
-    args.add_argument("-m", "--metadata", type=str, required=True)
-    args.add_argument("-i", "--images", type=str, required=True)
-    args.add_argument("-e", "--epochs", type=int, required=False, default=10)
-    args.add_argument("-b", "--batch_size", type=int, required=False, default=16)
-    args.add_argument("-l", "--learning_rate", type=float, required=False, default=0.01)
-    args = args.parse_args()
 
-    # Setup training loop
-    epochs = int(args.epochs)
-    batch_size = int(args.batch_size)
-    learning_rate = float(args.learning_rate)
+def train(rank, world_size, args):
+    # Initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    # Create the model instance
-    model = SliceEstimator(ResidualBlock, layers)
+    # Set the device
+    torch.cuda.set_device(rank)
+    device = torch.device("cuda", rank)
+
+    # Create the model instance and move to device
+    model = SliceEstimator(ResidualBlock, layers).to(device)
+    model = DDP(model, device_ids=[rank])
 
     # Random contrast and brightness transform
-    transforms = transforms.Compose(
-        [
-            transforms.ToPILImage(),
-            transforms.ColorJitter((0.0, 0.25), (0.0, 0.25)),
-            transforms.ToTensor(),
-        ]
-    )
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.ColorJitter((0.0, 0.25), (0.0, 0.25)),
+        transforms.ToTensor(),
+    ])
 
-    # Create the data loaders
-    og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transforms)
-    
-    # Train/Val split
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        og_dataset, [0.8, 0.2]
-    )
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True
-    )
-    val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True
-    )
+    # Create the dataset and the distributed data loaders
+    og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transform)
 
-    # Create the loss function
+    train_size = int(0.8 * len(og_dataset))
+    val_size = len(og_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(og_dataset, [train_size, val_size])
+
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, pin_memory=True)
+
+    # Create the loss function and the optimizer
     criterion = nn.MSELoss()
-
-    # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    
-    # Create the optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     best_loss = float("inf")
-    for epoch in range(epochs):
+    for epoch in range(args.epochs):
+        model.train()
         train_loss = 0.0
+        train_sampler.set_epoch(epoch)
         for batch, (samples, labels) in enumerate(train_dataloader):
-            print(
-                f"Train | Epoch: {epoch}, Batch: {batch}/{len(train_dataloader)}, Current Train Loss: {train_loss / ((batch + 1) * batch_size)}",
-                end="\r",
-            )
             samples = samples.to(device)
             labels = labels.to(device)
             optimizer.zero_grad()
@@ -321,15 +306,12 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * samples.size(0)
-        print(f"\nTrain Loss: {train_loss / len(train_dataloader.dataset)}")
+        print(f"Rank {rank} | Train Loss: {train_loss / len(train_dataloader.dataset)}")
 
+        model.eval()
         valid_loss = 0.0
         with torch.no_grad():
             for batch, (samples, labels) in enumerate(val_dataloader):
-                print(
-                    f"Valid | Epoch: {epoch}, Batch: {batch}/{len(val_dataloader)}, Current Valid Loss: {valid_loss / ((batch + 1) * batch_size)}",
-                    end="\r",
-                )
                 samples = samples.to(device)
                 labels = labels.to(device)
                 outputs = model(samples)
@@ -337,10 +319,28 @@ if __name__ == "__main__":
                 valid_loss += loss.item() * samples.size(0)
             if valid_loss < best_loss:
                 best_loss = valid_loss
-                # Save
-                torch.save(model.state_dict(), f"best_model_{epoch}.pt")
-        print(f"\nValid Loss: {valid_loss / len(val_dataloader.dataset)}")
+                # Save the model only in the rank 0 process
+                if rank == 0:
+                    torch.save(model.state_dict(), f"best_model_{epoch}.pt")
+        print(f"Rank {rank} | Valid Loss: {valid_loss / len(val_dataloader.dataset)}")
 
+    # Clean up
+    dist.destroy_process_group()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--metadata", type=str, required=True)
+    parser.add_argument("-i", "--images", type=str, required=True)
+    parser.add_argument("-e", "--epochs", type=int, required=False, default=10)
+    parser.add_argument("-b", "--batch_size", type=int, required=False, default=16)
+    parser.add_argument("-l", "--learning_rate", type=float, required=False, default=0.01)
+    parser.add_argument("-n", "--nodes", type=int, default=1, help="number of nodes for distributed training")
+    parser.add_argument("-g", "--gpus", type=int, default=1, help="number of gpus per node")
+    parser.add_argument("-nr", "--nr", type=int, default=0, help="ranking within the nodes")
+    args = parser.parse_args()
+
+    world_size = args.gpus * args.nodes
+    mp.spawn(train, args=(world_size, args), nprocs=args.gpus, join=True)
         
 
 
