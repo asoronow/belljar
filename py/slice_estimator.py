@@ -326,7 +326,7 @@ def train(rank, world_size, args):
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * samples.size(0)
-            logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} | Train Loss: {train_loss / (batch + 1)  * args.batch_size}")
+            logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} | Train Loss: {train_loss / ((batch + 1)  * args.batch_size)}")
 
         model.eval()
         valid_loss = 0.0
@@ -342,7 +342,7 @@ def train(rank, world_size, args):
                 # Save the model only in the rank 0 process
                 if rank == 0:
                     torch.save(model.state_dict(), f"best_model_{epoch}.pt")
-            logging.info(f"Rank {rank} | Epoch {epoch} | Valid Loss: {valid_loss / (batch + 1) * args.batch_size}")
+            logging.info(f"Rank {rank} | Epoch {epoch} | Valid Loss: {valid_loss / ((batch + 1) * args.batch_size)}")
 
     cleanup()
 
