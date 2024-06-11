@@ -16,3 +16,4 @@ sahi
 pyqt6
 napari
 SimpleITK
+wandb
