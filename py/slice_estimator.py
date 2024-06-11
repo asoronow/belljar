@@ -304,8 +304,6 @@ def train(rank, world_size, args):
 
     # Create the dataset and the distributed data loaders
     og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transform=transform)
-    # reduce the size of the dataset
-    og_dataset = torch.utils.data.Subset(og_dataset, range(0, 1000))
     train_dataset, val_dataset = torch.utils.data.random_split(og_dataset, [0.8, 0.2])
 
     train_sampler = DistributedSampler(train_dataset)
