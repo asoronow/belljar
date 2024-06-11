@@ -304,10 +304,9 @@ def train(rank, world_size, args):
 
     # Create the dataset and the distributed data loaders
     og_dataset = SytheticSliceDataset(args.metadata.strip(), args.images.strip(), transform=transform)
-
-    train_size = int(0.8 * len(og_dataset))
-    val_size = len(og_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(og_dataset, [train_size, val_size])
+    # reduce the size of the dataset
+    og_dataset = torch.utils.data.Subset(og_dataset, range(0, 1000))
+    train_dataset, val_dataset = torch.utils.data.random_split(og_dataset, [0.8, 0.2])
 
     train_sampler = DistributedSampler(train_dataset)
     val_sampler = DistributedSampler(val_dataset)
@@ -335,7 +334,10 @@ def train(rank, world_size, args):
             train_loss += loss.item() * samples.size(0)
             if rank == 0:
                 logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch + 1} / {len(train_dataloader)} | Train Loss: {train_loss / ((batch + 1) * args.batch_size)}")
-                wandb.log({"train_loss": train_loss / ((batch + 1) * args.batch_size)})
+        
+        train_loss = train_loss / len(train_dataset)
+        if rank == 0:
+            wandb.log({"train_loss": train_loss})
 
         model.eval()
         valid_loss = 0.0
@@ -346,13 +348,23 @@ def train(rank, world_size, args):
                 outputs = model(samples)
                 loss = criterion(outputs.squeeze(), labels)
                 valid_loss += loss.item() * samples.size(0)
+                if rank == 0:
+                    logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} / {len(val_dataloader)} | Valid Loss: {valid_loss / ((batch + 1) * args.batch_size)}")
+
+            valid_loss = valid_loss / len(val_dataset)
             if valid_loss < best_loss:
                 best_loss = valid_loss
                 if rank == 0:
-                    torch.save(model.state_dict(), f"best_model_{epoch}.pt")
+                    torch.save(model.state_dict(), f"best.pt")
+            
             if rank == 0:
-                logging.info(f"Rank {rank} | Epoch {epoch} | Batch {batch} / {len(val_dataloader)} | Valid Loss: {valid_loss / ((batch + 1) * args.batch_size)}")
-                wandb.log({"valid_loss": valid_loss / ((batch + 1) * args.batch_size)})
+                torch.save(model.state_dict(), f"last.pt")
+                wandb.log({"best_loss": best_loss})
+                wandb.log({"valid_loss": valid_loss})
+
+                
+
+
 
     cleanup()
 
