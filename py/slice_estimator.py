@@ -261,9 +261,13 @@ class SytheticSliceDataset(Dataset):
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-
+    # check os, if windows, set to gloo
+    if os.name == 'nt':
+        backend = 'gloo'
+    else:
+        backend = 'nccl'
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
     # Set up logging to file
     logging.basicConfig(
@@ -340,7 +344,7 @@ def train(rank, world_size, args):
                 samples = samples.to(device)
                 labels = labels.to(device)
                 outputs = model(samples)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs.squeeze(), labels)
                 valid_loss += loss.item() * samples.size(0)
             if valid_loss < best_loss:
                 best_loss = valid_loss
