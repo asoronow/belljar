@@ -17,3 +17,4 @@ pyqt6
 napari
 SimpleITK
 wandb
+pytorch-msssim

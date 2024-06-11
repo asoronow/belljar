@@ -69,7 +69,8 @@ def make_angled_data(samples, atlas):
     pickle.dump(metadata, open(output_path / "metadata.pkl", "wb"))
 
 
-def slice_3d_volume(volume, z_position, x_angle, y_angle):
+
+def slice_3d_volume(volume, z_position, x_angle, y_angle, z_dimension=0):
     """
     Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
 
@@ -78,21 +79,36 @@ def slice_3d_volume(volume, z_position, x_angle, y_angle):
         z_position (int): Position along the z-axis for the slice.
         x_angle (float): Angle in degrees to tilt in the x axis.
         y_angle (float): Angle in degrees to tilt in the y axis.
+        z_dimension (int): The dimension to be considered as the z-dimension (0, 1, or 2).
 
     Returns:
         numpy.ndarray: 2D sliced array.
     """
+    dims = [0, 1, 2]
+    dim_z = dims[z_dimension]
+    dim_x = dims[(z_dimension + 1) % 3]
+    dim_y = dims[(z_dimension + 2) % 3]
+
     x_angle_rad = np.deg2rad(x_angle)
     y_angle_rad = np.deg2rad(y_angle)
 
-    x, y = np.meshgrid(np.arange(volume.shape[2]), np.arange(volume.shape[1]))
-    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
-        np.float32
-    )
-    coords = np.array([z, y, x])
+    x, y = np.meshgrid(np.arange(volume.shape[dim_x]), np.arange(volume.shape[dim_y]))
+    z = (
+        z_position
+        + x * np.tan(x_angle_rad)
+        + y * np.tan(y_angle_rad)
+    ).astype(np.float32)
+
+    # Swap the axes to match the original volume dimensions
+    coords = [None, None, None]
+    coords[dim_z] = z
+    coords[dim_x] = x
+    coords[dim_y] = y
+
     slice_2d = map_coordinates(volume, coords, order=0, mode="nearest")
 
     return slice_2d
+
 
 
 def is_transform_in_bounds(image, transform_matrix):
