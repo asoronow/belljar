@@ -309,8 +309,8 @@ def train(rank, world_size, args):
     train_sampler = DistributedSampler(train_dataset)
     val_sampler = DistributedSampler(val_dataset)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, pin_memory=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, pin_memory=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=4, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, num_workers=4, pin_memory=True)
 
     # Create the loss function and the optimizer
     criterion = nn.MSELoss()

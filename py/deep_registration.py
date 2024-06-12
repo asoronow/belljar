@@ -170,7 +170,7 @@ def train(rank, world_size, args):
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
-    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to(rank)
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=64).to(rank)
     model = DDP(model, device_ids=[rank])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -180,6 +180,7 @@ def train(rank, world_size, args):
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0.0
+        num_samples = 0
         sampler.set_epoch(epoch)
         for batch, (original, target) in enumerate(dataloader):
             original = original.to(rank)
@@ -189,6 +190,7 @@ def train(rank, world_size, args):
             deformation_field = model(input_pair) 
 
             batch_size = original.size(0)
+            num_samples += batch_size
             grid = create_grid(batch_size, original.shape[2:]).to(rank)
             warped_grid = grid + deformation_field.permute(0, 2, 3, 1)
             warped_original = F.grid_sample(original, warped_grid, align_corners=True)
@@ -201,20 +203,21 @@ def train(rank, world_size, args):
             loss.backward()
             optimizer.step()
 
-            train_loss += loss.item() * original.size(0)
+            train_loss += loss.item() * batch_size
             if rank == 0:
-                print(f"Epoch: {epoch}, Batch: {batch + 1} / {len(dataloader)}, Loss: {train_loss /((batch + 1) * original.size(0))}")
+                print(f"Epoch: {epoch}, Batch: {batch + 1} / {len(dataloader)}, Loss: {train_loss / num_samples:.4f}")
 
-        if train_loss / len(dataloader.dataset) < best_loss:
-            best_loss = train_loss / len(dataloader.dataset)
+        epoch_loss = train_loss / num_samples
+
+        if epoch_loss < best_loss:
+            best_loss = epoch_loss
             if rank == 0:  # Only save on rank 0 to avoid overwriting
-                torch.save(model.state_dict(), 'brain_reg_net.pt')
+                torch.save(model.module.state_dict(), 'brain_reg_net.pt')
                 # display_images(original[0], target[0], warped_original[0])
         # Display the first image at the end of each epoch
 
-        train_loss /= len(dataloader.dataset)
         if rank == 0:
-            wandb.log({"loss": train_loss})
+            wandb.log({"loss": epoch_loss})
     
     cleanup()
 
@@ -245,7 +248,7 @@ def test(args):
     dataset = PairedDataset(originals, targets, transform=transform)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
-    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to('cuda')
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=64).to('cuda')
     # load state dict sensitve to module
     model.load_state_dict(remove_module_prefix(torch.load('brain_reg_net.pt')))
     model.eval()
