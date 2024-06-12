@@ -16,47 +16,108 @@ import os
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from timm import create_model
-
-
-class BrainRegViT(nn.Module):
-    def __init__(self, backbone='vit_base_patch16_224', img_size=224, num_classes=2, init_features=64, dropout_rate=0.3):
-        super(BrainRegViT, self).__init__()
-
-        # Vision Transformer backbone
-        self.backbone = create_model(backbone, pretrained=True, img_size=img_size)
-         # Calculate the correct input size for the head network
-        vit_embed_dim = self.backbone.embed_dim
-        num_patches = (img_size // 16) ** 2 + 1  # +1 for class token
-        input_dim = vit_embed_dim * num_patches * 2
-        # Deeper head network
-        self.head = nn.Sequential(
-            nn.Linear(input_dim, init_features),  # *2 for concatenated embeddings
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(init_features, init_features // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(init_features // 2, init_features // 4),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(init_features // 4, img_size * img_size * num_classes)  # Predict deformation field
+class AttentionBlock(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super(AttentionBlock, self).__init__()
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
         )
-        self.img_size = img_size
-        self.num_classes = num_classes
 
-    def forward(self, original, target):
-        # Extract features from original and target images
-        original_features = self.backbone.forward_features(original)
-        target_features = self.backbone.forward_features(target)
-        # Concatenate the features
-        features = torch.cat((original_features, target_features), dim=-1)
-        features = features.view(features.size(0), -1)
-        # Predict deformation field
-        x = self.head(features)
-        batch_size = x.size(0)
-        x = x.view(batch_size, self.num_classes, self.img_size, self.img_size)
-        return x
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
 
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1 + x1)
+        psi = self.psi(psi)
+        return x * psi
+
+class BrainRegUNet(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(BrainRegUNet, self).__init__()
+
+        self.encoder1 = self._conv_block(in_channels, 64)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.encoder2 = self._conv_block(64, 128)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.encoder3 = self._conv_block(128, 256)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.encoder4 = self._conv_block(256, 512)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.bottleneck = self._conv_block(512, 1024)
+
+        self.upconv4 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.att4 = AttentionBlock(F_g=512, F_l=512, F_int=256)
+        self.decoder4 = self._conv_block(1024, 512)
+
+        self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.att3 = AttentionBlock(F_g=256, F_l=256, F_int=128)
+        self.decoder3 = self._conv_block(512, 256)
+
+        self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.att2 = AttentionBlock(F_g=128, F_l=128, F_int=64)
+        self.decoder2 = self._conv_block(256, 128)
+
+        self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.att1 = AttentionBlock(F_g=64, F_l=64, F_int=32)
+        self.decoder1 = self._conv_block(128, 64)
+
+        self.conv = nn.Conv2d(64, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool1(enc1))
+        enc3 = self.encoder3(self.pool2(enc2))
+        enc4 = self.encoder4(self.pool3(enc3))
+        bottleneck = self.bottleneck(self.pool4(enc4))
+
+        dec4 = self.upconv4(bottleneck)
+        att4 = self.att4(dec4, enc4)
+        dec4 = torch.cat((att4, dec4), dim=1)
+        dec4 = self.decoder4(dec4)
+
+        dec3 = self.upconv3(dec4)
+        att3 = self.att3(dec3, enc3)
+        dec3 = torch.cat((att3, dec3), dim=1)
+        dec3 = self.decoder3(dec3)
+
+        dec2 = self.upconv2(dec3)
+        att2 = self.att2(dec2, enc2)
+        dec2 = torch.cat((att2, dec2), dim=1)
+        dec2 = self.decoder2(dec2)
+
+        dec1 = self.upconv1(dec2)
+        att1 = self.att1(dec1, enc1)
+        dec1 = torch.cat((att1, dec1), dim=1)
+        dec1 = self.decoder1(dec1)
+
+        return self.conv(dec1)
+
+    def _conv_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
 
 class SSIM_Loss(SSIM):
     def forward(self, img1, img2):
@@ -91,8 +152,8 @@ class PairedDataset(Dataset):
         original = self.originals[idx]
         target = self.targets[idx]
 
-        original = cv2.imread(str(original), cv2.IMREAD_COLOR)
-        target = cv2.imread(str(target), cv2.IMREAD_COLOR)
+        original = cv2.imread(str(original), cv2.IMREAD_GRAYSCALE)
+        target = cv2.imread(str(target), cv2.IMREAD_GRAYSCALE)
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
@@ -144,15 +205,15 @@ def train(rank, world_size, args):
 
     dataset = PairedDataset(originals, targets, transform=transform)
     # limit dataset to 1000 images for quick testing
-    # dataset = torch.utils.data.Subset(dataset, range(1000))
+    dataset = torch.utils.data.Subset(dataset, range(1000))
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
-    model = BrainRegViT().to(rank)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    model = BrainRegUNet(in_channels=2, out_channels=2).to(rank)
+    model = DDP(model, device_ids=[rank], find_unused_parameters=False)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
-    ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=3).to(rank)
+    ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to(rank)
 
     best_loss = float("inf")
     for epoch in range(args.epochs):
@@ -164,7 +225,8 @@ def train(rank, world_size, args):
             original = original.to(rank)
             target = target.to(rank)
 
-            deformation_field = model(original, target) 
+            input_pair = torch.cat([original, target], dim=1)  # Concatenate along channel dimension
+            deformation_field = model(input_pair) 
             batch_size = original.size(0)
             num_samples += batch_size
             grid = create_grid(batch_size, original.shape[2:]).to(rank)
@@ -222,7 +284,7 @@ def test(args):
     dataset = PairedDataset(originals, targets, transform=transform)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
-    model = BrainRegViT().to('cuda')
+    model = BrainRegUNet().to('cuda')
     # load state dict sensitve to module
     model.load_state_dict(remove_module_prefix(torch.load('brain_reg_net.pt')))
     model.eval()
