@@ -70,7 +70,7 @@ def make_angled_data(samples, atlas):
 
 
 
-def slice_3d_volume(volume, z_position, x_angle, y_angle, z_dimension=0):
+def slice_3d_volume(volume, z_position, x_angle, y_angle):
     """
     Obtain a slice at a certain point in a 3D volume at an arbitrary angle.
 
@@ -79,36 +79,29 @@ def slice_3d_volume(volume, z_position, x_angle, y_angle, z_dimension=0):
         z_position (int): Position along the z-axis for the slice.
         x_angle (float): Angle in degrees to tilt in the x axis.
         y_angle (float): Angle in degrees to tilt in the y axis.
-        z_dimension (int): The dimension to be considered as the z-dimension (0, 1, or 2).
 
     Returns:
         numpy.ndarray: 2D sliced array.
     """
-    dims = [0, 1, 2]
-    dim_z = dims[z_dimension]
-    dim_x = dims[(z_dimension + 1) % 3]
-    dim_y = dims[(z_dimension + 2) % 3]
 
+    # Convert angles to radians
     x_angle_rad = np.deg2rad(x_angle)
     y_angle_rad = np.deg2rad(y_angle)
 
-    x, y = np.meshgrid(np.arange(volume.shape[dim_x]), np.arange(volume.shape[dim_y]))
-    z = (
-        z_position
-        + x * np.tan(x_angle_rad)
-        + y * np.tan(y_angle_rad)
-    ).astype(np.float32)
+    # Create a coordinate grid
+    x, y = np.meshgrid(np.arange(volume.shape[2]), np.arange(volume.shape[1]))
 
-    # Swap the axes to match the original volume dimensions
-    coords = [None, None, None]
-    coords[dim_z] = z
-    coords[dim_x] = x
-    coords[dim_y] = y
+    # Adjust z-position based on tilt angles
+    # Ensure data type is float to handle decimal computations
+    z = (z_position + x * np.tan(x_angle_rad) + y * np.tan(y_angle_rad)).astype(
+        np.float32
+    )
+    coords = np.array([z, y, x])
 
-    slice_2d = map_coordinates(volume, coords, order=0, mode="nearest")
+    # Extract slice using nearest-neighbor interpolation
+    slice_2d = map_coordinates(volume, coords, order=0)
 
     return slice_2d
-
 
 
 def is_transform_in_bounds(image, transform_matrix):
@@ -197,6 +190,9 @@ def generate_sample(
     with lock:
         with open(metadata_file, "a") as f:
             f.write(metadata_entry)
+        
+        if len(ttrs) > 50:
+            ttrs.pop(0)
 
         ttrs.append(time.time() - start_time)
 
@@ -209,6 +205,96 @@ def generate_sample(
                 f"Samples completed: {i}/{num_samples} | Time remaining: {formatted_time_remaining}",
                 end="\r",
             )
+
+
+def generate_sample_pair(
+    i, num_samples, atlas, experiment_path, metadata_file, ttrs, lock
+):
+    start_time = time.time()
+    x_angle, y_angle = np.random.uniform(-15, 15, 2)
+    z_position = np.random.randint(200, 1200)
+    
+    # Generate the original sample
+    original_sample = slice_3d_volume(atlas, z_position, x_angle, y_angle)
+    
+    transformed_sample = original_sample.copy()
+    
+    # 50% chance of only using half of the brain
+    if np.random.rand() > 0.5:
+        removed_pixels = transformed_sample.shape[1] // 2
+        transformed_sample = transformed_sample[:, : transformed_sample.shape[1] // 2]
+        original_sample = original_sample[:, : original_sample.shape[1] // 2]
+        # Recenter by padding the removed pixels
+        transformed_sample = np.pad(transformed_sample, ((0, 0), (0, removed_pixels // 2)), "constant")
+        original_sample = np.pad(original_sample, ((0, 0), (0, removed_pixels // 2)), "constant")
+    
+    center = (transformed_sample.shape[1] // 2, transformed_sample.shape[0] // 2)
+    rotation_angle = np.random.uniform(-10, 10)
+    rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1)
+    transformed_sample = cv2.warpAffine(transformed_sample, rotation_matrix, (transformed_sample.shape[1], transformed_sample.shape[0]))
+
+    shear_y = np.random.rand() * 0.25 - 0.125
+    shear_matrix = np.float32([[1, 0, 0], [shear_y, 1, 0]])
+    transformed_sample = cv2.warpAffine(transformed_sample, shear_matrix, (transformed_sample.shape[1], transformed_sample.shape[0]))
+
+    transformed_sample = np.pad(transformed_sample, 25, "constant", constant_values=0)
+    transformed_sample = cv2.resize(transformed_sample, (224, 224), interpolation=cv2.INTER_LINEAR)
+    original_sample = np.pad(original_sample, 25, "constant", constant_values=0)
+    original_sample = cv2.resize(original_sample, (224, 224), interpolation=cv2.INTER_LINEAR)
+
+    # Generate filenames for original and transformed images
+    random_name = str(uuid4())
+    original_sample_filename = f"S_{random_name}.png"
+    transformed_sample_filename = f"S_{random_name}.png"
+
+    # Create subdirectories for original and transformed images
+    original_subdir = experiment_path / "original"
+    transformed_subdir = experiment_path / "transformed"
+    original_subdir.mkdir(parents=True, exist_ok=True)
+    transformed_subdir.mkdir(parents=True, exist_ok=True)
+
+    # Save images to respective subdirectories
+    cv2.imwrite(str(original_subdir / original_sample_filename), original_sample)
+    cv2.imwrite(str(transformed_subdir / transformed_sample_filename), transformed_sample)
+
+    metadata_entry = f"{original_sample_filename},{transformed_sample_filename},{x_angle},{y_angle},{z_position}\n"
+    with lock:
+        with open(metadata_file, "a") as f:
+            f.write(metadata_entry)
+        
+
+
+
+def create_paired_synthetic_experiment(name, num_samples, atlas):
+    output_path = Path("~/Desktop/synthetic_experiments/").expanduser()
+    output_path.mkdir(exist_ok=True)
+    experiment_path = output_path / name
+    experiment_path.mkdir(exist_ok=True)
+
+    metadata_file = experiment_path / "metadata.csv"
+
+    # Open the metadata file in write mode to write the header
+    with open(metadata_file, "w") as f:
+        f.write("filename,x_angle,y_angle,z_position\n")
+
+    lock = threading.Lock()
+    ttrs = []
+    with ThreadPoolExecutor(max_workers=128) as executor:
+        futures = [
+            executor.submit(
+                generate_sample_pair,
+                i,
+                num_samples,
+                atlas,
+                experiment_path,
+                metadata_file,
+                ttrs,
+                lock,
+            )
+            for i in range(num_samples)
+        ]
+        for future in as_completed(futures):
+            future.result()
 
 
 def create_synthetic_experiment(name, num_samples, atlas, annotation):
@@ -352,10 +438,10 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
 def main():
     atlas_path = Path("~/.belljar/nrrd/atlas_10.nrrd")
     annotation_path = Path("~/.belljar/nrrd/annotation_10.nrrd")
-    atlas, atlas_header = nrrd.read(str(atlas_path.expanduser()))
-    annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
-    create_synthetic_experiment("big_random_set_2", 10_000_000, atlas, annotation)
-
+    atlas, _ = nrrd.read(str(atlas_path.expanduser()))
+    # annotation, annotation_header = nrrd.read(str(annotation_path.expanduser()))
+    # create_synthetic_experiment("big_random_set_2", 10_000_000, atlas, annotation)
+    create_paired_synthetic_experiment("big_random_set_paired", 100_000, atlas)
 
 if __name__ == "__main__":
     main()

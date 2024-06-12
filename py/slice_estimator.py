@@ -360,10 +360,6 @@ def train(rank, world_size, args):
                 wandb.log({"best_loss": best_loss})
                 wandb.log({"valid_loss": valid_loss})
 
-                
-
-
-
     cleanup()
 
 if __name__ == "__main__":

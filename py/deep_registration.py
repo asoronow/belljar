@@ -1,36 +1,45 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torchvision import transforms
 from pathlib import Path
 import argparse
 from pytorch_msssim import SSIM
+import cv2
+import os
+import wandb
+import matplotlib.pyplot as plt
+import os
+import torch.multiprocessing as mp
+import torch.distributed as dist
+
 class BrainRegNet(nn.Module):
     def __init__(self, in_channels=2, out_channels=2, init_features=32):
-        super(UNet, self).__init__()
+        super(BrainRegNet, self).__init__()
 
         features = init_features
-        self.encoder1 = UNet._block(in_channels, features, name="enc1")
+        self.encoder1 = BrainRegNet._block(in_channels, features, name="enc1")
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder2 = UNet._block(features, features * 2, name="enc2")
+        self.encoder2 = BrainRegNet._block(features, features * 2, name="enc2")
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder3 = UNet._block(features * 2, features * 4, name="enc3")
+        self.encoder3 = BrainRegNet._block(features * 2, features * 4, name="enc3")
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder4 = UNet._block(features * 4, features * 8, name="enc4")
+        self.encoder4 = BrainRegNet._block(features * 4, features * 8, name="enc4")
         self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.bottleneck = UNet._block(features * 8, features * 16, name="bottleneck")
+        self.bottleneck = BrainRegNet._block(features * 8, features * 16, name="bottleneck")
         
         self.upconv4 = nn.ConvTranspose2d(features * 16, features * 8, kernel_size=2, stride=2)
-        self.decoder4 = UNet._block((features * 8) * 2, features * 8, name="dec4")
+        self.decoder4 = BrainRegNet._block((features * 8) * 2, features * 8, name="dec4")
         self.upconv3 = nn.ConvTranspose2d(features * 8, features * 4, kernel_size=2, stride=2)
-        self.decoder3 = UNet._block((features * 4) * 2, features * 4, name="dec3")
+        self.decoder3 = BrainRegNet._block((features * 4) * 2, features * 4, name="dec3")
         self.upconv2 = nn.ConvTranspose2d(features * 4, features * 2, kernel_size=2, stride=2)
-        self.decoder2 = UNet._block((features * 2) * 2, features * 2, name="dec2")
+        self.decoder2 = BrainRegNet._block((features * 2) * 2, features * 2, name="dec2")
         self.upconv1 = nn.ConvTranspose2d(features * 2, features, kernel_size=2, stride=2)
-        self.decoder1 = UNet._block(features * 2, features, name="dec1")
+        self.decoder1 = BrainRegNet._block(features * 2, features, name="dec1")
         
         self.conv = nn.Conv2d(in_channels=features, out_channels=out_channels, kernel_size=1)
 
@@ -70,26 +79,27 @@ class BrainRegNet(nn.Module):
 
 
 class SSIM_Loss(SSIM):
-    def forward(self, x, y):
-        return 1 - super().forward(x, y)
-
+    def forward(self, img1, img2):
+        return 1 - super(SSIM_Loss, self).forward(img1, img2)
 
 def smoothness_loss(flow):
     dy = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :])
     dx = torch.abs(flow[:, :, :, 1:] - flow[:, :, :, :-1])
     return torch.mean(dx) + torch.mean(dy)
 
-def create_grid(shape):
-    tensors = [torch.linspace(-1, 1, s) for s in shape]
+def create_grid(batch_size, shape):
+    N, H, W = batch_size, shape[0], shape[1]
+    tensors = [torch.linspace(-1, 1, s) for s in [H, W]]
     grid = torch.stack(torch.meshgrid(*tensors), dim=-1)
+    grid = grid.unsqueeze(0).expand(N, -1, -1, -1)
     return grid
 
-class PariedDataset(Dataset):
+class PairedDataset(Dataset):
     def __init__(self, originals, targets, transform=None):
         self.originals = originals
         self.targets = targets
 
-        # ensure same number of images
+        # Ensure the same number of images
         assert len(self.originals) == len(self.targets)
 
         self.transform = transform
@@ -101,47 +111,169 @@ class PariedDataset(Dataset):
         original = self.originals[idx]
         target = self.targets[idx]
 
+        original = cv2.imread(str(original), cv2.IMREAD_GRAYSCALE)
+        target = cv2.imread(str(target), cv2.IMREAD_GRAYSCALE)
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
 
         return original, target
-       
+
+def display_images(original, target, warped):
+    original = original.squeeze().cpu().numpy()
+    warped = warped.squeeze().cpu().detach().numpy()
+    target = target.squeeze().cpu().numpy()
+    fig, axes = plt.subplots(1, 3, figsize=(12, 6))
+    axes[0].imshow(original, cmap='gray')
+    axes[0].set_title('Original Image')
+    axes[1].imshow(warped, cmap='gray')
+    axes[1].set_title('Warped Image')
+    axes[2].imshow(target, cmap='gray')
+    axes[2].set_title('Target Image')
+    plt.show()
+
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    if os.name == 'nt':
+        backend = 'gloo'
+    else:
+        backend = 'nccl'
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def train(rank, world_size, args):
+    setup(rank, world_size)
     
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--weight_decay", type=float, default=0.0001)
-    parser.add_argument("originals_path", type=str)
-    parser.add_argument("targets_path", type=str)
-    args = parser.parse_args()
-
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
 
     originals = sorted(originals_path.glob("*.png"))
     targets = sorted(targets_path.glob("*.png"))
 
-    dataset = PariedDataset(originals, targets)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    transform = transforms.Compose(
+        [
+            transforms.ToPILImage(),
+            transforms.Grayscale(),  # Ensure images are single-channel
+            transforms.ToTensor(),
+        ]
+    )
 
-    model = BrainRegNet()
+    dataset = PairedDataset(originals, targets, transform=transform)
+    # limit dataset to 1000 images for quick testing
+    # dataset = torch.utils.data.Subset(dataset, range(10000))
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
+
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to(rank)
+    model = DDP(model, device_ids=[rank])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    loss_fn = nn.MSELoss()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    for epoch in range(args.epochs):
-        for original, target in dataloader:
-            original = original.to(device)
-            target = target.to(device)
+    ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to(rank)
 
-            output = model(original)
-            loss = loss_fn(output, target)
+    best_loss = float("inf")
+    for epoch in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        sampler.set_epoch(epoch)
+        for batch, (original, target) in enumerate(dataloader):
+            original = original.to(rank)
+            target = target.to(rank)
+
+            input_pair = torch.cat([original, target], dim=1)  # Concatenate along channel dimension
+            deformation_field = model(input_pair) 
+
+            batch_size = original.size(0)
+            grid = create_grid(batch_size, original.shape[2:]).to(rank)
+            warped_grid = grid + deformation_field.permute(0, 2, 3, 1)
+            warped_original = F.grid_sample(original, warped_grid, align_corners=True)
+
+            similarity_loss = ssim_loss(warped_original, target)
+            smooth_loss = smoothness_loss(deformation_field)
+            loss = similarity_loss + smooth_loss
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            train_loss += loss.item() * original.size(0)
+            if rank == 0:
+                print(f"Epoch: {epoch}, Batch: {batch + 1} / {len(dataloader)}, Loss: {train_loss /((batch + 1) * original.size(0))}")
+
+        if train_loss / len(dataloader.dataset) < best_loss:
+            best_loss = train_loss / len(dataloader.dataset)
+            if rank == 0:  # Only save on rank 0 to avoid overwriting
+                torch.save(model.state_dict(), 'brain_reg_net.pt')
+                # display_images(original[0], target[0], warped_original[0])
+        # Display the first image at the end of each epoch
+
+        # train_loss /= len(dataloader.dataset)
+        # if rank == 0:
+        #     wandb.log({"loss": train_loss})
+    
+    cleanup()
+
+def remove_module_prefix(state_dict):
+    """Remove 'module.' prefix from state_dict keys."""
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("module."):
+            new_state_dict[k[len("module."):]] = v
+        else:
+            new_state_dict[k] = v
+    return new_state_dict
+
+def test(args):
+    originals_path = Path(args.originals_path).expanduser()
+    targets_path = Path(args.targets_path).expanduser()
+    originals = sorted(originals_path.glob("*.png"))
+    targets = sorted(targets_path.glob("*.png"))
+
+    transform = transforms.Compose(
+        [
+            transforms.ToPILImage(),
+            transforms.Grayscale(),  # Ensure images are single-channel
+            transforms.ToTensor(),
+        ]
+    )
+
+    dataset = PairedDataset(originals, targets, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
+
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to('cuda')
+    # load state dict sensitve to module
+    model.load_state_dict(remove_module_prefix(torch.load('brain_reg_net.pt')))
+    model.eval()
+
+    with torch.no_grad():
+        for original, target in dataloader:
+            original = original.to('cuda')
+            target = target.to('cuda')
+
+            input_pair = torch.cat([original, target], dim=1)  # Concatenate along channel dimension
+            deformation_field = model(input_pair) 
+
+            batch_size = original.size(0)
+            grid = create_grid(batch_size, original.shape[2:]).to('cuda')
+            warped_grid = grid + deformation_field.permute(0, 2, 3, 1)
+            warped_original = F.grid_sample(original, warped_grid, align_corners=True)
+
+            display_images(original[0], target[0], warped_original[0])
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--weight_decay", type=float, default=0.0001)
+    parser.add_argument("originals_path", type=str)
+    parser.add_argument("targets_path", type=str)
+    parser.add_argument("--world_size", type=int, default=1)
+    args = parser.parse_args()
+
+
+    #test(args)
+    world_size = args.world_size
+    mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True)
