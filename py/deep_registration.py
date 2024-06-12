@@ -107,6 +107,7 @@ class AddGaussianNoise(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+    
 class PairedDataset(Dataset):
     def __init__(self, originals, targets, transform=None):
         self.originals = originals
@@ -172,9 +173,8 @@ def train(rank, world_size, args):
     transform = transforms.Compose(
         [
             transforms.ToPILImage(),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+            transforms.ColorJitter(brightness=[0.0,0.25], contrast=[0.0,0.25]),
             transforms.ToTensor(),
-            AddGaussianNoise(0.0, 0.1),
         ]
     )
 
