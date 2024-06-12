@@ -146,6 +146,9 @@ def cleanup():
 
 def train(rank, world_size, args):
     setup(rank, world_size)
+
+    if rank == 0:
+        wandb.init(project="deep-registration")
     
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
@@ -209,9 +212,9 @@ def train(rank, world_size, args):
                 # display_images(original[0], target[0], warped_original[0])
         # Display the first image at the end of each epoch
 
-        # train_loss /= len(dataloader.dataset)
-        # if rank == 0:
-        #     wandb.log({"loss": train_loss})
+        train_loss /= len(dataloader.dataset)
+        if rank == 0:
+            wandb.log({"loss": train_loss})
     
     cleanup()
 
