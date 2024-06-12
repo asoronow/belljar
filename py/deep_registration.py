@@ -133,7 +133,12 @@ def display_images(original, target, warped):
     plt.show()
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
+    # check if in docker
+    if os.path.exists('/.dockerenv'):
+        os.environ['MASTER_ADDR'] = 'host.docker.internal'
+    else:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        
     os.environ['MASTER_PORT'] = '12355'
     if os.name == 'nt':
         backend = 'gloo'
