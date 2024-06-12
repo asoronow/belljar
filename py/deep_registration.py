@@ -138,8 +138,6 @@ def train(rank, world_size, args):
 
     transform = transforms.Compose(
         [
-            transforms.ToPILImage(),
-            transforms.ColorJitter(brightness=[0.0,0.25], contrast=[0.0,0.25]),
             transforms.ToTensor(),
         ]
     )
