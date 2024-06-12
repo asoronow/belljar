@@ -148,7 +148,7 @@ def train(rank, world_size, args):
     setup(rank, world_size)
 
     if rank == 0:
-        wandb.init(project="deep-registration")
+        wandb.init(project="deep_registration")
     
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
