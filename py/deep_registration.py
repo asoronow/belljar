@@ -146,7 +146,7 @@ def train(rank, world_size, args):
 
     dataset = PairedDataset(originals, targets, transform=transform)
     # limit dataset to 1000 images for quick testing
-    dataset = torch.utils.data.Subset(dataset, range(1000))
+    # dataset = torch.utils.data.Subset(dataset, range(1000))
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
