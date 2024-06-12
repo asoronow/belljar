@@ -159,7 +159,7 @@ def train(rank, world_size, args):
     transform = transforms.Compose(
         [
             transforms.ToPILImage(),
-            transforms.Grayscale(),  # Ensure images are single-channel
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
             transforms.ToTensor(),
         ]
     )
@@ -168,7 +168,7 @@ def train(rank, world_size, args):
     # limit dataset to 1000 images for quick testing
     # dataset = torch.utils.data.Subset(dataset, range(10000))
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
     model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to(rank)
     model = DDP(model, device_ids=[rank])
