@@ -186,7 +186,7 @@ def train(rank, world_size, args):
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
-    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to(rank)
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=16).to(rank)
     model = DDP(model, device_ids=[rank])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -266,7 +266,7 @@ def test(args):
     dataset = PairedDataset(originals, targets, transform=transform)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
-    model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to('cuda')
+    model = BrainRegNet(in_channels=2, out_channels=2, init_features=16).to('cuda')
     # load state dict sensitve to module
     model.load_state_dict(remove_module_prefix(torch.load('brain_reg_net.pt')))
     model.eval()
