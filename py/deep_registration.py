@@ -42,6 +42,29 @@ class BrainRegNet(nn.Module):
         self.decoder1 = BrainRegNet._block(features * 2, features, name="dec1", dropout=0.3)
         
         self.conv = nn.Conv2d(in_channels=features, out_channels=out_channels, kernel_size=1)
+    
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool1(enc1))
+        enc3 = self.encoder3(self.pool2(enc2))
+        enc4 = self.encoder4(self.pool3(enc3))
+        
+        bottleneck = self.bottleneck(self.pool4(enc4))
+        
+        dec4 = self.upconv4(bottleneck)
+        dec4 = torch.cat((dec4, enc4), dim=1)
+        dec4 = self.decoder4(dec4)
+        dec3 = self.upconv3(dec4)
+        dec3 = torch.cat((dec3, enc3), dim=1)
+        dec3 = self.decoder3(dec3)
+        dec2 = self.upconv2(dec3)
+        dec2 = torch.cat((dec2, enc2), dim=1)
+        dec2 = self.decoder2(dec2)
+        dec1 = self.upconv1(dec2)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+        
+        return self.conv(dec1)
 
     @staticmethod
     def _block(in_channels, features, name, dropout=0.0):
@@ -203,7 +226,7 @@ def train(rank, world_size, args):
 
         epoch_loss = train_loss / num_samples
         scheduler.step()
-        
+
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             if rank == 0:  # Only save on rank 0 to avoid overwriting
