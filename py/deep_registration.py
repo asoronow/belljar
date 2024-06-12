@@ -173,8 +173,6 @@ def train(rank, world_size, args):
         [
             transforms.ToPILImage(),
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-            transforms.RandomRotation(10),
-            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             AddGaussianNoise(0.0, 0.1),
         ]
