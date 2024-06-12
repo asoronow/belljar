@@ -189,8 +189,7 @@ def train(rank, world_size, args):
     model = BrainRegNet(in_channels=2, out_channels=2, init_features=32).to(rank)
     model = DDP(model, device_ids=[rank])
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to(rank)
 
     best_loss = float("inf")
@@ -225,7 +224,6 @@ def train(rank, world_size, args):
                 print(f"Epoch: {epoch}, Batch: {batch + 1} / {len(dataloader)}, Loss: {train_loss / num_samples:.4f}")
 
         epoch_loss = train_loss / num_samples
-        scheduler.step()
 
         if epoch_loss < best_loss:
             best_loss = epoch_loss
