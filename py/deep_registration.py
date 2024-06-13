@@ -313,17 +313,25 @@ def fine_tune_model(args):
     for param in model.parameters():
         param.requires_grad = False
     
-    # Unfreeze the final layers for fine-tuning
-    for param in model.decoder1.parameters():
-        param.requires_grad = True
-    for param in model.decoder2.parameters():
-        param.requires_grad = True
-    for param in model.decoder3.parameters():
-        param.requires_grad = True
-    for param in model.decoder4.parameters():
-        param.requires_grad = True
-    for param in model.conv.parameters():
-        param.requires_grad = True
+    unfreeze = [
+        model.conv,
+        model.decoder1,
+        model.decoder2,
+        model.decoder3,
+        model.decoder4,
+        model.att1,
+        model.att2,
+        model.att3,
+        model.att4,
+        model.upconv1,
+        model.upconv2,
+        model.upconv3,
+        model.upconv4
+    ]
+
+    for layer in unfreeze:
+        for param in layer.parameters():
+            param.requires_grad = True
  
 
 
