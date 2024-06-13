@@ -350,6 +350,8 @@ def fine_tune_model(args):
     model.train()
 
     best_loss = float("inf")
+    patience_step = 0
+    last_losses = []
     for epoch in range(epochs):
         running_loss = 0.0
         for original, target in dataloader:
@@ -378,6 +380,21 @@ def fine_tune_model(args):
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             torch.save(model.state_dict(), 'fine_tuned_brain_reg_net.pt')
+
+        # Early stopping
+        last_losses.append(epoch_loss)
+        num_losses_to_track = 10
+        if len(last_losses) > num_losses_to_track:
+            last_losses = last_losses[-num_losses_to_track:]
+        if len(last_losses) >= num_losses_to_track:
+            losses_decreasing = all(loss < last_losses[i] for i, loss in enumerate(last_losses[:-1]))
+            if losses_decreasing:
+                patience_step += 1
+                if patience_step >= 20:
+                    print("Early stopping!")
+                    break
+            else:
+                patience_step = 0
 
     return model
 
