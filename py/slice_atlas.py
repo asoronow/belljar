@@ -219,8 +219,10 @@ def generate_sample_pair(
     
     transformed_sample = original_sample.copy()
     
+    is_hemi = False
     # 50% chance of only using half of the brain
     if np.random.rand() > 0.5:
+        is_hemi = True
         removed_pixels = transformed_sample.shape[1] // 2
         transformed_sample = transformed_sample[:, : transformed_sample.shape[1] // 2]
         original_sample = original_sample[:, : original_sample.shape[1] // 2]
@@ -252,18 +254,30 @@ def generate_sample_pair(
     transformed_subdir = experiment_path / "transformed"
     original_subdir.mkdir(parents=True, exist_ok=True)
     transformed_subdir.mkdir(parents=True, exist_ok=True)
+    hemi_subdir_original = original_subdir / "hemi"
+    hemi_subdir_transformed = transformed_subdir / "hemi"
+    whole_subdir_original = original_subdir / "whole"
+    whole_subdir_transformed = transformed_subdir / "whole"
+    hemi_subdir_original.mkdir(parents=True, exist_ok=True)
+    hemi_subdir_transformed.mkdir(parents=True, exist_ok=True)
+    whole_subdir_original.mkdir(parents=True, exist_ok=True)
+    whole_subdir_transformed.mkdir(parents=True, exist_ok=True)
 
     # Save images to respective subdirectories
-    cv2.imwrite(str(original_subdir / original_sample_filename), original_sample)
-    cv2.imwrite(str(transformed_subdir / transformed_sample_filename), transformed_sample)
+    if is_hemi:
+        cv2.imwrite(str(hemi_subdir_original / original_sample_filename), original_sample)
+        cv2.imwrite(str(hemi_subdir_transformed / transformed_sample_filename), transformed_sample)
+    else:
+        cv2.imwrite(str(whole_subdir_original / original_sample_filename), original_sample)
+        cv2.imwrite(str(whole_subdir_transformed / transformed_sample_filename), transformed_sample)
 
     metadata_entry = f"{original_sample_filename},{transformed_sample_filename},{x_angle},{y_angle},{z_position}\n"
     with lock:
         with open(metadata_file, "a") as f:
             f.write(metadata_entry)
         
-
-
+        print(f"Samples completed: {i}/{num_samples}", end="\r")
+        
 
 def create_paired_synthetic_experiment(name, num_samples, atlas):
     output_path = Path("~/Desktop/synthetic_experiments/").expanduser()

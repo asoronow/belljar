@@ -175,7 +175,7 @@ class PairedDataset(Dataset):
 
         original = self.sobel_edge_detection(original)
         target = self.sobel_edge_detection(target)
-        
+      
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
@@ -277,9 +277,10 @@ def train(rank, world_size, args):
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             if rank == 0:  # Only save on rank 0 to avoid overwriting
-                torch.save(model.module.state_dict(), 'brain_reg_net.pt')
+                torch.save(model.module.state_dict(), 'best_brain_reg_net.pt')
                 # display_images(original[0], target[0], warped_original[0])
 
+        # Log loss
         if rank == 0:
             wandb.log({"loss": epoch_loss})
     
