@@ -145,7 +145,7 @@ def create_grid(batch_size, shape):
     return grid
     
 class PairedDataset(Dataset):
-    def __init__(self, originals, targets, transform=None):
+    def __init__(self, originals, targets, transform=None, target_transform=None):
         self.originals = originals
         self.targets = targets
 
@@ -167,6 +167,9 @@ class PairedDataset(Dataset):
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
+
+        if self.target_transform:
+            target = self.target_transform(target)
 
         return original, target
 
@@ -304,8 +307,14 @@ def fine_tune_model(args):
         transforms.ToTensor()
     ])
 
+    target_transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.ColorJitter(0.5, 0.5, 0.5, 0.5),  # Add color jitter to match network
+        transforms.ToTensor()
+    ])
+
     # Create dataset and dataloader
-    full_dataset = PairedDataset(originals, targets, transform=transform)
+    full_dataset = PairedDataset(originals, targets, transform=transform, target_transform=target_transform)
     # Select a subset of real-world data for fine-tuning
     dataloader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
