@@ -7,6 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torchvision import transforms
 from pathlib import Path
 import argparse
+import numpy as np
 from pytorch_msssim import SSIM
 import cv2
 import os
@@ -162,6 +163,7 @@ class PairedDataset(Dataset):
 
         original = cv2.imread(str(original), cv2.IMREAD_GRAYSCALE)
         target = cv2.imread(str(target), cv2.IMREAD_GRAYSCALE)
+    
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
@@ -278,6 +280,82 @@ def remove_module_prefix(state_dict):
             new_state_dict[k] = v
     return new_state_dict
 
+def fine_tune_model(args):
+    originals_path = args.originals_path
+    targets_path = args.targets_path
+    batch_size = args.batch_size
+    lr = args.lr
+    epochs = args.epochs
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = BrainRegUNet(in_channels=2, out_channels=2).to(device)
+    # load state dict sensitve to module
+    model.load_state_dict(remove_module_prefix(torch.load('weights_brain_reg_net.pt')))
+    # Load real-world data
+    originals_path = Path(originals_path).expanduser()
+    targets_path = Path(targets_path).expanduser()
+
+    originals = sorted(originals_path.glob("*.png"))
+    targets = sorted(targets_path.glob("*.png"))
+
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((224, 224)),  # Resize to match network input size
+        transforms.ToTensor()
+    ])
+
+    # Create dataset and dataloader
+    full_dataset = PairedDataset(originals, targets, transform=transform)
+    # Select a subset of real-world data for fine-tuning
+    dataloader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+
+    # Freeze all layers except the last few
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    # Unfreeze the final layers for fine-tuning
+    for param in model.decoder1.parameters():
+        param.requires_grad = True
+    for param in model.conv.parameters():
+        param.requires_grad = True
+
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+    ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to(device)
+    
+    model.train()
+
+    best_loss = float("inf")
+    for epoch in range(epochs):
+        running_loss = 0.0
+        for original, target in dataloader:
+            original = original.to(device)
+            target = target.to(device)
+            input_pair = torch.cat([original, target], dim=1)
+
+            deformation_field = model(input_pair)
+            grid = create_grid(original.size(0), original.shape[2:]).to(device)
+            warped_grid = grid + deformation_field.permute(0, 2, 3, 1)
+            warped_original = F.grid_sample(original, warped_grid, align_corners=True)
+
+            similarity_loss = ssim_loss(warped_original, target)
+            smooth_loss = smoothness_loss(deformation_field)
+            loss = similarity_loss + smooth_loss
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item() * original.size(0)
+
+        epoch_loss = running_loss / len(dataloader.dataset)
+        print(f'Epoch [{epoch + 1}/{epochs}], Loss: {epoch_loss:.4f}')
+
+        if epoch_loss < best_loss:
+            best_loss = epoch_loss
+            torch.save(model.state_dict(), 'fine_tuned_brain_reg_net.pt')
+
+    return model
+
 def test(args):
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
@@ -286,6 +364,8 @@ def test(args):
 
     transform = transforms.Compose(
         [
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
         ]
     )
@@ -293,9 +373,10 @@ def test(args):
     dataset = PairedDataset(originals, targets, transform=transform)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
-    model = BrainRegUNet().to('cuda')
+    model = BrainRegUNet(in_channels=2, out_channels=2).to('cuda')
+    ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to('cuda')
     # load state dict sensitve to module
-    model.load_state_dict(remove_module_prefix(torch.load('brain_reg_net.pt')))
+    model.load_state_dict(remove_module_prefix(torch.load('weights_brain_reg_net.pt')))
     model.eval()
 
     with torch.no_grad():
@@ -305,13 +386,17 @@ def test(args):
 
             input_pair = torch.cat([original, target], dim=1)  # Concatenate along channel dimension
             deformation_field = model(input_pair) 
-
+         
             batch_size = original.size(0)
             grid = create_grid(batch_size, original.shape[2:]).to('cuda')
             warped_grid = grid + deformation_field.permute(0, 2, 3, 1)
             warped_original = F.grid_sample(original, warped_grid, align_corners=True)
 
-            display_images(original[0], target[0], warped_original[0])
+            for i in range(batch_size):
+                # get the ssim loss
+                similarity_loss = ssim_loss(warped_original[i].unsqueeze(0), target[i].unsqueeze(0))
+                print(f"SSIM Loss: {similarity_loss:.4f}")
+                display_images(original[i], target[i], warped_original[i])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -324,7 +409,7 @@ if __name__ == "__main__":
     parser.add_argument("--world_size", type=int, default=1)
     args = parser.parse_args()
 
-
-    #test(args)
-    world_size = args.world_size
-    mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True)
+    fine_tune_model(args)
+    # test(args)
+    # world_size = args.world_size
+    # mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True)
