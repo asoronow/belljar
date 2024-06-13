@@ -318,6 +318,11 @@ def fine_tune_model(args):
         param.requires_grad = True
     for param in model.conv.parameters():
         param.requires_grad = True
+    for param in model.decoder2.parameters():
+        param.requires_grad = True
+    # encoder1, decoder1, conv, decoder2
+    for param in model.encoder1.parameters():
+        param.requires_grad = True
 
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     ssim_loss = SSIM_Loss(data_range=1.0, size_average=True, channel=1).to(device)
