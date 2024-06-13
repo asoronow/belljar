@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import os
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from timm import create_model
 class AttentionBlock(nn.Module):
     def __init__(self, F_g, F_l, F_int):
         super(AttentionBlock, self).__init__()

@@ -44,7 +44,7 @@ export function AddAnimalDialog({
       >
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
         <div className="fixed inset-0 flex w-screen items-center justify-center p-4 rounded-lg sm:p-6">
-          <DialogPanel className="max-w-lg space-y-4 border bg-white p-12 rounded-lg transition-all duration-300">
+          <DialogPanel className="max-w-lg space-y-4 border bg-white p-12 rounded-lg transition-all w-full duration-300">
             <DialogTitle className="font-bold">Add Animal</DialogTitle>
             <Description>
               Enter a name for a new experimental animal to add to your project.

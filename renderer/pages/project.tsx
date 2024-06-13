@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import {
   ChevronLeftIcon,
   TrashIcon,
+  QuestionMarkCircleIcon,
   PlusIcon,
 } from "@heroicons/react/24/solid";
 import { AddAnimalDialog } from "../components/add_animal";
@@ -36,6 +37,26 @@ export interface ProjectMetadata {
   lastModified: string;
   description: string;
   animals: Record<string, AnimalMetadata>;
+}
+
+function Pill({ className, children, tooltip = "" }) {
+  return (
+    <div
+      className={clsx(
+        className,
+        "inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium group"
+      )}
+    >
+      <span
+        className={clsx(
+          "absolute hidden inset-x-0 -translate-y-5 z-10 bg-black/50 px-1 py-0.5 text-xs rounded-full w-fit group-hover:block"
+        )}
+      >
+        {tooltip}
+      </span>
+      {children}
+    </div>
+  );
 }
 
 export default function ProjectPage() {
@@ -90,7 +111,7 @@ export default function ProjectPage() {
                   onClick={() => {
                     // confirm delete
                     const confirm = window.confirm(
-                      "Are you sure you want to delete this project?"
+                      "Are you sure you want to delete this project? All data will be lost FOREVER."
                     );
                     if (!confirm) {
                       return;
@@ -104,13 +125,22 @@ export default function ProjectPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 w-full mt-10">
-              <div className="flex flex-col items-start gap-y-2 justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
+              <div className="flex flex-col items-start gap-y-2 justify-start bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-x-hidden overflow-y-scroll">
                 <div
                   className={
                     "flex flex-row items-center justify-between w-full mb-4"
                   }
                 >
-                  <h1 className="text-xl font-bold">Animals</h1>
+                  <div className="flex flex-row items-center justify-start w-full gap-x-2">
+                    <h1 className="text-xl font-bold">Animals</h1>
+                    <div className="group">
+                      <QuestionMarkCircleIcon className="w-6 h-6 text-gray-900" />
+                      <span className="absolute hidden text-white -translate-y-12 z-10 bg-black/50 px-1 py-0.5 text-xs rounded-full w-fit group-hover:block">
+                        Each animal holds its own experimental data. Create an
+                        animal to get started.
+                      </span>
+                    </div>
+                  </div>
                   <button
                     className="flex flex-row items-center justify-center p-1 bg-blue-500 rounded-lg"
                     onClick={() => {
@@ -126,7 +156,7 @@ export default function ProjectPage() {
                     key={animal}
                     className={clsx(
                       selectedAnimal === animal ? "bg-amber-500" : "bg-black",
-                      "flex  p-2 flex-row items-center justify-between w-full rounded-lg text-white"
+                      "flex p-2 flex-row items-center justify-between rounded-lg text-white"
                     )}
                     onClick={() => {
                       if (selectedAnimal === animal) {
@@ -136,7 +166,57 @@ export default function ProjectPage() {
                       setSelectedAnimal(animal);
                     }}
                   >
-                    {animal}
+                    <p className="text-lg font-bold">{animal}</p>
+                    <div className="flex flex-row flex-wrap items-center justify-end w-full gap-2">
+                      <Pill
+                        tooltip={
+                          "Data for perfoming cell detection. Red indicates no data. Green indicates data."
+                        }
+                        className={
+                          animals[animal].hasCellDetectionData
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }
+                      >
+                        Signal
+                      </Pill>
+                      <Pill
+                        tooltip={
+                          "Data for perfoming alignment. Red indicates no data. Green indicates data."
+                        }
+                        className={
+                          animals[animal].hasAlignmentData
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }
+                      >
+                        Background
+                      </Pill>
+                      <Pill
+                        tooltip={
+                          "Has the animal been aligned. Red indicates no. Green indicates yes."
+                        }
+                        className={
+                          animals[animal].alignmentRun
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }
+                      >
+                        Aligned
+                      </Pill>
+                      <Pill
+                        tooltip={
+                          "Has the signal data been detected. Red indicates no. Green indicates yes."
+                        }
+                        className={
+                          animals[animal].cellDetectionRun
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }
+                      >
+                        Detected
+                      </Pill>
+                    </div>
                   </div>
                 ))}
                 <AddAnimalDialog
