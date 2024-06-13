@@ -155,6 +155,14 @@ class PairedDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
+
+    def sobel_edge_detection(self, image):
+        sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=5)
+        sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=5)
+        sobel_combined = np.sqrt(sobelx**2 + sobely**2)
+        sobel_combined = cv2.normalize(sobel_combined, None, 0, 255, cv2.NORM_MINMAX)
+        return sobel_combined.astype(np.uint8)
+
     def __len__(self):
         return len(self.originals)
 
@@ -164,7 +172,10 @@ class PairedDataset(Dataset):
 
         original = cv2.imread(str(original), cv2.IMREAD_GRAYSCALE)
         target = cv2.imread(str(target), cv2.IMREAD_GRAYSCALE)
-    
+
+        original = self.sobel_edge_detection(original)
+        target = self.sobel_edge_detection(target)
+        
         if self.transform:
             original = self.transform(original)
             target = self.transform(target)
@@ -453,7 +464,7 @@ if __name__ == "__main__":
     parser.add_argument("--world_size", type=int, default=1)
     args = parser.parse_args()
 
-    fine_tune_model(args)
+    # fine_tune_model(args)
     # test(args)
-    # world_size = args.world_size
-    # mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True)
+    world_size = args.world_size
+    mp.spawn(train, args=(world_size, args), nprocs=world_size, join=True)
