@@ -310,7 +310,8 @@ def fine_tune_model(args):
 
     target_transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.ColorJitter(0.5, 0.5, 0.5, 0.5),  # Add color jitter to match network
+        transforms.RandomRotation(10),
+        transforms.ColorJitter(0.25, 0.25,),  # Add color jitter to match network
         transforms.ToTensor()
     ])
 
