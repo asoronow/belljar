@@ -235,7 +235,7 @@ def train(rank, world_size, args):
 
     original_transform = transforms.Compose(
         [
-            transforms.RandomRotation(30),
+            transforms.RandomRotation(10),
         ]
     )
 
@@ -287,7 +287,7 @@ def train(rank, world_size, args):
 
             # Compute loss
             similarity_loss = ssim_loss(warped_original, target)
-            smooth_loss = smoothness_loss(deformation_field) * 5 # scale by 5 to be similar to SSIM 
+            smooth_loss = smoothness_loss(deformation_field)
             loss = similarity_loss + smooth_loss 
 
             optimizer.zero_grad()
