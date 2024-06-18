@@ -186,7 +186,7 @@ class PairedDataset(Dataset):
 
 
         if self.original_transform:
-            original = self.original_transform           
+            original = self.original_transform(original)           
 
         return original, target
 
