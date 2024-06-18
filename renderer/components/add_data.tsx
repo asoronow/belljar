@@ -95,6 +95,11 @@ export function AddDataDialog({
                     </option>
                   ))}
                 </select>
+                {selectedType.description && (
+                  <p className="text-xs text-zinc-500">
+                    {selectedType.description}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <label htmlFor="data-file" className="font-bold text-zinc-700">
@@ -108,6 +113,9 @@ export function AddDataDialog({
                   className="border border-zinc-300 rounded-lg p-2"
                 />
               </div>
+              <button className="text-sm flex flex-row text-white bg-black rounded-lg w-full items-center justify-center p-2">
+                Add
+              </button>
             </div>
           </DialogPanel>
         </div>

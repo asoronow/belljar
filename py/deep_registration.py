@@ -145,7 +145,7 @@ def create_grid(batch_size, shape):
     return grid
     
 class PairedDataset(Dataset):
-    def __init__(self, originals, targets, transform=None, target_transform=None):
+    def __init__(self, originals, targets, transform=None, target_transform=None, original_transform=None):
         self.originals = originals
         self.targets = targets
 
@@ -154,7 +154,7 @@ class PairedDataset(Dataset):
 
         self.transform = transform
         self.target_transform = target_transform
-
+        self.original_transform = original_transform
 
     def sobel_edge_detection(self, image):
         sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=5)
@@ -182,6 +182,10 @@ class PairedDataset(Dataset):
 
         if self.target_transform:
             target = self.target_transform(target)
+
+
+        if self.original_transform:
+            original = self.original_transform           
 
         return original, target
 
@@ -228,10 +232,17 @@ def train(rank, world_size, args):
         ]
     )
 
-    dataset = PairedDataset(originals, targets, transform=transform)
-    # limit dataset to 1000 images for quick testing
+    original_transform = transforms.Compose(
+        [
+            transforms.RandomRotation(30),
+        ]
+    )
+
+    dataset = PairedDataset(originals, targets, transform=transform, original_transform=original_transform)
+    # limit dataset to 1000 images for quick testing on local
     if world_size == 1:
         dataset = torch.utils.data.Subset(dataset, range(1000))
+
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
@@ -278,6 +289,9 @@ def train(rank, world_size, args):
             best_loss = epoch_loss
             if rank == 0:  # Only save on rank 0 to avoid overwriting
                 torch.save(model.module.state_dict(), 'best_brain_reg_net.pt')
+                if os.path.exists('/workspace'):
+                    # backup logic for when running in docker on cloud gpu instance
+                    torch.save(model.module.state_dict(), '/workspace/weights_brain_reg_net.pt')
                 # display_images(original[0], target[0], warped_original[0])
 
         # Log loss

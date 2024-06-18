@@ -82,7 +82,7 @@ export function AddAnimalDialog({
               />
               <button
                 type="submit"
-                className="w-full bg-zinc-900 text-white rounded-lg p-3"
+                className="w-full bg-zinc-900 text-white rounded-lg p-2"
                 onClick={() => {
                   if (isValid) {
                     let emptyAnimal: AnimalMetadata = {
