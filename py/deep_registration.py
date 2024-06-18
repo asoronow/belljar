@@ -250,7 +250,9 @@ def train(rank, world_size, args):
         run_path.mkdir(parents=True, exist_ok=True)
         return run_path
 
-    run_path = create_run_folder('/workspace')
+    if rank == 0:
+        if os.path.exists('/workspace'):
+            run_path = create_run_folder('/workspace')
     dataset = PairedDataset(originals, targets, transform=transform, original_transform=original_transform)
     # limit dataset to 1000 images for quick testing on local
     if world_size == 1:
@@ -299,7 +301,7 @@ def train(rank, world_size, args):
         epoch_loss = train_loss / num_samples
         # save current model
         if rank == 0:
-            torch.save(model.state_dict(), run_path / 'last_brain_reg_net.pt')
+            torch.save(model.state_dict(), 'last_brain_reg_net.pt')
             if os.path.exists('/workspace'):
                 shutil.copy('last_brain_reg_net.pt', run_path / 'last_brain_reg_net.pt')
             
@@ -308,7 +310,6 @@ def train(rank, world_size, args):
             if rank == 0:  # Only save on rank 0 to avoid overwriting       
                 torch.save(model.module.state_dict(), 'best_brain_reg_net.pt')
                 if os.path.exists('/workspace'):
-                    # copy to run_path
                     shutil.copy('best_brain_reg_net.pt', run_path / 'best_brain_reg_net.pt')
                 # display_images(original[0], target[0], warped_original[0])
 
