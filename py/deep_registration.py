@@ -233,13 +233,6 @@ def train(rank, world_size, args):
         ]
     )
 
-    original_transform = transforms.Compose(
-        [
-            transforms.RandomRotation(10),
-        ]
-    )
-
-
     def get_run_count(directory):
         runs = [int(x.stem.split('run')[1]) for x in Path(directory).iterdir() if x.stem.startswith('run')]
         return max(runs) + 1 if runs else 0
@@ -253,7 +246,8 @@ def train(rank, world_size, args):
     if rank == 0:
         if os.path.exists('/workspace'):
             run_path = create_run_folder('/workspace')
-    dataset = PairedDataset(originals, targets, transform=transform, original_transform=original_transform)
+
+    dataset = PairedDataset(originals, targets, transform=transform)
     # limit dataset to 1000 images for quick testing on local
     if world_size == 1:
         dataset = torch.utils.data.Subset(dataset, range(1000))
