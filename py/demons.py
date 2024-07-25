@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 import cv2
-from skimage.restoration import rolling_ball
+from skimage.filters import sobel
 
 # Check number of cores available
 import multiprocessing
@@ -61,12 +61,24 @@ def match_histograms(fixed, moving):
 # plt.axis("off")
 # plt.show()
 
+def preprocess_image(image):
+    """
+    Preprocess the image to enhance features.
+    """
+     # Convert SimpleITK image to numpy array
+    image_array = sitk.GetArrayFromImage(sitk.Cast(image, sitk.sitkUInt8))
+    blurred = cv2.GaussianBlur(image_array, (5, 5), 0)
+    edges = sobel(blurred)
+    # normalize
+    edges = (edges - np.min(edges)) / (np.max(edges) - np.min(edges))
+    edges = edges.astype(np.float32)
+    edges = sitk.GetImageFromArray(edges)
 
+    return edges
+    
 def multimodal_registration(fixed, moving):
-    # Cast
-    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
-    moving = sitk.Cast(moving, sitk.sitkFloat32)
-
+    fixed = preprocess_image(fixed)
+    moving = preprocess_image(moving)
     # Affine
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
@@ -93,15 +105,15 @@ def multimodal_registration(fixed, moving):
         moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
     )
     # B-spline
-    transformDomainMeshSize = [4] * fixed.GetDimension()
+    transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
-    R.SetMetricAsANTSNeighborhoodCorrelation(16)
+    R.SetMetricAsANTSNeighborhoodCorrelation(11)
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
         numberOfIterations=300,
-        convergenceMinimumValue=1e-8,
+        convergenceMinimumValue=1e-10,
         convergenceWindowSize=20,
     )
     outTx2 = R.Execute(fixed, resampled_moving)
@@ -111,7 +123,6 @@ def multimodal_registration(fixed, moving):
     composite_transform.AddTransform(outTx2)
 
     return composite_transform
-
 
 def resize_image_to_width(image, target_width):
     """
@@ -210,8 +221,11 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     with open(structure_map_path, "rb") as f:
         structure_map = pickle.load(f)
 
-    fixed = sitk.GetImageFromArray(tissue, isVector=False)
-    moving = sitk.GetImageFromArray(section, isVector=False)
+    tissue_resized = cv2.resize(tissue, (256, 256))
+    section_resized = cv2.resize(section, (256, 256))
+
+    fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
+    moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
 
     # resize fixed to match moving
@@ -243,5 +257,8 @@ def register_to_atlas(tissue, section, label, structure_map_path):
 
     resampled_label = sitk.GetArrayFromImage(resampled_label)
     resampled_atlas = sitk.GetArrayFromImage(resampled_atlas)
+
+    # resize atlas back to original size
+    resampled_atlas = cv2.resize(resampled_atlas, section.shape[:2])
 
     return resampled_label, resampled_atlas, color_label

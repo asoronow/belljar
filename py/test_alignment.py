@@ -9,16 +9,75 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 from tkinter import filedialog
 from slice_atlas import slice_3d_volume
+from skimage.filters import difference_of_gaussians, sobel, unsharp_mask, threshold_otsu
+from skimage.morphology import binary_closing, remove_small_objects
 
 ACTIVE_SLIDER = 0
 X_ANGLE = 0
 Y_ANGLE = 0
 
-def multimodal_registration(fixed, moving):
-    # Cast
-    fixed = sitk.Cast(sitk.GetImageFromArray(fixed), sitk.sitkFloat32)
-    moving = sitk.Cast(sitk.GetImageFromArray(moving), sitk.sitkFloat32)
 
+
+def match_histograms(fixed, moving):
+    """
+    Match the moving histogram to the fixed using sitk
+    Args:
+        fixed (sitk.Image): The fixed image.
+        moving (sitk.Image): The moving image.
+    Returns:
+        sitk.Image: The matched moving image.
+    """
+    matcher = sitk.HistogramMatchingImageFilter()
+    matcher.SetNumberOfHistogramLevels(1024)
+    matcher.SetNumberOfMatchPoints(10)
+    matcher.ThresholdAtMeanIntensityOn()
+    return matcher.Execute(moving, fixed)
+
+def visualize_registration(fixed, moving, transform, title=""):
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(fixed)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetTransform(transform)
+
+    out = resampler.Execute(moving)
+    # Convert to numpy arrays for visualization
+    fixed_np = sitk.GetArrayViewFromImage(fixed)
+    moving_np = sitk.GetArrayViewFromImage(moving)
+    out_np = sitk.GetArrayViewFromImage(out)
+    
+    plt.figure(figsize=(10, 8))
+    plt.subplot(1, 3, 1)
+    plt.title("Fixed")
+    plt.imshow(fixed_np, cmap="viridis")
+    plt.subplot(1, 3, 2)
+    plt.title("Moving")
+    plt.imshow(moving_np, cmap="viridis")
+    plt.subplot(1, 3, 3)
+    plt.title("Transformed Moving")
+    plt.imshow(out_np, cmap="viridis")
+    plt.suptitle(title)
+    plt.show()
+
+
+def preprocess_image(image):
+    """
+    Preprocess the image to enhance features.
+    """
+     # Convert SimpleITK image to numpy array
+    image_array = sitk.GetArrayFromImage(sitk.Cast(image, sitk.sitkUInt8))
+    blurred = cv2.GaussianBlur(image_array, (5, 5), 0)
+    edges = sobel(blurred)
+    # normalize
+    edges = (edges - np.min(edges)) / (np.max(edges) - np.min(edges))
+    edges = edges.astype(np.float32)
+    edges = sitk.GetImageFromArray(edges)
+
+    return edges
+    # Normalize the image
+def multimodal_registration(fixed, moving):
+    fixed = preprocess_image(fixed)
+    moving = preprocess_image(moving)
     # Affine
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
@@ -45,13 +104,13 @@ def multimodal_registration(fixed, moving):
         moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
     )
     # B-spline
-    transformDomainMeshSize = [4] * fixed.GetDimension()
+    transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
-    R.SetMetricAsANTSNeighborhoodCorrelation(16)
+    R.SetMetricAsANTSNeighborhoodCorrelation(11)
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.01,
+        learningRate=0.001,
         numberOfIterations=300,
         convergenceMinimumValue=1e-10,
         convergenceWindowSize=20,
@@ -63,7 +122,6 @@ def multimodal_registration(fixed, moving):
     composite_transform.AddTransform(outTx2)
 
     return composite_transform
-
 class AtlasSliceViewer:
     def __init__(self, atlas_path):
         self.atlas_path = Path(atlas_path).expanduser()
@@ -172,24 +230,48 @@ if __name__ == "__main__":
 
     fixed = cv2.imread(args.fixed, cv2.IMREAD_GRAYSCALE)
     moving = cv2.imread(args.moving, cv2.IMREAD_GRAYSCALE)
-    blurred_moving = cv2.GaussianBlur(moving, (5, 5), 0)
-    blurred_fixed = cv2.GaussianBlur(fixed, (5, 5), 0)
-    laplacian_moving = cv2.Laplacian(blurred_moving, cv2.CV_64F)
-    laplacian_fixed = cv2.Laplacian(blurred_fixed, cv2.CV_64F)
-    # abs
-    laplacian_fixed = np.abs(laplacian_fixed)
-    laplacian_moving = np.abs(laplacian_moving)
 
-    tx = multimodal_registration(laplacian_fixed, laplacian_moving)
+    # Padding
+    fixed = cv2.copyMakeBorder(fixed, 25, 25, 25, 25, cv2.BORDER_CONSTANT, value=0)
+    moving = cv2.copyMakeBorder(moving, 25, 25, 25, 25, cv2.BORDER_CONSTANT, value=0)
+    # resize
+    fixed = cv2.resize(fixed, (256, 256))
+    moving = cv2.resize(moving, (256, 256))
+    
+    # Cast to sitk image
+    fixed = sitk.Cast(sitk.GetImageFromArray(fixed), sitk.sitkFloat32)
+    moving = sitk.Cast(sitk.GetImageFromArray(moving), sitk.sitkFloat32)
+    
+    # Histogram matching
+    moving = match_histograms(fixed, moving)
 
-    aligned = sitk.Resample(sitk.GetImageFromArray(moving), sitk.GetImageFromArray(fixed), tx, sitk.sitkLinear, 0.0, sitk.sitkUInt8)
+    # Transform 
+    tx = multimodal_registration(fixed, moving)
+
+    # Resample
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(fixed)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetOutputPixelType(sitk.sitkUInt8)
+    resampler.SetTransform(tx)
+    aligned = resampler.Execute(moving)
     aligned = sitk.GetArrayFromImage(aligned)
-    # make a composite of aligned and fixed, covert both to color and make aligned red
-    fixed = cv2.cvtColor(fixed, cv2.COLOR_GRAY2BGR)
-    aligned = cv2.cvtColor(aligned, cv2.COLOR_GRAY2BGR)
-    fixed[:, :, 2] = 0
-    aligned[:, :, 0] = 0
-    composite = cv2.addWeighted(fixed, 0.5, aligned, 0.5, 0)
-    cv2.imshow("composite", composite)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
+    fixed = sitk.GetArrayFromImage(fixed).astype(np.uint8)
+    moving = sitk.GetArrayFromImage(moving).astype(np.uint8)
+    # Visualize
+    fig, axes = plt.subplots(1, 4, figsize=(12, 6))
+    axes[0].set_title("Original Image")
+    axes[0].imshow(fixed, cmap="gray")
+    axes[1].set_title("Atlas Match Image")
+    axes[1].imshow(moving, cmap="gray")
+    axes[2].set_title("Aligned Image")
+    axes[2].imshow(aligned, cmap="gray")
+    axes[3].set_title("Overlaid (red = Original, blue = Aligned)")
+    fixed_color = cv2.cvtColor(fixed, cv2.COLOR_GRAY2BGR)
+    aligned_color = cv2.cvtColor(aligned, cv2.COLOR_GRAY2BGR)
+    red_fixed = cv2.cvtColor(fixed_color, cv2.COLOR_BGR2RGB) * (1, 0, 0)
+    blue_aligned = cv2.cvtColor(aligned_color, cv2.COLOR_BGR2RGB) * (0, 0, 1)
+    overlaid = cv2.addWeighted(red_fixed, 0.5, blue_aligned, 0.5, 0)
+    axes[3].imshow(overlaid)
+    plt.show()

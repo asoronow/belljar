@@ -44,16 +44,16 @@ function Pill({ className, children, tooltip = "" }) {
     <div
       className={clsx(
         className,
-        "inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium group"
+        "flex items-center px-2 py-0.5 text-xs rounded-full font-medium group cursor-pointer"
       )}
     >
-      <span
+      <div
         className={clsx(
-          "absolute hidden inset-x-0 -translate-y-5 z-10 bg-black/50 px-1 py-0.5 text-xs rounded-full w-fit group-hover:block"
+          "absolute hidden absolute -translate-y-10 inset-x-0 z-10 bg-black/50 px-1 py-0.5 text-xs w-[200px] rounded-lg group-hover:block z-10"
         )}
       >
         {tooltip}
-      </span>
+      </div>
       {children}
     </div>
   );
@@ -167,7 +167,7 @@ export default function ProjectPage() {
                     }}
                   >
                     <p className="text-lg font-bold">{animal}</p>
-                    <div className="flex flex-row flex-wrap items-center justify-end w-full gap-2">
+                    <div className="relative flex flex-row flex-wrap items-center justify-end w-full gap-2">
                       <Pill
                         tooltip={
                           "Data for perfoming cell detection. Red indicates no data. Green indicates data."
