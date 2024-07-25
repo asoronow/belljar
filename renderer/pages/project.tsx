@@ -10,7 +10,6 @@ import { AddAnimalDialog } from "../components/add_animal";
 import { AddDataDialog } from "../components/add_data";
 import Link from "next/link";
 import clsx from "clsx";
-import { Description } from "../components/fieldset";
 export interface AnimalMetadata {
   hasCellDetectionData: boolean;
   hasAlignmentData: boolean;

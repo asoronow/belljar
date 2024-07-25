@@ -1,15 +1,9 @@
 import React, { useState, useEffect, use } from "react";
 import Head from "next/head";
-import { Button } from "../components/button";
-import { Input } from "../components/input";
-import {
-  Dialog,
-  DialogActions,
-  DialogBody,
-  DialogDescription,
-  DialogTitle,
-} from "../components/dialog";
-import { useIpcListener } from "../hooks/useIpcListener";
+import { Button } from "@/components/button";
+import { Input } from "@/components/input";
+import { Dialog, DialogTitle } from "@headlessui/react";
+import { useIpcListener } from "@/hooks/useIpcListener";
 import { useRouter } from "next/router";
 import { ScaleLoader } from "react-spinners";
 import clsx from "clsx";
@@ -114,10 +108,8 @@ export default function HomePage() {
       </Head>
       <Dialog open={showCreateProject} onClose={setShowCreateProject}>
         <DialogTitle>Create Project</DialogTitle>
-        <DialogDescription>
-          Enter some details to create a new project.
-        </DialogDescription>
-        <DialogBody className="space-y-2">
+        Enter some details to create a new project.
+        <div className="space-y-2">
           <p className="text-gray-400 text-sm">
             Project names can only contain letters, numbers, hyphens, and
             underscores. (e.g. my_project_1)
@@ -140,15 +132,13 @@ export default function HomePage() {
             placeholder="Project description"
             className={"bg-zinc-200 rounded-xl text-black"}
           />
-        </DialogBody>
-        <DialogActions>
-          <Button color="dark" onClick={() => setShowCreateProject(false)}>
-            Cancel
-          </Button>
-          <Button color="blue" onClick={createProject}>
-            Create
-          </Button>
-        </DialogActions>
+        </div>
+        <Button color="dark" onClick={() => setShowCreateProject(false)}>
+          Cancel
+        </Button>
+        <Button color="blue" onClick={createProject}>
+          Create
+        </Button>
       </Dialog>
       <div className="flex flex-row items-center justify-center min-h-screen w-full text-center max-w-7xl mx-auto">
         <div className="flex flex-col items-center justify-center h-full bg-white text-center transition-all basis-1/2">

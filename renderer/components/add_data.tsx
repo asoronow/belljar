@@ -8,7 +8,6 @@ import { ChevronDownIcon } from "@heroicons/react/24/solid";
 import { useState, useEffect } from "react";
 import { AnimalMetadata } from "../pages/project";
 import clsx from "clsx";
-import { describe } from "node:test";
 
 const datatTypes = [
   {
