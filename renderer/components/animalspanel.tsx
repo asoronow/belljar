@@ -43,7 +43,23 @@ export function AnimalsPanel({
           <button
             className="flex flex-row items-center justify-center p-1 bg-red-500 rounded-sm"
             onClick={() => {
-              // TODO: Delete selected animal
+              // Confirm if the user wants to delete the animal
+              if (
+                confirm(
+                  `Are you sure you want to delete the animal "${selectedAnimal}"? All data will be deleted and any associated workflows will be stopped. This action cannot be undone.`
+                )
+              ) {
+                window.ipc
+                  .invoke("delete-animal", project.name, selectedAnimal)
+                  .then((result) => {
+                    if (result.success) {
+                      setSelectedAnimal(null);
+                      didAdd();
+                    } else {
+                      alert(result.error);
+                    }
+                  });
+              }
             }}
           >
             <TrashIcon className="w-6 h-6 text-white" />

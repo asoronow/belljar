@@ -20,7 +20,8 @@
     "extract-zip": "^2.0.1",
     "python-shell": "^5.0.0",
     "react-spinners": "^0.13.8",
-    "tar": "^7.1.0"
+    "tar": "^7.1.0",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",

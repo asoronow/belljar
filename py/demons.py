@@ -88,12 +88,12 @@ def multimodal_registration(fixed, moving):
     R.SetMetricAsMattesMutualInformation()
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=300,
+        numberOfIterations=100,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
-    R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+    R.SetOptimizerScalesFromIndexShift()
     R.SetSmoothingSigmasPerLevel(smoothingSigmas=[3, 2, 0])
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
@@ -107,12 +107,12 @@ def multimodal_registration(fixed, moving):
     # B-spline
     transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
-    R.SetMetricAsANTSNeighborhoodCorrelation(11)
+    R.SetMetricAsCorrelation()
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.01,
-        numberOfIterations=300,
+        learningRate=0.001,
+        numberOfIterations=200,
         convergenceMinimumValue=1e-10,
         convergenceWindowSize=20,
     )
@@ -221,9 +221,9 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     with open(structure_map_path, "rb") as f:
         structure_map = pickle.load(f)
 
-    tissue_resized = cv2.resize(tissue, (256, 256))
-    section_resized = cv2.resize(section, (256, 256))
-
+    tissue_resized = cv2.resize(tissue, (324, 324))
+    section_resized = cv2.resize(section, (324, 324))
+    label = resize_image_nearest_neighbor(label, (324, 324))
     fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
@@ -254,11 +254,14 @@ def register_to_atlas(tissue, section, label, structure_map_path):
                 ]
             except:
                 pass
-
+   
+   # conver color label to cv2
+    color_label = cv2.cvtColor(color_label, cv2.COLOR_RGB2BGR)
     resampled_label = sitk.GetArrayFromImage(resampled_label)
     resampled_atlas = sitk.GetArrayFromImage(resampled_atlas)
-
     # resize atlas back to original size
-    resampled_atlas = cv2.resize(resampled_atlas, section.shape[:2])
+    resampled_atlas = cv2.resize(resampled_atlas, tissue.shape[:2][::-1])
+    color_label = cv2.resize(color_label, tissue.shape[:2][::-1])
+    resampled_label = resize_image_nearest_neighbor(resampled_label, tissue.shape[:2][::-1])
 
     return resampled_label, resampled_atlas, color_label

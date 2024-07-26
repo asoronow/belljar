@@ -1,15 +1,23 @@
 import clsx from "clsx";
+
+declare module "react" {
+  interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
+    webkitdirectory?: string;
+  }
+}
 export function Input({
   onChange,
   type,
   placeholder,
   invalid,
+  directoryOnly,
   ...props
 }: {
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   type: string;
   placeholder: string;
   invalid?: boolean;
+  directoryOnly?: boolean;
   [key: string]: any;
 }) {
   return (
@@ -21,6 +29,8 @@ export function Input({
       )}
       onChange={onChange}
       placeholder={placeholder}
+      {...(directoryOnly ? { webkitdirectory: "" } : {})}
+      {...props}
     />
   );
 }

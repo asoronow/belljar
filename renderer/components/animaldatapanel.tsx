@@ -11,15 +11,23 @@ import { AddDataDialog } from "./add_data";
 
 function DataDirectory({
   directory,
+  project,
+  animalName,
+  didDelete,
 }: {
   directory: {
     name: string;
     files: ProjectFile[];
   };
+  project: {
+    name: string;
+  };
+  animalName: string;
+  didDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="flex flex-col items-start justify-start w-full gap-y-1">
+    <div className="flex flex-col items-start justify-start w-full gap-y-1 mb-1">
       <div
         className="flex flex-row items-center justify-start w-full gap-x-2 bg-black text-white font-medium p-2 w-full rounded-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200"
         onClick={() => setExpanded(!expanded)}
@@ -47,7 +55,19 @@ function DataDirectory({
               <TrashIcon
                 className="w-4 text-white bg-red-500 rounded-sm p-px ml-auto hover:bg-red-900"
                 onClick={() => {
-                  // TODO: delete file
+                  window.ipc
+                    .invoke(
+                      "delete-file",
+                      project.name,
+                      animalName,
+                      directory.name,
+                      file.name
+                    )
+                    .then((result) => {
+                      if (result.success) {
+                        didDelete();
+                      }
+                    });
                 }}
               />
             </div>
@@ -57,7 +77,7 @@ function DataDirectory({
   );
 }
 
-export function AnimalDataPanel({ name, meta, project }) {
+export function AnimalDataPanel({ name, meta, project, didChange }) {
   const [showAddData, setShowAddData] = useState(false);
   const [currentData, setCurrentData] = useState(null);
 
@@ -65,7 +85,7 @@ export function AnimalDataPanel({ name, meta, project }) {
     window.ipc.invoke("get-animal-data", project.name, name).then((result) => {
       if (result.success) {
         setCurrentData(result.data);
-        console.log(result.data);
+        didChange();
       }
     });
   };
@@ -100,9 +120,18 @@ export function AnimalDataPanel({ name, meta, project }) {
         )}
       </div>
       {currentData && currentData.length > 0
-        ? currentData.map((directory) => (
-            <DataDirectory key={directory.name} directory={directory} />
-          ))
+        ? currentData.map((directory) => {
+            if (directory.files.length === 0) return null;
+            return (
+              <DataDirectory
+                key={directory.name}
+                directory={directory}
+                project={project}
+                animalName={name}
+                didDelete={refreshData}
+              />
+            );
+          })
         : null}
       <AddDataDialog
         isOpen={showAddData}

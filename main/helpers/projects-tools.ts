@@ -6,6 +6,7 @@ import { ProjectMetadata, AnimalMetadata } from "../common/types";
 import { dialog } from "electron";
 import archiver from "archiver";
 import extract from "extract-zip";
+import { v4 as uuid } from "uuid";
 const bellJarFolder = require("os").homedir() + "/.belljar";
 const projectsPath = path.join(bellJarFolder, "projects");
 
@@ -134,13 +135,33 @@ export function deleteFile(
   projectName: string,
   animalName: string,
   dataType: string,
-  filePath: string
+  fileName: string
 ): void {
   const projectDir = path.join(projectsPath, projectName);
   if (!fs.existsSync(projectDir)) {
     throw new Error("Project not found");
   }
-  fs.rmSync(path.join(projectDir, animalName, dataType, filePath));
+  fs.rmSync(path.join(projectDir, animalName, dataType, fileName + ".json"));
+  // Update metadata
+  const metadataPath = path.join(projectDir, "metadata.json");
+  const metadata: ProjectMetadata = JSON.parse(
+    fs.readFileSync(metadataPath).toString()
+  );
+  metadata.lastModified = new Date().toISOString();
+  if (
+    fs.readdirSync(path.join(projectDir, animalName, dataType)).length === 0
+  ) {
+    // Set the data flag to false
+    switch (dataType) {
+      case "Background":
+        metadata.animals[animalName].hasAlignmentData = false;
+        break;
+      case "Signal":
+        metadata.animals[animalName].hasCellDetectionData = false;
+        break;
+    }
+  }
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 }
 
 export function uploadFile(
@@ -169,6 +190,25 @@ export function uploadFile(
       JSON.stringify(fileMetadata, null, 2)
     );
   });
+
+  // Update metadata
+  const metadataPath = path.join(projectDir, "metadata.json");
+  const metadata: ProjectMetadata = JSON.parse(
+    fs.readFileSync(metadataPath).toString()
+  );
+  metadata.lastModified = new Date().toISOString();
+  switch (dataType) {
+    case "Background":
+      metadata.animals[animalName].hasAlignmentData = true;
+      break;
+    case "Signal":
+      metadata.animals[animalName].hasCellDetectionData = true;
+      break;
+    default:
+      break;
+  }
+
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 }
 
 export function getAnimalData(
@@ -235,11 +275,12 @@ export function addAnimal(
   fs.mkdirSync(path.join(projectDir, animalName));
 }
 
-export function removeAnimal(projectName: string, animalName: string): void {
+export function deleteAnimal(projectName: string, animalName: string): void {
   const projectDir = path.join(projectsPath, projectName);
   if (!fs.existsSync(projectDir)) {
     throw new Error("Project not found");
   }
+
   const metadataPath = path.join(projectDir, "metadata.json");
   const metadata: ProjectMetadata = JSON.parse(
     fs.readFileSync(metadataPath).toString()
@@ -249,6 +290,9 @@ export function removeAnimal(projectName: string, animalName: string): void {
   metadata.lastModified = new Date().toISOString();
 
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+
+  // Delete the animal folder
+  fs.rmSync(path.join(projectDir, animalName), { recursive: true });
 }
 
 export function getProjects(): string[] {
@@ -256,4 +300,100 @@ export function getProjects(): string[] {
   return fs.readdirSync(projectsPath).filter((file) => {
     return fs.statSync(path.join(projectsPath, file)).isDirectory();
   });
+}
+
+export function selectDirectory(): string {
+  // Select a directory on the local machine with a dialog
+  const filePaths = dialog.showOpenDialogSync({
+    properties: ["openDirectory"],
+    title: "Select a directory",
+  });
+  return filePaths[0];
+}
+
+/**
+ * Creates a temporary directory with symlinks to the provided files.
+ * @param {string[]} files - List of absolute file paths.
+ * @param {string} tempDirParent - The parent directory where the temp directory will be created.
+ * @returns {Promise<string>} - Path to the created temp directory.
+ */
+async function createTempDirectoryWithSymlinks(
+  files,
+  tempDirParent
+): Promise<string> {
+  // Generate a unique directory name
+  const tempDir = path.join(tempDirParent, uuid());
+
+  // Create the temp directory
+  fs.mkdirSync(tempDir);
+
+  // Create symlinks for each file in the temp directory
+  for (const file of files) {
+    const symlinkPath = path.join(tempDir, path.basename(file));
+    await createSymlink(file, symlinkPath);
+  }
+
+  return tempDir;
+}
+
+/**
+ * Creates a symlink for the given target path.
+ * @param {string} targetPath - The target file path.
+ * @param {string} symlinkPath - The symlink path.
+ * @returns {Promise<void>}
+ */
+function createSymlink(targetPath, symlinkPath): Promise<void> {
+  return new Promise((resolve, reject) => {
+    fs.symlink(targetPath, symlinkPath, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+export function deleteAnimalDataDirectory(
+  projectName: string,
+  animalName: string,
+  dirname: string
+): void {
+  const projectDir = path.join(projectsPath, projectName);
+  if (!fs.existsSync(projectDir)) {
+    throw new Error("Project not found");
+  }
+  // Check if dirname is a full path
+  if (!dirname.startsWith(projectDir)) {
+    // use basename
+    dirname = path.basename(dirname);
+  }
+  fs.rmSync(path.join(projectDir, animalName, dirname), { recursive: true });
+}
+
+export async function getAnimalDataDirectory(
+  projectName: string,
+  animalName: string,
+  dataType: string
+): Promise<string> {
+  const projectDir = path.join(projectsPath, projectName);
+  if (!fs.existsSync(projectDir)) {
+    throw new Error("Project not found");
+  }
+  // Get all file objs
+  const files = fs.readdirSync(path.join(projectDir, animalName, dataType));
+  const animalDataFilesInDataTypeDir: ProjectFile[] = files
+    .filter((file) => file.endsWith(".json"))
+    .map((file) => {
+      const filePath = path.join(projectDir, animalName, dataType, file);
+      const fileContent = fs.readFileSync(filePath, "utf8");
+      return JSON.parse(fileContent);
+    });
+  const absoluteFilePaths = animalDataFilesInDataTypeDir.map(
+    (file) => file.path
+  );
+
+  const tempDir = await createTempDirectoryWithSymlinks(
+    absoluteFilePaths,
+    projectDir
+  );
+
+  return tempDir;
 }

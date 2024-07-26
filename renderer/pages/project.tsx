@@ -61,17 +61,17 @@ export default function ProjectPage() {
             <div className="flex flex-row items-center justify-between w-full">
               <Link
                 href="/start?loaded=true"
-                className="text-blue-500 flex flex-row w-full"
+                className="text-blue-500 flex flex-row w-fit"
               >
                 <div className="p-2 m-2 bg-black rounded-sm">
                   <ChevronLeftIcon className="w-6 h-6 text-white" />
                 </div>
               </Link>
-              <div className="flex flex-col items-center justify-center text-center w-full">
+              <div className="flex flex-col items-center justify-center text-center w-full mx-auto">
                 <h1 className="text-lg font-bold">{project.name}</h1>
                 <h2 className="text-sm text-gray-400">{project.description}</h2>
               </div>
-              <div className="flex flex-row items-center justify-end w-full">
+              <div className="flex flex-row items-center justify-end w-fit">
                 <button
                   className="flex flex-row items-center justify-center p-2 m-2 bg-red-500 rounded-sm"
                   onClick={() => {
@@ -104,8 +104,17 @@ export default function ProjectPage() {
                 name={selectedAnimal}
                 meta={animals[selectedAnimal]}
                 project={project}
+                didChange={() => {
+                  loadProject(id);
+                }}
               />
-              <ToolsPanel />
+              <ToolsPanel
+                project={project}
+                animal={selectedAnimal}
+                didChange={() => {
+                  loadProject(id);
+                }}
+              />
             </div>
           </>
         ) : (

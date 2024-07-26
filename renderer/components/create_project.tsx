@@ -29,7 +29,6 @@ export function CreateProjectDialog({
                 setNewProjectName(e.target.value);
               }}
               invalid={projectInvalid}
-              className={"bg-zinc-200 rounded-xl text-black"}
             />
             <Input
               type="text"
@@ -38,7 +37,6 @@ export function CreateProjectDialog({
               }}
               invalid={projectInvalid}
               placeholder="Project description"
-              className={"bg-zinc-200 rounded-xl text-black"}
             />
           </div>
           <Button type="primary" onClick={createProject}>

@@ -4,7 +4,7 @@ function Pill({ className, children, tooltip = "" }) {
     <div
       className={clsx(
         className,
-        "flex items-center px-2 py-0.5 text-xs rounded-sm font-medium group cursor-pointer"
+        "flex items-center px-2 py-0.5 text-[10px] rounded-sm font-medium group cursor-pointer justify-center"
       )}
     >
       <div
@@ -35,12 +35,12 @@ export function AnimalCard({
       key={name}
       className={clsx(
         selected ? "bg-indigo-500" : "bg-black",
-        "flex p-2 flex-row items-center justify-between rounded-sm text-white hover:scale-[1.02] hover:shadow-lg transition-all duration-200 cursor-pointer"
+        "relative flex p-2 flex-row w-full items-center justify-between rounded-sm text-white hover:scale-[1.02] hover:shadow-lg transition-all duration-200 cursor-pointer"
       )}
       {...props}
     >
-      <p className="text-lg font-bold">{name}</p>
-      <div className="relative flex flex-row flex-wrap items-center justify-end w-full gap-2">
+      <p className="text-sm font-bold truncate">{name}</p>
+      <div className="flex grid grid-row-flow md:grid-cols-2 gap-1 w-fit">
         <Pill
           tooltip={
             "Data for perfoming cell detection. Green indicates data exists."

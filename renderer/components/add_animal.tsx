@@ -70,42 +70,40 @@ export function AddAnimalDialog({
                 each animal.
               </p>
             ) : null}
-            <div className="flex flex-col gap-4">
-              <Input
-                type="text"
-                invalid={!isValid}
-                placeholder="Animal Name"
-                onChange={(e) => {
-                  setAnimalName(e.target.value);
-                }}
-              />
-              <Button
-                type="primary"
-                className="w-full bg-sky-500 text-white rounded-sm p-2"
-                onClick={() => {
-                  if (isValid) {
-                    let emptyAnimal: AnimalMetadata = {
-                      hasCellDetectionData: false,
-                      hasAlignmentData: false,
-                      cellDetectionRun: false,
-                      alignmentRun: false,
-                    };
-                    window.ipc
-                      .invoke("add-animal", project, animalName, emptyAnimal)
-                      .then((result) => {
-                        if (result.success) {
-                          didAdd();
-                          setIsOpen(false);
-                        } else {
-                          alert(result.error);
-                        }
-                      });
-                  }
-                }}
-              >
-                Add
-              </Button>
-            </div>
+            <Input
+              type="text"
+              invalid={!isValid}
+              placeholder="Animal Name"
+              onChange={(e) => {
+                setAnimalName(e.target.value);
+              }}
+            />
+            <Button
+              type="primary"
+              className="w-full bg-sky-500 text-white rounded-sm p-2 mt-2"
+              onClick={() => {
+                if (isValid) {
+                  let emptyAnimal: AnimalMetadata = {
+                    hasCellDetectionData: false,
+                    hasAlignmentData: false,
+                    cellDetectionRun: false,
+                    alignmentRun: false,
+                  };
+                  window.ipc
+                    .invoke("add-animal", project, animalName, emptyAnimal)
+                    .then((result) => {
+                      if (result.success) {
+                        didAdd();
+                        setIsOpen(false);
+                      } else {
+                        alert(result.error);
+                      }
+                    });
+                }
+              }}
+            >
+              Add
+            </Button>
           </DialogPanel>
         </div>
       </Dialog>

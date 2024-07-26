@@ -3,7 +3,11 @@ import { ipcMain, IpcMainEvent } from "electron";
 import {
   createProject,
   loadProject,
+  deleteAnimal,
   deleteProject,
+  selectDirectory,
+  getAnimalDataDirectory,
+  deleteAnimalDataDirectory,
   deleteFile,
   getAnimalData,
   importProject,
@@ -74,6 +78,12 @@ function runPythonScript(
   });
 }
 
+/**
+ * Sets up event handlers for various IPC events.
+ *
+ * @param {string} pyScriptsPath - The path to the Python scripts.
+ * @return {void}
+ */
 export function setupHandlers(pyScriptsPath: string) {
   const homeDir = os.homedir();
   const isProd = process.env.NODE_ENV === "production";
@@ -81,6 +91,14 @@ export function setupHandlers(pyScriptsPath: string) {
     ? path.join(process.resourcesPath, "py")
     : path.join(__dirname, "../py");
 
+  /**
+   * Handler for the "create-project" event.
+   * Creates a new Bell jar project.
+   * @param {Electron.IpcMainInvokeEvent} _event - The event object.
+   * @param {string} name - The name of the new project.
+   * @param {string} description - The description of the new project.
+   * @return {Promise<{ success: boolean; error?: string; }>} - A promise that resolves to an object indicating success or failure.
+   */
   ipcMain.handle(
     "create-project",
     async (_event, name: string, description: string) => {
@@ -93,6 +111,12 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   );
 
+  /**
+   * Handler for the "import-project" event.
+   *  Imports a Bell jar project.
+   * @param {Electron.IpcMainInvokeEvent} _event - The event object.
+   *
+   */
   ipcMain.handle("import-project", async (_event) => {
     try {
       importProject();
@@ -102,6 +126,13 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   });
 
+  /**
+   * Handler for the "export-project" event.
+   * Exports a project by name.
+   * @param {Electron.IpcMainInvokeEvent} _event - The event object.
+   * @param {string} name - The name of the project to export.
+   * @return {Promise<{ success: boolean; error?: string; }>} - A promise that resolves to an object indicating success or failure.
+   */
   ipcMain.handle("export-project", async (_event, name: string) => {
     try {
       exportProject(name).then(() => {
@@ -112,6 +143,14 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   });
 
+  /**
+   * Handler for the "load-project" event.
+   * Loads a project by name.
+   *
+   * @param {Electron.IpcMainInvokeEvent} _event - The event object.
+   * @param {string} name - The name of the project to load.
+   * @return {Promise<{ success: boolean; error?: string; project?: ProjectMetadata; }>} - A promise that resolves to an object indicating success or failure, along with an optional project object.
+   */
   ipcMain.handle("load-project", async (_event, name: string) => {
     try {
       const project = loadProject(name);
@@ -121,6 +160,14 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   });
 
+  /**
+   * Handler for the "delete-project" event.
+   * Deletes a project by name.
+   *
+   * @param {Electron.IpcMainInvokeEvent} _event - The event object.
+   * @param {string} name - The name of the project to delete.
+   * @return {Promise<{ success: boolean; error?: string; }>} - A promise that resolves to an object indicating success or failure, along with an optional error message.
+   */
   ipcMain.handle("delete-project", async (_event, name: string) => {
     try {
       deleteProject(name);
@@ -130,6 +177,16 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   });
 
+  /**
+   * Handler for uploading files to a project.
+   *
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @param {string} projectName - The name of the project.
+   * @param {string} animalName - The name of the animal.
+   * @param {string} dataType - The type of data.
+   * @param {string[]} filePaths - The paths of the files to upload.
+   * @returns {Promise<{ success: boolean, error?: string }>} - A promise that resolves to an object indicating success or failure.
+   */
   ipcMain.handle(
     "upload-files",
     async (
@@ -148,6 +205,14 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   );
 
+  /**
+   * Handler for getting animal data.
+   *
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @param {string} projectName - The name of the project.
+   * @param {string} animalName - The name of the animal.
+   * @returns {Promise<{ success: boolean, data?: AnimalData, error?: string }>} - A promise that resolves to an object indicating success or failure, along with an optional animal data object.
+   */
   ipcMain.handle(
     "get-animal-data",
     async (_event, projectName: string, animalName: string) => {
@@ -160,17 +225,19 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   );
 
+  /**
+   * Handler for deleting an animal.
+   *
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @param {string} projectName - The name of the project.
+   * @param {string} animalName - The name of the animal.
+   * @returns {Promise<{ success: boolean, error?: string }>} - A promise that resolves to an object indicating success or failure.
+   */
   ipcMain.handle(
-    "delete-file",
-    async (
-      _event,
-      projectName: string,
-      animalName: string,
-      dataType: string,
-      filePath: string
-    ) => {
+    "delete-animal",
+    async (_event, projectName: string, animalName: string) => {
       try {
-        deleteFile(projectName, animalName, dataType, filePath);
+        deleteAnimal(projectName, animalName);
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };
@@ -178,6 +245,40 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   );
 
+  /**
+   * Handler for deleting a file.
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @param {string} projectName - The name of the project.
+   * @param {string} animalName - The name of the animal.
+   * @param {string} dataType - The type of data.
+   * @param {string} filePath - The path of the file to delete.
+   */
+  ipcMain.handle(
+    "delete-file",
+    async (
+      _event,
+      projectName: string,
+      animalName: string,
+      dataType: string,
+      fileName: string
+    ) => {
+      try {
+        deleteFile(projectName, animalName, dataType, fileName);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  /**
+   * Handler for adding an animal.
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @param {string} projectName - The name of the project.
+   * @param {string} animalName - The name of the animal.
+   * @param {AnimalMetadata} animalData - The metadata of the animal.
+   * @returns {Promise<{ success: boolean, error?: string }>} - A promise that resolves to an object indicating success or failure.
+   */
   ipcMain.handle(
     "add-animal",
     async (
@@ -195,14 +296,65 @@ export function setupHandlers(pyScriptsPath: string) {
     }
   );
 
-  // Get projects
+  /**
+   * Handler for getting project data.
+   * @param {IpcMainEvent} _event - The IPC event.
+   * @returns {Promise<{ success: boolean, projects?: ProjectData, error?: string }>} - A promise that resolves to an object indicating success or failure, along with an optional project data object.
+   */
   ipcMain.handle("get-projects", async () => {
     try {
       const projects = getProjects();
-      return { success: true, projects };
+      return { success: true, projects: projects };
     } catch (error) {
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle(
+    "get-animal-data-directory",
+    async (
+      _event: IpcMainEvent,
+      projectName: string,
+      animalName: string,
+      dataType: string
+    ) => {
+      try {
+        // Gets a symlinked temp dir to the animal background data
+        const tempDir = await getAnimalDataDirectory(
+          projectName,
+          animalName,
+          dataType
+        );
+        return { success: true, directory: tempDir };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "delete-animal-data-directory",
+    async (
+      event: IpcMainEvent,
+      projectName: string,
+      animalName: string,
+      directory: string
+    ) => {
+      try {
+        deleteAnimalDataDirectory(projectName, animalName, directory);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle("get-directory", async () => {
+    const selectedDirectory = selectDirectory();
+    if (!selectedDirectory) {
+      return { success: false, error: "No directory selected" };
+    }
+    return { success: true, directory: selectedDirectory };
   });
 
   ipcMain.on("runMax", (event: IpcMainEvent, data: any[]) => {
@@ -242,9 +394,9 @@ export function setupHandlers(pyScriptsPath: string) {
     );
   });
 
-  ipcMain.on("runAlign", (event: IpcMainEvent, data: any[]) => {
-    const modelPath = path.join(homeDir, "models/predictor.pt");
-    const nrrdPath = path.join(homeDir, "nrrd");
+  ipcMain.handle("runAlign", (event: IpcMainEvent, data: any[]) => {
+    const modelPath = path.join(homeDir, ".belljar", "models/predictor.pt");
+    const nrrdPath = path.join(homeDir, ".belljar", "nrrd");
     const mapPath = path.join(resourceDir, "csv/structure_map.pkl");
     const args = [
       `-o ${data[1]}`,
