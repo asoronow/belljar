@@ -4,6 +4,8 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@headlessui/react";
+import { Button } from "./button";
+import { Input } from "./input";
 import { ChevronDownIcon } from "@heroicons/react/24/solid";
 import { useState, useEffect } from "react";
 import { AnimalMetadata } from "../pages/project";
@@ -43,8 +45,8 @@ export function AddAnimalDialog({
         className="relative z-50"
       >
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
-        <div className="fixed inset-0 flex w-screen items-center justify-center p-4 rounded-lg sm:p-6">
-          <DialogPanel className="max-w-lg space-y-4 border bg-white p-12 rounded-lg transition-all w-full duration-300">
+        <div className="fixed inset-0 flex w-screen items-center justify-center p-4 sm:p-6">
+          <DialogPanel className="max-w-lg space-y-4 border bg-white p-12 rounded-sm transition-all w-full duration-300">
             <DialogTitle className="font-bold">Add Animal</DialogTitle>
             <Description>
               Enter a name for a new experimental animal to add to your project.
@@ -69,20 +71,17 @@ export function AddAnimalDialog({
               </p>
             ) : null}
             <div className="flex flex-col gap-4">
-              <input
+              <Input
                 type="text"
+                invalid={!isValid}
                 placeholder="Animal Name"
                 onChange={(e) => {
                   setAnimalName(e.target.value);
                 }}
-                className={clsx(
-                  isValid ? "border-zinc-500" : "border-red-500",
-                  "w-full border rounded-lg p-3"
-                )}
               />
-              <button
-                type="submit"
-                className="w-full bg-zinc-900 text-white rounded-lg p-2"
+              <Button
+                type="primary"
+                className="w-full bg-sky-500 text-white rounded-sm p-2"
                 onClick={() => {
                   if (isValid) {
                     let emptyAnimal: AnimalMetadata = {
@@ -105,7 +104,7 @@ export function AddAnimalDialog({
                 }}
               >
                 Add
-              </button>
+              </Button>
             </div>
           </DialogPanel>
         </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, use } from "react";
 import Head from "next/head";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
-import { Dialog, DialogTitle } from "@headlessui/react";
+import { CreateProjectDialog } from "@/components/create_project";
 import { useIpcListener } from "@/hooks/useIpcListener";
 import { useRouter } from "next/router";
 import { ScaleLoader } from "react-spinners";
@@ -106,48 +106,14 @@ export default function HomePage() {
       <Head>
         <title>Bell Jar</title>
       </Head>
-      <Dialog open={showCreateProject} onClose={setShowCreateProject}>
-        <DialogTitle>Create Project</DialogTitle>
-        Enter some details to create a new project.
-        <div className="space-y-2">
-          <p className="text-gray-400 text-sm">
-            Project names can only contain letters, numbers, hyphens, and
-            underscores. (e.g. my_project_1)
-          </p>
-          <Input
-            type="text"
-            placeholder="Project name"
-            onChange={(e) => {
-              setNewProjectName(e.target.value);
-            }}
-            invalid={projectInvalid}
-            className={"bg-zinc-200 rounded-xl text-black"}
-          />
-          <Input
-            type="text"
-            onChange={(e) => {
-              setNewProjectDescription(e.target.value);
-            }}
-            invalid={projectInvalid}
-            placeholder="Project description"
-            className={"bg-zinc-200 rounded-xl text-black"}
-          />
-        </div>
-        <Button color="dark" onClick={() => setShowCreateProject(false)}>
-          Cancel
-        </Button>
-        <Button color="blue" onClick={createProject}>
-          Create
-        </Button>
-      </Dialog>
-      <div className="flex flex-row items-center justify-center min-h-screen w-full text-center max-w-7xl mx-auto">
+      <div className="flex flex-row items-center justify-center min-h-screen w-full text-center max-w-3xl mx-auto">
         <div className="flex flex-col items-center justify-center h-full bg-white text-center transition-all basis-1/2">
           <h1 className="text-4xl font-bold text-black">Bell Jar</h1>
           <h2 className="text-2xl font-semibold text-gray-600">v10.0.0</h2>
           {isComplete ? (
             <div className="flex flex-col mt-10 space-y-4">
               <Button
-                color="dark"
+                type="primary"
                 onClick={() => {
                   setShowCreateProject(true);
                 }}
@@ -155,20 +121,20 @@ export default function HomePage() {
                 Create Project
               </Button>
               <Button
-                color="blue"
+                type={selectedProject ? "selected" : "secondary"}
                 href={`/project?id=${selectedProject}`}
                 disabled={!selectedProject}
               >
                 Load Project
               </Button>
               <Button
-                color="amber"
+                type={selectedProject ? "success" : "secondary"}
                 disabled={!selectedProject}
                 onClick={exportProject}
               >
                 Export Project
               </Button>
-              <Button color="emerald" onClick={importProject}>
+              <Button type="warning" onClick={importProject}>
                 Import Project
               </Button>
             </div>
@@ -180,7 +146,7 @@ export default function HomePage() {
           )}
         </div>
         {isComplete ? (
-          <div className="flex flex-col items-start justify-start h-96 transition-all rounded-y-3xl rounded-l-3xl border p-4 gap-y-2 bg-gray-100 basis-1/2 overflow-y-scroll">
+          <div className="flex flex-col items-start justify-start h-96 transition-all p-4 gap-y-2 bg-gray-200 basis-1/2 overflow-y-scroll rounded-sm">
             <div className="flex flex-row items-center justify-between w-full">
               <h3 className="text-lg font-semibold text-black w-full text-left">
                 Projects
@@ -191,22 +157,23 @@ export default function HomePage() {
                   setProjectSearch(e.target.value);
                 }}
                 placeholder="Search projects"
-                className={"bg-white rounded-3xl text-black"}
+                className={"bg-white text-black"}
               />
             </div>
             {recentProjects.length > 0 ? (
               <>
                 {recentProjects.map((project) => (
                   <Button
+                    type={
+                      project === selectedProject ? "selected" : "secondary"
+                    }
                     key={project}
-                    color={selectedProject === project ? "amber" : "dark"}
                     onClick={() => setSelectedProject(project)}
                     className={clsx(
                       projectSearch === "" ||
                         project.toLowerCase().includes(projectSearch)
                         ? ""
-                        : "hidden",
-                      "w-full"
+                        : "hidden"
                     )}
                   >
                     {project}
@@ -222,6 +189,14 @@ export default function HomePage() {
             )}
           </div>
         ) : null}
+        <CreateProjectDialog
+          showCreateProject={showCreateProject}
+          setShowCreateProject={setShowCreateProject}
+          createProject={createProject}
+          projectInvalid={projectInvalid}
+          setNewProjectDescription={setNewProjectDescription}
+          setNewProjectName={setNewProjectName}
+        />
       </div>
     </React.Fragment>
   );

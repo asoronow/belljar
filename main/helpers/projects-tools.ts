@@ -3,14 +3,17 @@
 import fs from "fs";
 import path from "path";
 import { ProjectMetadata, AnimalMetadata } from "../common/types";
-import { ProjectDataType } from "../common/enums";
 import { dialog } from "electron";
 import archiver from "archiver";
 import extract from "extract-zip";
-import { c } from "tar";
 const bellJarFolder = require("os").homedir() + "/.belljar";
 const projectsPath = path.join(bellJarFolder, "projects");
 
+export interface ProjectFile {
+  name: string;
+  path: string;
+  addedAt: string;
+}
 // Ensure the projects directory exists
 if (!fs.existsSync(projectsPath)) {
   fs.mkdirSync(projectsPath, { recursive: true });
@@ -130,33 +133,87 @@ export async function exportProject(name: string): Promise<void> {
 export function deleteFile(
   projectName: string,
   animalName: string,
-  dataType: ProjectDataType,
-  fileName: string
-): void {
-  const projectDir = path.join(projectsPath, projectName);
-  if (!fs.existsSync(projectDir)) {
-    throw new Error("Project not found");
-  }
-  fs.rmSync(path.join(projectDir, animalName, dataType, fileName));
-}
-
-export function uploadFile(
-  projectName: string,
-  animalName: string,
-  dataType: ProjectDataType,
+  dataType: string,
   filePath: string
 ): void {
   const projectDir = path.join(projectsPath, projectName);
   if (!fs.existsSync(projectDir)) {
     throw new Error("Project not found");
   }
-  const fileName = path.basename(filePath);
-  fs.copyFileSync(
-    filePath,
-    path.join(projectDir, animalName, dataType, fileName)
-  );
+  fs.rmSync(path.join(projectDir, animalName, dataType, filePath));
 }
 
+export function uploadFile(
+  projectName: string,
+  animalName: string,
+  dataType: string,
+  filePaths: [string]
+): void {
+  const projectDir = path.join(projectsPath, projectName);
+  if (!fs.existsSync(projectDir)) {
+    throw new Error("Project not found");
+  }
+  filePaths.forEach((filePath) => {
+    const fileName = path.basename(filePath);
+    const fileMetadata: ProjectFile = {
+      name: fileName,
+      path: filePath,
+      addedAt: new Date().toISOString(),
+    };
+    const dataTypeDir = path.join(projectDir, animalName, dataType);
+    if (!fs.existsSync(dataTypeDir)) {
+      fs.mkdirSync(dataTypeDir);
+    }
+    fs.writeFileSync(
+      path.join(dataTypeDir, fileName + ".json"),
+      JSON.stringify(fileMetadata, null, 2)
+    );
+  });
+}
+
+export function getAnimalData(
+  projectName: string,
+  animalName: string
+): Array<{
+  name: string;
+  files: ProjectFile[];
+}> {
+  const projectDir = path.join(projectsPath, projectName);
+  if (!fs.existsSync(projectDir)) {
+    throw new Error("Project not found");
+  }
+  const animalDir = path.join(projectDir, animalName);
+  if (!fs.existsSync(animalDir)) {
+    throw new Error("Animal not found");
+  }
+  const animalDataFiles: Array<{
+    name: string;
+    files: ProjectFile[];
+  }> = [];
+  // get all sub directories in the animal directory
+  const dataTypes = fs
+    .readdirSync(animalDir)
+    .filter((file) => fs.statSync(path.join(animalDir, file)).isDirectory());
+  dataTypes.forEach((dataType) => {
+    const dataTypeDir = path.join(animalDir, dataType);
+    if (!fs.existsSync(dataTypeDir)) {
+      return;
+    }
+    const files = fs.readdirSync(dataTypeDir);
+    const animalDataFilesInDataTypeDir: ProjectFile[] = files
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => {
+        const filePath = path.join(dataTypeDir, file);
+        const fileContent = fs.readFileSync(filePath, "utf8");
+        return JSON.parse(fileContent);
+      });
+    animalDataFiles.push({
+      name: dataType,
+      files: animalDataFilesInDataTypeDir,
+    });
+  });
+  return animalDataFiles;
+}
 export function addAnimal(
   projectName: string,
   animalName: string,
@@ -176,6 +233,22 @@ export function addAnimal(
 
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
   fs.mkdirSync(path.join(projectDir, animalName));
+}
+
+export function removeAnimal(projectName: string, animalName: string): void {
+  const projectDir = path.join(projectsPath, projectName);
+  if (!fs.existsSync(projectDir)) {
+    throw new Error("Project not found");
+  }
+  const metadataPath = path.join(projectDir, "metadata.json");
+  const metadata: ProjectMetadata = JSON.parse(
+    fs.readFileSync(metadataPath).toString()
+  );
+
+  delete metadata.animals[animalName];
+  metadata.lastModified = new Date().toISOString();
+
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 }
 
 export function getProjects(): string[] {

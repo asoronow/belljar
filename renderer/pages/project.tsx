@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import { AnimalDataPanel } from "@/components/animaldatapanel";
+import { AnimalsPanel } from "@/components/animalspanel";
+import { ToolsPanel } from "@/components/toolspanel";
 import {
   ChevronLeftIcon,
   TrashIcon,
@@ -7,28 +10,14 @@ import {
   PlusIcon,
 } from "@heroicons/react/24/solid";
 import { AddAnimalDialog } from "../components/add_animal";
-import { AddDataDialog } from "../components/add_data";
 import Link from "next/link";
-import clsx from "clsx";
+
 export interface AnimalMetadata {
   hasCellDetectionData: boolean;
   hasAlignmentData: boolean;
   cellDetectionRun: boolean;
   alignmentRun: boolean;
 }
-
-const dataTypes = [
-  {
-    name: "Signal Data",
-    description: "Images with signals to be detected, e.g. cells.",
-    pathName: "signal-data",
-  },
-  {
-    name: "Background Data",
-    description: "Images of sections with background to stain for alignment.",
-    pathName: "background-data",
-  },
-];
 
 export interface ProjectMetadata {
   name: string;
@@ -38,33 +27,11 @@ export interface ProjectMetadata {
   animals: Record<string, AnimalMetadata>;
 }
 
-function Pill({ className, children, tooltip = "" }) {
-  return (
-    <div
-      className={clsx(
-        className,
-        "flex items-center px-2 py-0.5 text-xs rounded-full font-medium group cursor-pointer"
-      )}
-    >
-      <div
-        className={clsx(
-          "absolute hidden absolute -translate-y-10 inset-x-0 z-10 bg-black/50 px-1 py-0.5 text-xs w-[200px] rounded-lg group-hover:block z-10"
-        )}
-      >
-        {tooltip}
-      </div>
-      {children}
-    </div>
-  );
-}
-
 export default function ProjectPage() {
   const router = useRouter();
   const { id } = router.query;
   const [project, setProject] = useState(null);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
-  const [showAddAnimal, setShowAddAnimal] = useState(false);
-  const [showAddData, setShowAddData] = useState(false);
   const [animals, setAnimals] = useState({});
   const [selectedData, setSelectedData] = useState(null);
   const [taskQueue, setTaskQueue] = useState([]);
@@ -96,17 +63,17 @@ export default function ProjectPage() {
                 href="/start?loaded=true"
                 className="text-blue-500 flex flex-row w-full"
               >
-                <div className="p-2 m-2 bg-black rounded-xl">
+                <div className="p-2 m-2 bg-black rounded-sm">
                   <ChevronLeftIcon className="w-6 h-6 text-white" />
                 </div>
               </Link>
-              <div className="flex flex-col items-center justify-center w-full">
-                <h1 className="text-xl font-bold">{project.name}</h1>
-                <h2 className="text-lg text-gray-400">{project.description}</h2>
+              <div className="flex flex-col items-center justify-center text-center w-full">
+                <h1 className="text-lg font-bold">{project.name}</h1>
+                <h2 className="text-sm text-gray-400">{project.description}</h2>
               </div>
               <div className="flex flex-row items-center justify-end w-full">
                 <button
-                  className="flex flex-row items-center justify-center p-2 m-2 bg-red-500 rounded-xl"
+                  className="flex flex-row items-center justify-center p-2 m-2 bg-red-500 rounded-sm"
                   onClick={() => {
                     // confirm delete
                     const confirm = window.confirm(
@@ -124,146 +91,21 @@ export default function ProjectPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 w-full mt-10">
-              <div className="flex flex-col items-start gap-y-2 justify-start bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-x-hidden overflow-y-scroll">
-                <div
-                  className={
-                    "flex flex-row items-center justify-between w-full mb-4"
-                  }
-                >
-                  <div className="flex flex-row items-center justify-start w-full gap-x-2">
-                    <h1 className="text-xl font-bold">Animals</h1>
-                    <div className="group">
-                      <QuestionMarkCircleIcon className="w-6 h-6 text-gray-900" />
-                      <span className="absolute hidden text-white -translate-y-12 z-10 bg-black/50 px-1 py-0.5 text-xs rounded-full w-fit group-hover:block">
-                        Each animal holds its own experimental data. Create an
-                        animal to get started.
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    className="flex flex-row items-center justify-center p-1 bg-blue-500 rounded-lg"
-                    onClick={() => {
-                      setSelectedAnimal(null);
-                      setShowAddAnimal(true);
-                    }}
-                  >
-                    <PlusIcon className="w-6 h-6 text-white" />
-                  </button>
-                </div>
-                {Object.keys(animals).map((animal) => (
-                  <div
-                    key={animal}
-                    className={clsx(
-                      selectedAnimal === animal ? "bg-amber-500" : "bg-black",
-                      "flex p-2 flex-row items-center justify-between rounded-lg text-white"
-                    )}
-                    onClick={() => {
-                      if (selectedAnimal === animal) {
-                        setSelectedAnimal(null);
-                        return;
-                      }
-                      setSelectedAnimal(animal);
-                    }}
-                  >
-                    <p className="text-lg font-bold">{animal}</p>
-                    <div className="relative flex flex-row flex-wrap items-center justify-end w-full gap-2">
-                      <Pill
-                        tooltip={
-                          "Data for perfoming cell detection. Red indicates no data. Green indicates data."
-                        }
-                        className={
-                          animals[animal].hasCellDetectionData
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }
-                      >
-                        Signal
-                      </Pill>
-                      <Pill
-                        tooltip={
-                          "Data for perfoming alignment. Red indicates no data. Green indicates data."
-                        }
-                        className={
-                          animals[animal].hasAlignmentData
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }
-                      >
-                        Background
-                      </Pill>
-                      <Pill
-                        tooltip={
-                          "Has the animal been aligned. Red indicates no. Green indicates yes."
-                        }
-                        className={
-                          animals[animal].alignmentRun
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }
-                      >
-                        Aligned
-                      </Pill>
-                      <Pill
-                        tooltip={
-                          "Has the signal data been detected. Red indicates no. Green indicates yes."
-                        }
-                        className={
-                          animals[animal].cellDetectionRun
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }
-                      >
-                        Detected
-                      </Pill>
-                    </div>
-                  </div>
-                ))}
-                <AddAnimalDialog
-                  isOpen={showAddAnimal}
-                  setIsOpen={setShowAddAnimal}
-                  project={project.name}
-                  didAdd={() => {
-                    // reload projects
-                    loadProject(id);
-                  }}
-                />
-              </div>
-              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
-                <h1 className="text-xl font-bold">Data</h1>
-                {selectedAnimal ? (
-                  <>
-                    <div className="flex flex-row items-center justify-between w-full mb-4">
-                      <h1 className="text-xl font-bold">{selectedAnimal}</h1>
-                      <button
-                        className="flex flex-row items-center justify-center p-1 bg-blue-500 rounded-lg"
-                        onClick={() => {
-                          setSelectedData(null);
-                          setShowAddData(true);
-                        }}
-                      >
-                        <PlusIcon className="w-6 h-6 text-white" />
-                      </button>
-                    </div>
-                    <AddDataDialog
-                      isOpen={showAddData}
-                      setIsOpen={setShowAddData}
-                      project={project.name}
-                      animal={selectedAnimal}
-                      didAdd={() => {
-                        // reload projects
-                        loadProject(id);
-                      }}
-                    />
-                  </>
-                ) : (
-                  <p className="text-sm m-auto">
-                    Select an animal to manage data.
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col items-start justify-start w-full bg-gray-100 rounded-y-3xl rounded-l-3xl border p-4 h-[300px] overflow-y-scroll">
-                <h1 className="text-xl font-bold">Tools</h1>
-              </div>
+              <AnimalsPanel
+                setSelectedAnimal={setSelectedAnimal}
+                selectedAnimal={selectedAnimal}
+                project={project}
+                animals={animals}
+                didAdd={() => {
+                  loadProject(id);
+                }}
+              />
+              <AnimalDataPanel
+                name={selectedAnimal}
+                meta={animals[selectedAnimal]}
+                project={project}
+              />
+              <ToolsPanel />
             </div>
           </>
         ) : (

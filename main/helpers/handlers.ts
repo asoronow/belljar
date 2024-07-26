@@ -4,6 +4,8 @@ import {
   createProject,
   loadProject,
   deleteProject,
+  deleteFile,
+  getAnimalData,
   importProject,
   exportProject,
   getProjects,
@@ -11,7 +13,6 @@ import {
   addAnimal,
 } from "./projects-tools";
 import { AnimalMetadata } from "../common/types";
-import { ProjectDataType } from "../common/enums";
 import { PythonShell, PythonShellError, Options } from "python-shell";
 import path from "path";
 import os from "os";
@@ -130,16 +131,46 @@ export function setupHandlers(pyScriptsPath: string) {
   });
 
   ipcMain.handle(
-    "upload-file",
+    "upload-files",
     async (
       _event,
       projectName: string,
       animalName: string,
-      dataType: ProjectDataType,
+      dataType: string,
+      filePaths: [string]
+    ) => {
+      try {
+        uploadFile(projectName, animalName, dataType, filePaths);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "get-animal-data",
+    async (_event, projectName: string, animalName: string) => {
+      try {
+        const animalData = getAnimalData(projectName, animalName);
+        return { success: true, data: animalData };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "delete-file",
+    async (
+      _event,
+      projectName: string,
+      animalName: string,
+      dataType: string,
       filePath: string
     ) => {
       try {
-        uploadFile(projectName, animalName, dataType, filePath);
+        deleteFile(projectName, animalName, dataType, filePath);
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };
