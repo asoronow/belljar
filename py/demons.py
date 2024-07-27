@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 import cv2
-from skimage.filters import sobel
+from skimage.filters import sobel, gaussian, difference_of_gaussians
 
 # Check number of cores available
 import multiprocessing
@@ -67,7 +67,7 @@ def preprocess_image(image):
     """
      # Convert SimpleITK image to numpy array
     image_array = sitk.GetArrayFromImage(sitk.Cast(image, sitk.sitkUInt8))
-    blurred = cv2.GaussianBlur(image_array, (5, 5), 0)
+    blurred = cv2.GaussianBlur(image_array, (5, 5), 2)
     edges = sobel(blurred)
     # normalize
     edges = (edges - np.min(edges)) / (np.max(edges) - np.min(edges))
@@ -79,22 +79,23 @@ def preprocess_image(image):
 def multimodal_registration(fixed, moving):
     fixed = preprocess_image(fixed)
     moving = preprocess_image(moving)
+
     # Affine
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
     )
 
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation()
+    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=256)
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
         numberOfIterations=100,
         convergenceMinimumValue=1e-8,
         convergenceWindowSize=20,
     )
+    R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    R.SetOptimizerScalesFromIndexShift()
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[3, 2, 0])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
 
@@ -107,15 +108,14 @@ def multimodal_registration(fixed, moving):
     # B-spline
     transformDomainMeshSize = [6] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
-    R.SetMetricAsCorrelation()
-    R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(tx, inPlace=False)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.001,
+        learningRate=0.0001,
         numberOfIterations=200,
-        convergenceMinimumValue=1e-10,
-        convergenceWindowSize=20,
+        convergenceMinimumValue=1e-12,
+        convergenceWindowSize=10,
     )
+    R.SetOptimizerScalesFromPhysicalShift()
     outTx2 = R.Execute(fixed, resampled_moving)
 
     # Combine the transformations: Affine followed by B-spline.
@@ -221,9 +221,9 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     with open(structure_map_path, "rb") as f:
         structure_map = pickle.load(f)
 
-    tissue_resized = cv2.resize(tissue, (324, 324))
-    section_resized = cv2.resize(section, (324, 324))
-    label = resize_image_nearest_neighbor(label, (324, 324))
+    tissue_resized = cv2.resize(tissue, (360, 360))
+    section_resized = cv2.resize(section, (360, 360))
+    label = resize_image_nearest_neighbor(label, (360, 360))
     fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
@@ -262,6 +262,8 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     # resize atlas back to original size
     resampled_atlas = cv2.resize(resampled_atlas, tissue.shape[:2][::-1])
     color_label = cv2.resize(color_label, tissue.shape[:2][::-1])
+    # convert color label back to rgb
+    color_label = cv2.cvtColor(color_label, cv2.COLOR_BGR2RGB)
     resampled_label = resize_image_nearest_neighbor(resampled_label, tissue.shape[:2][::-1])
 
     return resampled_label, resampled_atlas, color_label

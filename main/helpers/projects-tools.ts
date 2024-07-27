@@ -141,7 +141,10 @@ export function deleteFile(
   if (!fs.existsSync(projectDir)) {
     throw new Error("Project not found");
   }
+  // remove meta
   fs.rmSync(path.join(projectDir, animalName, dataType, fileName + ".json"));
+  // remove file
+  fs.rmSync(path.join(projectDir, animalName, dataType, fileName));
   // Update metadata
   const metadataPath = path.join(projectDir, "metadata.json");
   const metadata: ProjectMetadata = JSON.parse(
@@ -189,6 +192,8 @@ export function uploadFile(
       path.join(dataTypeDir, fileName + ".json"),
       JSON.stringify(fileMetadata, null, 2)
     );
+    // Make a symlink to the file for analysis
+    fs.symlinkSync(filePath, path.join(dataTypeDir, fileName));
   });
 
   // Update metadata
@@ -312,31 +317,6 @@ export function selectDirectory(): string {
 }
 
 /**
- * Creates a temporary directory with symlinks to the provided files.
- * @param {string[]} files - List of absolute file paths.
- * @param {string} tempDirParent - The parent directory where the temp directory will be created.
- * @returns {Promise<string>} - Path to the created temp directory.
- */
-async function createTempDirectoryWithSymlinks(
-  files,
-  tempDirParent
-): Promise<string> {
-  // Generate a unique directory name
-  const tempDir = path.join(tempDirParent, uuid());
-
-  // Create the temp directory
-  fs.mkdirSync(tempDir);
-
-  // Create symlinks for each file in the temp directory
-  for (const file of files) {
-    const symlinkPath = path.join(tempDir, path.basename(file));
-    await createSymlink(file, symlinkPath);
-  }
-
-  return tempDir;
-}
-
-/**
  * Creates a symlink for the given target path.
  * @param {string} targetPath - The target file path.
  * @param {string} symlinkPath - The symlink path.
@@ -378,22 +358,5 @@ export async function getAnimalDataDirectory(
     throw new Error("Project not found");
   }
   // Get all file objs
-  const files = fs.readdirSync(path.join(projectDir, animalName, dataType));
-  const animalDataFilesInDataTypeDir: ProjectFile[] = files
-    .filter((file) => file.endsWith(".json"))
-    .map((file) => {
-      const filePath = path.join(projectDir, animalName, dataType, file);
-      const fileContent = fs.readFileSync(filePath, "utf8");
-      return JSON.parse(fileContent);
-    });
-  const absoluteFilePaths = animalDataFilesInDataTypeDir.map(
-    (file) => file.path
-  );
-
-  const tempDir = await createTempDirectoryWithSymlinks(
-    absoluteFilePaths,
-    projectDir
-  );
-
-  return tempDir;
+  return path.join(projectDir, animalName, dataType);
 }

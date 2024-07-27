@@ -16,6 +16,9 @@ const handler = {
       ipcRenderer.removeListener(channel, subscription);
     };
   },
+  once(channel: string, callback: (...args: unknown[]) => void) {
+    ipcRenderer.once(channel, (_event, ...args) => callback(...args));
+  },
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);

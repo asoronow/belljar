@@ -29,7 +29,7 @@ function DataDirectory({
   return (
     <div className="flex flex-col items-start justify-start w-full gap-y-1 mb-1">
       <div
-        className="flex flex-row items-center justify-start w-full gap-x-2 bg-black text-white font-medium p-2 w-full rounded-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200"
+        className="flex flex-row items-center text-sm justify-start w-full gap-x-2 bg-black text-white font-medium p-2 w-full rounded-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200"
         onClick={() => setExpanded(!expanded)}
       >
         {directory.name}

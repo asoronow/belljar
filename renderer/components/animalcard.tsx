@@ -40,34 +40,6 @@ export function AnimalCard({
       {...props}
     >
       <p className="text-sm font-bold truncate">{name}</p>
-      <div className="flex grid grid-row-flow md:grid-cols-2 gap-1 w-fit">
-        <Pill
-          tooltip={
-            "Data for perfoming cell detection. Green indicates data exists."
-          }
-          className={meta.hasCellDetectionData ? "bg-green-500" : "bg-gray-500"}
-        >
-          Signal
-        </Pill>
-        <Pill
-          tooltip={"Data for perfoming alignment. Green indicates data exists."}
-          className={meta.hasAlignmentData ? "bg-green-500" : "bg-gray-500"}
-        >
-          Background
-        </Pill>
-        <Pill
-          tooltip={"Has the animal been aligned. Green indicates yes."}
-          className={meta.alignmentRun ? "bg-green-500" : "bg-gray-500"}
-        >
-          Aligned
-        </Pill>
-        <Pill
-          tooltip={"Has the signal data been detected. Green indicates yes."}
-          className={meta.cellDetectionRun ? "bg-green-500" : "bg-gray-500"}
-        >
-          Detected
-        </Pill>
-      </div>
     </div>
   );
 }

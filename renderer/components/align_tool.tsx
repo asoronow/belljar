@@ -18,10 +18,10 @@ export function AlignTool({ project, animal, ...props }) {
         }}
         className={clsx(
           animal ? "bg-sky-500 hover:bg-sky-600" : "bg-gray-500",
-          "flex flex-row items-center justify-start w-full gap-x-2 mb-1 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all duration-200 text-white font-medium p-2 w-full rounded-sm"
+          "flex flex-row items-center justify-start w-full gap-x-2 mb-1 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all duration-200 text-white font-medium p-2 w-full rounded-sm mt-1"
         )}
       >
-        <h1 className="text-md font-bold">Alignment</h1>
+        <h1 className="text-md font-bold text-sm">Alignment</h1>
       </div>
       <Dialog open={open} onClose={setOpen} className="relative z-50">
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
@@ -116,21 +116,13 @@ export function AlignTool({ project, animal, ...props }) {
                   // kill the process
                   setRunning(false);
                   window.ipc.send("killAlign", null);
-                  console.log(inputDir);
-                  window.ipc
-                    .invoke(
-                      "delete-animal-data-directory",
-                      project.name,
-                      animal,
-                      inputDir
-                    )
-                    .then((result) => {
-                      if (result.success) {
-                        setRunning(false);
-                      }
-                    });
                   return;
                 }
+                window.ipc.once("alignResult", () => {
+                  setRunning(false);
+                  // remove the listener
+                });
+
                 setRunning(true);
                 window.ipc
                   .invoke(
