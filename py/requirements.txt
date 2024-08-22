@@ -19,3 +19,4 @@ SimpleITK
 wandb
 pytorch-msssim
 timm
+segment-anything-py

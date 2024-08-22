@@ -8,6 +8,7 @@ export function AlignTool({ project, animal, ...props }) {
   const [outputDir, setOutputDir] = useState("");
   const [inputDir, setInputDir] = useState("");
   const [wholeBrain, setWholeBrain] = useState(false);
+  const [useLegacy, setUseLegacy] = useState(false);
   const [spacing, setSpacing] = useState(0);
   const [running, setRunning] = useState(false);
   return (
@@ -94,9 +95,9 @@ export function AlignTool({ project, animal, ...props }) {
                 Legacy
                 <input
                   type="checkbox"
-                  checked={wholeBrain}
+                  checked={useLegacy}
                   onChange={(e) => {
-                    setWholeBrain(e.target.checked);
+                    setUseLegacy(e.target.checked);
                   }}
                 />
               </div>

@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import pickle
 from pathlib import Path
-from demons import register_to_atlas, match_histograms
+from demons import register_to_atlas
 from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
     QMainWindow,
 )
-
+from segment_anything import SamPredictor, sam_model_registry
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import QTimer
 from adjust import numpy_array_to_qimage
@@ -201,6 +201,7 @@ class AtlasSlice:
         self.region = region
         self.hemisphere = hemisphere
         self.image = None
+        self.sam_image = None
         self.label = None
         self.mask = None
         self.eraser_window = None
@@ -275,6 +276,7 @@ class AlignmentController:
         input_path (str): path to input images
         output_path (str): path to output alignments
         model_path (str): path to tissue predictor model
+        sam_path (str): path to SAM model
         spacing (int): the spacing between sections in microns
         structures_path (str): path to structures file
     """
@@ -286,6 +288,7 @@ class AlignmentController:
         output_path,
         structures_path,
         model_path,
+        sam_path,
         spacing=None,
         is_whole=True,
         use_legacy=False,
@@ -295,6 +298,7 @@ class AlignmentController:
         self.output_path = output_path
         self.structures_path = structures_path
         self.model_path = model_path
+        self.sam_path = Path(sam_path).expanduser()
         self.spacing = spacing
         self.is_whole = is_whole
         self.use_legacy = use_legacy
@@ -463,6 +467,7 @@ class AlignmentController:
             )
 
         print("Awaiting fine tuning...", flush=True)
+
         self.start_viewer()
 
     def scan_input(self):
@@ -596,6 +601,7 @@ class AlignmentController:
 
             average_x = np.mean(x_angles)
             average_y = np.mean(y_angles)
+
             if self.num_slices > 1:
                 delta_pos = np.mean(np.diff(positions))
             else:
@@ -835,6 +841,68 @@ class AlignmentController:
             self.adjust_positions()
             self.update_display()
 
+
+    def isolate_section(self, sample):
+        """
+        Use SAM to allow the user to isolate each section in the image
+        Args:
+            sample: image to isolate (gray scale, uint8)
+        """
+
+        # Load SAM model
+        sam = sam_model_registry["vit_b"](checkpoint=self.sam_path)
+
+        # Check for CUDA or MPS and move the model to the appropriate device
+        if torch.cuda.is_available():
+            sam = sam.to(device="cuda")
+        elif torch.backends.mps.is_available():
+            sam = sam.to(device="mps")
+
+        # Set the image for SAM
+        predictor = SamPredictor(sam)
+        sample_image = cv2.cvtColor(sample.copy(), cv2.COLOR_GRAY2BGR)
+        predictor.set_image(sample_image)
+
+        # Prepare for point selection
+        points = [[sample.shape[1] // 2, sample.shape[0] // 2]]
+
+        # def get_point(event, x, y, flags, param):
+        #     if event == cv2.EVENT_LBUTTONDOWN:
+        #         if len(points) < 3:  # Limit to 3 points
+        #             points.append([x, y])
+        #             cv2.circle(sample_image, (x, y), 3, (0, 0, 255), -1)
+        #             cv2.imshow(f"Point Selector", sample_image)
+
+        # # Create a window to display the image and set the mouse callback
+        # cv2.namedWindow("Section Isolation")
+        # cv2.setMouseCallback("Section Isolation", get_point)
+        # cv2.imshow("Section Isolation", sample_image)
+        # cv2.waitKey(0)
+        # cv2.destroyWindow("Section Isolation")
+
+        if len(points) > 0:
+            # Convert points to numpy array
+            points_np = np.array(points)
+
+            # Generate mask using SAM
+            masks, _, _ = predictor.predict(points_np, np.array([1] * len(points_np)))
+
+            # Display the generated mask for confirmation
+            mask = masks[0]  # Assuming the first mask is the most relevant
+            return (sample * mask.astype(np.uint8))
+            # mask_display = mask.astype(np.uint8) * 255
+            # # convert to color
+            # mask_display = cv2.applyColorMap(mask_display, cv2.COLORMAP_JET)
+            # composite = cv2.addWeighted(sample_image, 0.5, mask_display, 0.5, 0)
+            # cv2.imshow("Generated Mask (Press 'y' to confirm 'n' to cancel)", composite)
+            # key = cv2.waitKey(0)
+            # if key == ord('y'):  # User confirms the mask
+            #     cv2.destroyAllWindows()
+            #     return sample * mask.astype(np.uint8)
+            # elif key == ord('n'):  # User cancels the mask
+            #     cv2.destroyAllWindows()
+            #     self.isolate_section(sample)
+
     def finish(self):
         """Finish alignment"""
         # disconnect signals
@@ -862,6 +930,9 @@ class AlignmentController:
                 cv2.IMREAD_GRAYSCALE,
             )
 
+            # isolate
+            sample = self.isolate_section(sample)
+
             if current_slice.region != "A":
                 masked_atlas, masked_annotation = mask_slice_by_region(
                     current_slice.image,
@@ -871,6 +942,8 @@ class AlignmentController:
                 )
                 current_slice.image = masked_atlas
                 current_slice.label = masked_annotation
+
+
 
             warped_labels, warped_atlas, color_label = current_slice.get_registered(
                 sample,
@@ -935,7 +1008,7 @@ if __name__ == "__main__":
         "-i", "--input", help="input directory, only use if graphical false", default=""
     )
     parser.add_argument("-m", "--model", default="../models/predictor_encoder.pt")
-    parser.add_argument("-e", "--embeds", default="atlasEmbeddings.pkl")
+    parser.add_argument("-s", "--sam", default="~/.belljar/models/sam_vit_b.pth")
     parser.add_argument("-n", "--nrrd", help="path to nrrd files", default="")
     parser.add_argument("-w", "--whole", default=False)
     parser.add_argument(
@@ -946,12 +1019,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     align_controller = AlignmentController(
-        args.nrrd.strip(),
-        args.input.strip(),
-        args.output.strip(),
-        args.map.strip(),
-        args.model.strip(),
-        args.spacing if args.spacing else None,
-        eval(args.whole),
+        nrrd_path=args.nrrd.strip(),
+        input_path=args.input.strip(),
+        output_path=args.output.strip(),
+        structures_path=args.map.strip(),
+        model_path=args.model.strip(),
+        sam_path=args.sam.strip(),
+        spacing=args.spacing if args.spacing else None,
+        is_whole=eval(args.whole),
         use_legacy=eval(args.legacy),
     )

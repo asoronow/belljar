@@ -12,21 +12,21 @@ import multiprocessing
 sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() - 2)
 
 
-def match_histograms(fixed, moving):
+def match_histograms(to_match, match_to):
     """
-    Match the moving histogram to the fixed using sitk
+    Match the to_match histogram to the match_to using sitk
     Args:
-        fixed (sitk.Image): The fixed image.
-        moving (sitk.Image): The moving image.
+        to_match (sitk.Image): The image to be matched.
+        match_to (sitk.Image): The image to be matched to.
     Returns:
-        sitk.Image: The matched moving image.
+        sitk.Image: The matched image.
     """
     # make sure fixed and moving are sitk images
     matcher = sitk.HistogramMatchingImageFilter()
     matcher.SetNumberOfHistogramLevels(1024)
     matcher.SetNumberOfMatchPoints(10)
     matcher.ThresholdAtMeanIntensityOn()
-    return matcher.Execute(moving, fixed)
+    return matcher.Execute(to_match, match_to)
 
 
 # DEBUG: Quiver plot, uncomment to see plots of each transformation
@@ -76,50 +76,58 @@ def preprocess_image(image):
 
     return edges
     
+
 def multimodal_registration(fixed, moving):
     fixed = preprocess_image(fixed)
     moving = preprocess_image(moving)
 
-    # Affine
+    # Affine transformation
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
     )
 
+    # Set up the image registration method for the affine transformation
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=256)
+    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
     R.SetOptimizerAsGradientDescent(
         learningRate=0.01,
-        numberOfIterations=100,
-        convergenceMinimumValue=1e-8,
-        convergenceWindowSize=20,
-    )
-    R.SetOptimizerScalesFromPhysicalShift()
-    R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
-    R.SetInitialTransform(initialTx)
-    R.SetInterpolator(sitk.sitkLinear)
-
-    outTx1 = R.Execute(fixed, moving)
-
-    # Resample the moving image using the initial transformation
-    resampled_moving = sitk.Resample(
-        moving, fixed, outTx1, sitk.sitkLinear, 0.0, sitk.sitkFloat32
-    )
-    # B-spline
-    transformDomainMeshSize = [6] * fixed.GetDimension()
-    tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
-    R.SetInitialTransform(tx, inPlace=False)
-    R.SetOptimizerAsGradientDescent(
-        learningRate=0.0001,
         numberOfIterations=200,
         convergenceMinimumValue=1e-12,
         convergenceWindowSize=10,
     )
     R.SetOptimizerScalesFromPhysicalShift()
+    R.SetShrinkFactorsPerLevel(shrinkFactors=[6, 4, 2, 1])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 2, 1, 0])
+    R.SetInitialTransform(initialTx)
+    R.SetInterpolator(sitk.sitkLinear)
+
+    outTx1 = R.Execute(fixed, moving)
+
+    # Resample the moving image using the affine transformation
+    resampled_moving = sitk.Resample(
+        moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
+    )
+
+    # B-spline transformation
+    transformDomainMeshSize = [5] * fixed.GetDimension()
+    tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
+    R.SetInitialTransform(tx, inPlace=False)
+    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)  # Metric reset for B-spline
+    R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+    R.SetOptimizerAsGradientDescent(
+        learningRate=0.0001,
+        numberOfIterations=75,
+        convergenceMinimumValue=1e-12,
+        convergenceWindowSize=20,
+    )
+    R.SetOptimizerScalesFromPhysicalShift()
+
     outTx2 = R.Execute(fixed, resampled_moving)
 
     # Combine the transformations: Affine followed by B-spline.
-    composite_transform = sitk.CompositeTransform(outTx1)
+    composite_transform = sitk.CompositeTransform(fixed.GetDimension())
+    composite_transform.AddTransform(outTx1)
     composite_transform.AddTransform(outTx2)
 
     return composite_transform
@@ -228,8 +236,7 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
 
-    # resize fixed to match moving
-    moving = match_histograms(fixed, moving)
+    fixed = match_histograms(fixed, moving)
     tx = multimodal_registration(fixed, moving)
 
     resampler = sitk.ResampleImageFilter()
