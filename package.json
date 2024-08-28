@@ -1,7 +1,7 @@
 {
   "name": "belljar",
   "description": "A tool for mouse neurohistology",
-  "version": "9.5.2",
+  "version": "10.0.0",
   "main": "main.js",
   "repository": "asoronow/belljar",
   "author": "Alec <a.soronow@gmail.com>",

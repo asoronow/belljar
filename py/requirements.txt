@@ -16,3 +16,7 @@ sahi
 pyqt6
 napari
 SimpleITK
+wandb
+pytorch-msssim
+timm
+segment-anything-py
