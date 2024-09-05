@@ -28,7 +28,7 @@ console.log = function () {
   let message = [prefix, ...args];
 
   log.apply(console, message);
-  try {  
+  try {
     logWin.webContents.send("log", message.join(" "));
   } catch (error) {
     // do nothing window was closed
@@ -313,7 +313,7 @@ function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
   return new Promise((resolve, reject) => {
     const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models-v952.tar.gz`; //  Update to v7
+    const modelsLink = `${bucketParentPath}/models-v10.tar.gz`; //  Update to v7
     const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
     const requiredDirs = ["models", "embeddings", "nrrd"];
 
@@ -682,8 +682,8 @@ app.on("ready", () => {
       e.preventDefault();
     } else {
       try {
-      logWin.webContents.send("savelogs", []);
-      logWin.close();
+        logWin.webContents.send("savelogs", []);
+        logWin.close();
       } catch (error) {
         // do nothing window was closed
       }
@@ -776,13 +776,14 @@ ipcMain.on("openFileDialog", function (event: any, data: any) {
 
 function openPDF(relativePath: string) {
   const pdfPath = path.join(appDir, relativePath);
-  shell.openPath(pdfPath)
+  shell
+    .openPath(pdfPath)
     .then(() => {
       console.log("Guide opened");
     })
     .catch((error: any) => {
       console.log(error);
-    })
+    });
 }
 
 ipcMain.on("openGuide", function (event: any, data: any) {
@@ -878,7 +879,6 @@ ipcMain.on("runAdjust", function (event: any, data: any[]) {
 // Alignment
 ipcMain.on("runAlign", function (event: any, data: any[]) {
   const modelPath = path.join(homeDir, "models/predictor.pt");
-  const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
   const nrrdPath = path.join(homeDir, "nrrd");
   const mapPath = path.join(appDir, "csv/structure_map.pkl");
 
@@ -892,7 +892,6 @@ ipcMain.on("runAlign", function (event: any, data: any[]) {
       `-w ${data[2]}`,
       `-a ${data[3]}`,
       `-m ${modelPath}`,
-      `-e ${embedPath}`,
       `-n ${nrrdPath}`,
       `-c ${mapPath}`,
       `-l ${data[4]}`,
@@ -1072,7 +1071,7 @@ ipcMain.on("runSharpen", function (event: any, data: any[]) {
     String.raw`-i ${data[0]}`,
     `-r ${data[2]}`,
     `-a ${data[3]}`,
-  ]
+  ];
   if (data[4]) {
     custom.push(`--equalize`);
   }
@@ -1104,21 +1103,22 @@ ipcMain.on("runSharpen", function (event: any, data: any[]) {
         message,
       ]);
     }
-  });    
+  });
 
   ipcMain.once("killSharpen", function (event: any, data: any[]) {
     pyshell.kill();
   });
 });
 
-
 // Cell Detection
 ipcMain.on("runDetection", function (event: any, data: any[]) {
   // Set model path
   var models: { [key: string]: string } = {
-    "somata": "models/chaosdruid.pt",
-    "nuclei": "models/ankou.pt",
-  }
+    somata: "models/chaosdruid.pt",
+    nuclei: "models/ankou.pt",
+  };
+
+  var sam_model_path = path.join(homeDir, "models/sam_vit_b.pth");
 
   let selected = data[6] as string;
   var modelPath = path.join(homeDir, models[selected]);
@@ -1133,6 +1133,8 @@ ipcMain.on("runDetection", function (event: any, data: any[]) {
     `-c ${data[2]}`,
     `-t ${data[3]}`,
     `-a ${data[7]}`,
+    `-s ${sam_model_path}`,
+    `-e ${data[8]}`,
     `-m ${modelPath}`,
   ];
 

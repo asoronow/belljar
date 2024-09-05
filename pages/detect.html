@@ -89,20 +89,31 @@
         <div class="col d-grid justify-content-start">
           <h5>
             Detection Model
-            <i class="fas fa-circle-question fa-fw fa-xs" data-bs-toggle="tooltip" data-bs-placement="right" title="Select the detection method for your data-type."></i>
+            <i
+              class="fas fa-circle-question fa-fw fa-xs"
+              data-bs-toggle="tooltip"
+              data-bs-placement="right"
+              title="Select the detection method for your data-type."
+            ></i>
           </h5>
           <div class="dropdown text-start">
-            <button class="btn btn-info dropdown-toggle" type="button" id="methods" data-bs-toggle="dropdown" aria-expanded="false">
-            Somata
+            <button
+              class="btn btn-info dropdown-toggle"
+              type="button"
+              id="methods"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              Somata
             </button>
             <ul class="dropdown-menu" aria-labelledby="regions">
               <li><a class="dropdown-item" id="somata" href="#">Somata</a></li>
               <li><a class="dropdown-item" id="nuclei" href="#">Nuclei</a></li>
             </ul>
-          </div> 
+          </div>
         </div>
       </div>
-      <div class="row align-items-center m-1">
+      <div class="row align-items-start m-1">
         <div class="col d-grid justify-content-start">
           <a
             id="advance"
@@ -118,8 +129,8 @@
         </div>
       </div>
       <div class="collapse" id="collapseExample">
-        <div class="row align-items-center m-1">
-          <div class="col d-grid justify-content-start">
+        <div class="row align-items-center justify-content-start m-1">
+          <div class="col m-1">
             <h5>
               Tile Size
               <i
@@ -129,8 +140,13 @@
                 title="Size of the tiling for detection, do not change unless your model detects at a different resolution"
               ></i>
             </h5>
+            <input
+              type="text"
+              id="tile"
+              placeholder="(Optional) Enter an integer tile size in pixels"
+            />
           </div>
-          <div class="col d-grid justify-content-start">
+          <div class="col m-1">
             <h5>
               Confidence
               <i
@@ -140,8 +156,13 @@
                 title="Confidence level to consider detections cells, default is 0.5"
               ></i>
             </h5>
+            <input
+              type="text"
+              id="confidence"
+              placeholder="(Optional) Enter a confidence level"
+            />
           </div>
-          <div class="col d-grid justify-content-start">
+          <div class="col m-1">
             <h5>
               Area Cutoff
               <i
@@ -151,8 +172,29 @@
                 title="Minimum area of a detection to be considered a cell, default is 200px^2"
               ></i>
             </h5>
+            <input
+              type="text"
+              id="area"
+              placeholder="(Optional) Enter an area in px"
+            />
           </div>
-          <div class="col d-grid justify-content-start">
+          <div class="col m-1">
+            <h5>
+              Eccentricity
+              <i
+                class="fas fa-circle-question fa-fw fa-xs"
+                data-bs-toggle="tooltip"
+                data-bs-placement="right"
+                title="Minimum Eccentricity of a detection to be considered a cell, default is 0.2"
+              ></i>
+            </h5>
+            <input
+              type="text"
+              id="eccentricity"
+              placeholder="(Optional) Enter an eccentricity threshold"
+            />
+          </div>
+          <div class="col m-1">
             <h5>
               Custom Model
               <i
@@ -162,8 +204,13 @@
                 title="Specify a path to a custom yolov5 model for your dataset"
               ></i>
             </h5>
+            <input
+              type="text"
+              id="model"
+              placeholder="(Optional) Enter a custom model file"
+            />
           </div>
-          <div class="col d-grid justify-content-start">
+          <div class="col m-1">
             <h5>
               Multichannel
               <i
@@ -173,47 +220,16 @@
                 title="Specify if you are using multichannel tiff images for N-channel detection"
               ></i>
             </h5>
-          </div>
-        </div>
-        <div class="row align-items-center m-1">
-          <div class="col d-grid">
-            <input
-              type="text"
-              id="tile"
-              placeholder="(Optional) Enter an integer tile size in pixels"
-            />
-          </div>
-          <div class="col d-grid">
-            <input
-              type="text"
-              id="confidence"
-              placeholder="(Optional) Enter a confidence level"
-            />
-          </div>
-          <div class="col d-grid">
-            <input
-              type="text"
-              id="area"
-              placeholder="(Optional) Enter an area in px"
-            />
-          </div>
-          <div class="col d-grid">
-            <input
-              type="text"
-              id="model"
-              placeholder="(Optional) Enter a custom model file"
-            />
-          </div>
-          <div class="col d-grid">
             <input
               type="checkbox"
               id="multichannel"
               name="multichannel"
               value="multichannel"
             />
+          </div>
         </div>
-        </div>  
       </div>
+
       <div class="row align-items-center m-4">
         <div class="col d-grid gap-2">
           <a role="button" class="btn btn-warning" id="back" href="./menu.html"

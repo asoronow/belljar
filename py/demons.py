@@ -88,16 +88,16 @@ def multimodal_registration(fixed, moving):
 
     # Set up the image registration method for the affine transformation
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+    R.SetMetricAsCorrelation()
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.01,
-        numberOfIterations=200,
+        learningRate=0.001,
+        numberOfIterations=100,
         convergenceMinimumValue=1e-12,
-        convergenceWindowSize=10,
+        convergenceWindowSize=20,
     )
-    R.SetOptimizerScalesFromPhysicalShift()
-    R.SetShrinkFactorsPerLevel(shrinkFactors=[6, 4, 2, 1])
-    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 2, 1, 0])
+    R.SetOptimizerScalesFromIndexShift(7)
+    R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
 
@@ -109,16 +109,16 @@ def multimodal_registration(fixed, moving):
     )
 
     # B-spline transformation
-    transformDomainMeshSize = [5] * fixed.GetDimension()
+    transformDomainMeshSize = [4] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
     R.SetInitialTransform(tx, inPlace=False)
-    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)  # Metric reset for B-spline
+    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=64)  # Metric reset for B-spline
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
     R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetOptimizerAsGradientDescent(
         learningRate=0.0001,
-        numberOfIterations=75,
-        convergenceMinimumValue=1e-12,
+        numberOfIterations=100,
+        convergenceMinimumValue=1e-14,
         convergenceWindowSize=20,
     )
     R.SetOptimizerScalesFromPhysicalShift()
@@ -233,10 +233,19 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     section_resized = cv2.resize(section, (360, 360))
     label = resize_image_nearest_neighbor(label, (360, 360))
     fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
+    
+    for i in range(section_resized.shape[0]):
+        for j in range(section_resized.shape[1]):
+            if "layer 4" in structure_map[label[i, j]]["name"].lower():
+                section_resized[i, j] = min(section_resized[i, j] + 15, 255)
+            elif "layer 5" in structure_map[label[i, j]]["name"].lower():
+                section_resized[i, j] = max(section_resized[i, j] - 7, 0)
+
+
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
+    fixed = match_histograms(fixed, moving)    
 
-    fixed = match_histograms(fixed, moving)
     tx = multimodal_registration(fixed, moving)
 
     resampler = sitk.ResampleImageFilter()
@@ -248,7 +257,6 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     resampled_label = resampler.Execute(label)
     resampler.SetOutputPixelType(sitk.sitkUInt8)
     resampled_atlas = resampler.Execute(moving)
-
     color_label = np.zeros(
         (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3), dtype=np.uint8
     )

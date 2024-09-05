@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
 matplotlib
-numpy
+numpy<2.0.0
 opencv_python
 Pillow
 pynrrd

@@ -428,7 +428,6 @@ def mask_slice_by_region(atlas_slice, annotation_slice, structure_map, region="C
     masked_annotation = np.zeros(annotation_slice.shape, dtype=np.uint32)
     masked_atlas = np.zeros(atlas_slice.shape, dtype=np.uint8)
 
-    # TODO: Whole map is included to support arbitary exclusion of regions. This is not efficient for a single region as current.
     cerebrum_regions = []
     non_cerebrum_regions = []
     for key, value in structure_map.items():
