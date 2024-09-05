@@ -652,7 +652,8 @@ ipcMain.on("openFileDialog", function (event, data) {
 });
 function openPDF(relativePath) {
     const pdfPath = path.join(appDir, relativePath);
-    shell.openPath(pdfPath)
+    shell
+        .openPath(pdfPath)
         .then(() => {
         console.log("Guide opened");
     })
@@ -752,7 +753,6 @@ ipcMain.on("runAdjust", function (event, data) {
 // Alignment
 ipcMain.on("runAlign", function (event, data) {
     const modelPath = path.join(homeDir, "models/predictor.pt");
-    const embedPath = path.join(homeDir, "embeddings/embeddings.pkl");
     const nrrdPath = path.join(homeDir, "nrrd");
     const mapPath = path.join(appDir, "csv/structure_map.pkl");
     let options = {
@@ -765,7 +765,6 @@ ipcMain.on("runAlign", function (event, data) {
             `-w ${data[2]}`,
             `-a ${data[3]}`,
             `-m ${modelPath}`,
-            `-e ${embedPath}`,
             `-n ${nrrdPath}`,
             `-c ${mapPath}`,
             `-l ${data[4]}`,
@@ -980,9 +979,10 @@ ipcMain.on("runSharpen", function (event, data) {
 ipcMain.on("runDetection", function (event, data) {
     // Set model path
     var models = {
-        "somata": "models/chaosdruid.pt",
-        "nuclei": "models/ankou.pt",
+        somata: "models/chaosdruid.pt",
+        nuclei: "models/ankou.pt",
     };
+    var sam_model_path = path.join(homeDir, "models/sam_vit_b.pth");
     let selected = data[6];
     var modelPath = path.join(homeDir, models[selected]);
     // Switch over to custom if necessary
@@ -995,6 +995,8 @@ ipcMain.on("runDetection", function (event, data) {
         `-c ${data[2]}`,
         `-t ${data[3]}`,
         `-a ${data[7]}`,
+        `-s ${sam_model_path}`,
+        `-e ${data[8]}`,
         `-m ${modelPath}`,
     ];
     if (data[5]) {

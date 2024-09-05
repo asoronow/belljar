@@ -1,6 +1,8 @@
 import cv2
 import pickle
 import os
+from skimage.measure import label, regionprops
+from skimage.filters import threshold_otsu
 import numpy as np
 import argparse
 from pathlib import Path
@@ -25,18 +27,68 @@ def export_bboxes(image, boxes, output_path):
     cv2.imwrite(str(output_path), image)
 
 
+def check_eccentricity(box, threshold, image):
+    # psuedo code
+    # for each box, segment the cell in the center with SAM
+    # compute the eccentricity of the mask
+    # if eccentricity > threshold, remove the box 
+    box = [int(b) for b in box]
+    cell_image = image[box[1]-5:box[3]+5, box[0]-5:box[2]+5, :]
+    cell_image = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
+    mask = cell_image > threshold_otsu(cell_image)
+
+    labeled_mask = label(mask)
+    # Get all region properties
+    regions = regionprops(labeled_mask)
+    
+    if not regions:
+        return False  # Return False if no regions are detected
+    
+    # Find the region with the largest area
+    largest_region = max(regions, key=lambda r: r.area)
+    
+    # Compute the eccentricity of the largest region
+    eccentricity = largest_region.eccentricity
+    print(eccentricity)
+    
+    # Return True if the eccentricity is greater than the threshold, otherwise False
+    return eccentricity > threshold
+
+
 def xyxy_to_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
-def screen_predictions(prediction_objects, area_threshold):
+def screen_predictions(prediction_objects, area_threshold, eccentricity_threshold=None, image=None, sam_model_path=None):
     """Screen predictions for objects below a certain area"""
-    return [
+    first_pass = [
         obj
         for obj in prediction_objects
         if xyxy_to_area(obj.bbox.to_xyxy()) > area_threshold
     ]
 
+    # get average area of first pass
+    avg_area = sum([xyxy_to_area(obj.bbox.to_xyxy()) for obj in first_pass]) / len( first_pass)
+    std_area = np.std([xyxy_to_area(obj.bbox.to_xyxy()) for obj in first_pass])
+    # second pass. remove objects that are too big
+    second_pass = [
+        obj
+        for obj in first_pass
+        if xyxy_to_area(obj.bbox.to_xyxy()) < avg_area + 2 * std_area
+    ]
+
+    if eccentricity_threshold is not None:
+        try:
+            assert image is not None
+            second_pass = [
+                obj
+                for obj in second_pass
+                if check_eccentricity(obj.bbox.to_xyxy(), eccentricity_threshold, image)
+            ]
+        except AssertionError:
+            print("Image not provided. Eccentricity screening not performed.")
+
+    return second_pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find neurons in images")
@@ -56,6 +108,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m", "--model", help="specify model file", default="../models/ancientwizard.pt"
     )
+    parser.add_argument("-s", "--sam", default="~/.belljar/models/sam_vit_b.pth")
+    parser.add_argument("-e", "--eccentricity", help="eccentricity threshold", default=0.5)
     parser.add_argument(
         "-n",
         "--multichannel",
@@ -143,7 +197,13 @@ if __name__ == "__main__":
                     overlap_width_ratio=0.25,
                 )
 
-                predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
+                predicted_objects = screen_predictions(
+                    result.object_prediction_list, 
+                    float(args.area.strip()),
+                    eccentricity_threshold=float(args.eccentricity.strip()),
+                    image=chan_img,
+                    sam_model_path=Path(args.sam.strip()).expanduser(),
+                    )
                 bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
                 scores = [obj.score.value for obj in predicted_objects]
 
@@ -174,7 +234,13 @@ if __name__ == "__main__":
                 overlap_height_ratio=0.25,
                 overlap_width_ratio=0.25,
             )
-            predicted_objects = screen_predictions(result.object_prediction_list, float(args.area.strip()))
+
+            predicted_objects = screen_predictions(result.object_prediction_list, 
+                                                   float(args.area.strip()), 
+                                                   image=img, 
+                                                   sam_model_path=Path(args.sam.strip()).expanduser(), 
+                                                   eccentricity_threshold=float(args.eccentricity.strip())
+                                                   )
 
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
             scores = [obj.score.value for obj in predicted_objects]
