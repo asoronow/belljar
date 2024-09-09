@@ -32,28 +32,32 @@ def check_eccentricity(box, threshold, image):
     # for each box, segment the cell in the center with SAM
     # compute the eccentricity of the mask
     # if eccentricity > threshold, remove the box 
-    box = [int(b) for b in box]
-    cell_image = image[box[1]-5:box[3]+5, box[0]-5:box[2]+5, :]
-    cell_image = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
-    mask = cell_image > threshold_otsu(cell_image)
+    try:
+        box = [int(b) for b in box]
+        cell_image = image[box[1]-5:box[3]+5, box[0]-5:box[2]+5, :]
+        if len(cell_image.shape) > 2:
+            cell_image = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
+        mask = cell_image > threshold_otsu(cell_image)
 
-    labeled_mask = label(mask)
-    # Get all region properties
-    regions = regionprops(labeled_mask)
-    
-    if not regions:
-        return False  # Return False if no regions are detected
-    
-    # Find the region with the largest area
-    largest_region = max(regions, key=lambda r: r.area)
-    
-    # Compute the eccentricity of the largest region
-    eccentricity = largest_region.eccentricity
-    print(eccentricity)
-    
-    # Return True if the eccentricity is greater than the threshold, otherwise False
-    return eccentricity > threshold
+        labeled_mask = label(mask)
+        # Get all region properties
+        regions = regionprops(labeled_mask)
+        
+        if not regions:
+            return False  # Return False if no regions are detected
+        
+        # Find the region with the largest area
+        largest_region = max(regions, key=lambda r: r.area)
+        
+        # Compute the eccentricity of the largest region
+        eccentricity = largest_region.eccentricity
+        
+        # Return True if the eccentricity is greater than the threshold, otherwise False
+        return eccentricity > threshold
 
+    except Exception as e:
+        print("Failed to check eccentricity. Error: ", e)
+        return True
 
 def xyxy_to_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
