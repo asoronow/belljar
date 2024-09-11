@@ -78,9 +78,6 @@ def preprocess_image(image):
     
 
 def multimodal_registration(fixed, moving):
-    fixed = preprocess_image(fixed)
-    moving = preprocess_image(moving)
-
     # Affine transformation
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
@@ -93,9 +90,9 @@ def multimodal_registration(fixed, moving):
         learningRate=0.001,
         numberOfIterations=100,
         convergenceMinimumValue=1e-12,
-        convergenceWindowSize=20,
+        convergenceWindowSize=10,
     )
-    R.SetOptimizerScalesFromIndexShift(7)
+    R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
     R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetInitialTransform(initialTx)
@@ -112,7 +109,7 @@ def multimodal_registration(fixed, moving):
     transformDomainMeshSize = [4] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
     R.SetInitialTransform(tx, inPlace=False)
-    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=64)  # Metric reset for B-spline
+    R.SetMetricAsMattesMutualInformation()  # Metric reset for B-spline
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
     R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetOptimizerAsGradientDescent(
@@ -245,7 +242,9 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
     label = sitk.GetImageFromArray(label, isVector=False)
     fixed = match_histograms(fixed, moving)    
-
+    # cast to float 32
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
     tx = multimodal_registration(fixed, moving)
 
     resampler = sitk.ResampleImageFilter()

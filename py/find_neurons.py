@@ -6,6 +6,7 @@ from skimage.filters import threshold_otsu
 import numpy as np
 import argparse
 from pathlib import Path
+from skimage.exposure import equalize_adapthist
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 import tifffile as tiff
@@ -190,6 +191,15 @@ if __name__ == "__main__":
         predictions = []
         if len(split_channels) > 0:
             for i, chan_img in enumerate(split_channels):
+                # Check data type
+                if chan_img.dtype == np.uint16:
+                    chan_img = (chan_img / 256).astype(np.uint8)
+                elif chan_img.dtype == np.float32 or chan_img.dtype == np.float64:
+                    chan_img = (chan_img * 255).astype(np.uint8)
+
+                # equalize
+                chan_img = equalize_adapthist(chan_img, clip_limit=0.003)
+                chan_img = (chan_img * 255).astype(np.uint8)
                 # convert to BGR
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
                 result = get_sliced_prediction(
@@ -227,8 +237,9 @@ if __name__ == "__main__":
             elif img.dtype == np.float32 or img.dtype == np.float64:
                 img = (img * 255).astype(np.uint8)
             
-            if channels < 3:
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            img = equalize_adapthist(img, clip_limit=0.003)
+            img = (img * 255).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             result = get_sliced_prediction(
                 img,
