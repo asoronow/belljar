@@ -71,10 +71,14 @@ def screen_predictions(prediction_objects, area_threshold, eccentricity_threshol
         for obj in prediction_objects
         if xyxy_to_area(obj.bbox.to_xyxy()) > area_threshold
     ]
-
+    
+    if len(first_pass) < 3:
+        return first_pass
+    
     # get average area of first pass
     avg_area = sum([xyxy_to_area(obj.bbox.to_xyxy()) for obj in first_pass]) / len( first_pass)
     std_area = np.std([xyxy_to_area(obj.bbox.to_xyxy()) for obj in first_pass])
+    
     # second pass. remove objects that are too big
     second_pass = [
         obj
