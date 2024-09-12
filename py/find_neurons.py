@@ -138,7 +138,14 @@ if __name__ == "__main__":
     output_dir = Path(args.output.strip())
     tile_size = int(args.tile)
     model_path = args.model.strip()
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    # add mps device if available
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_built():
+        device = "mps"
+    else:
+        device = "cpu"
 
     # Pruning
     endings = ["png", "jpg", "jpeg", "tif", "tiff"]

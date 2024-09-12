@@ -67,7 +67,7 @@ def preprocess_image(image):
     """
      # Convert SimpleITK image to numpy array
     image_array = sitk.GetArrayFromImage(sitk.Cast(image, sitk.sitkUInt8))
-    blurred = cv2.GaussianBlur(image_array, (5, 5), 2)
+    blurred = cv2.GaussianBlur(image_array, (5, 5), 0)
     edges = sobel(blurred)
     # normalize
     edges = (edges - np.min(edges)) / (np.max(edges) - np.min(edges))
@@ -78,6 +78,8 @@ def preprocess_image(image):
     
 
 def multimodal_registration(fixed, moving):
+    fixed = preprocess_image(fixed)
+    moving = preprocess_image(moving)
     # Affine transformation
     initialTx = sitk.CenteredTransformInitializer(
         fixed, moving, sitk.AffineTransform(fixed.GetDimension())
