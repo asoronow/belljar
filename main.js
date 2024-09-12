@@ -27,10 +27,7 @@ var isQuitting = false;
 var log = console.log;
 console.log = function () {
     var args = Array.from(arguments);
-    let timestamp = new Date()
-        .toISOString()
-        .replace(/T/, " ")
-        .replace(/\..+/, "");
+    let timestamp = new Date().toLocaleString();
     let prefix = `[${timestamp}]`;
     let message = [prefix, ...args];
     log.apply(console, message);
