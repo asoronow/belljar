@@ -6,6 +6,7 @@ from skimage.filters import threshold_otsu
 import numpy as np
 import argparse
 from pathlib import Path
+from skimage.exposure import equalize_adapthist
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 import tifffile as tiff
@@ -190,6 +191,15 @@ if __name__ == "__main__":
         predictions = []
         if len(split_channels) > 0:
             for i, chan_img in enumerate(split_channels):
+                # Check data type
+                if chan_img.dtype == np.uint16:
+                    chan_img = (chan_img / 256).astype(np.uint8)
+                elif chan_img.dtype == np.float32 or chan_img.dtype == np.float64:
+                    chan_img = (chan_img * 255).astype(np.uint8)
+
+                # equalize
+                chan_img = equalize_adapthist(chan_img, clip_limit=0.01)
+                chan_img = (chan_img * 255).astype(np.uint8)
                 # convert to BGR
                 chan_img = cv2.cvtColor(chan_img, cv2.COLOR_GRAY2BGR)
                 result = get_sliced_prediction(
@@ -197,8 +207,8 @@ if __name__ == "__main__":
                     detection_model,
                     slice_height=tile_size,
                     slice_width=tile_size,
-                    overlap_height_ratio=0.25,
-                    overlap_width_ratio=0.25,
+                    overlap_height_ratio=0.1,
+                    overlap_width_ratio=0.1,
                 )
 
                 predicted_objects = screen_predictions(
@@ -227,16 +237,17 @@ if __name__ == "__main__":
             elif img.dtype == np.float32 or img.dtype == np.float64:
                 img = (img * 255).astype(np.uint8)
             
-            if channels < 3:
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            img = equalize_adapthist(img, clip_limit=0.01)
+            img = (img * 255).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             result = get_sliced_prediction(
                 img,
                 detection_model,
                 slice_height=tile_size,
                 slice_width=tile_size,
-                overlap_height_ratio=0.25,
-                overlap_width_ratio=0.25,
+                overlap_height_ratio=0.1,
+                overlap_width_ratio=0.1,
             )
 
             predicted_objects = screen_predictions(result.object_prediction_list, 

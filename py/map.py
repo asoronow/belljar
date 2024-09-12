@@ -931,7 +931,7 @@ class AlignmentController:
             )
 
             # isolate
-            sample = self.isolate_section(sample)
+            # sample = self.isolate_section(sample)
 
             if current_slice.region != "A":
                 masked_atlas, masked_annotation = mask_slice_by_region(

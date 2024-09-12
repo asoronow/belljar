@@ -14,98 +14,104 @@ var useLegacy = "False";
 var methods = document.querySelector("#methods");
 
 whole.addEventListener("click", function () {
-	methods.textContent = "Both Hemispheres";
-	alignmentMethod = "True";
-	console.log(alignmentMethod);
+  methods.textContent = "Both Hemispheres";
+  alignmentMethod = "True";
+  console.log(alignmentMethod);
 });
 
 half.addEventListener("click", function () {
-	methods.textContent = "Single Hemisphere";
-	alignmentMethod = "False";
-	console.log(alignmentMethod);
+  methods.textContent = "Single Hemisphere";
+  alignmentMethod = "False";
+  console.log(alignmentMethod);
 });
 
 run.addEventListener("click", function () {
-	if (indir && outdir && indir.value && outdir.value) {
-		var a = spacing.value;
-		// use try catch to check if a is a number
-		try {
-			a = Number(a);
-		} catch (err) {
-			console.log(err);
-			alert("Spacing must be a integer!");
-			return;
-		}
+  if (indir && outdir && indir.value && outdir.value) {
+    var a = spacing.value;
+    // use try catch to check if a is a number
+    try {
+      a = Number(a);
+    } catch (err) {
+      console.log(err);
+      alert("Spacing must be a integer!");
+      return;
+    }
 
-		if (a % 1 != 0) {
-			a = Math.round(a);
-		}
+    if (a % 1 != 0) {
+      a = Math.round(a);
+    }
 
-		if (legacy.checked) {
-			useLegacy = "True";
-		} else {
-			useLegacy = "False";
-		}
-		run.classList.add("disabled");
-		back.classList.remove("btn-warning");
-		back.classList.add("btn-danger");
-		back.innerHTML = "Cancel";
-		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
-		loadmessage.innerHTML = "Intializing...";
-		ipc.send("runAlign", [indir.value, outdir.value, alignmentMethod, a, useLegacy]);
-	}
+    if (legacy.checked) {
+      useLegacy = "True";
+    } else {
+      useLegacy = "False";
+    }
+    run.classList.add("disabled");
+    back.classList.remove("btn-warning");
+    back.classList.add("btn-danger");
+    back.innerHTML = "Cancel";
+    run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
+    loadmessage.innerHTML = "Initializing...";
+    ipc.send("runAlign", [
+      indir.value,
+      outdir.value,
+      alignmentMethod,
+      a,
+      useLegacy,
+    ]);
+  }
 });
 
 back.addEventListener("click", function (event) {
-	if (back.classList.contains("btn-danger")) {
-		event.preventDefault();
-		ipc.send("killAlign", []);
-		back.classList.add("btn-warning");
-		back.classList.remove("btn-danger");
-		back.innerHTML = "Back";
-		run.innerHTML = "Run";
-		run.classList.remove("disabled");
-		loadmessage.innerHTML = "";
-		loadbar.style.width = "0";
-	}
+  if (back.classList.contains("btn-danger")) {
+    event.preventDefault();
+    ipc.send("killAlign", []);
+    back.classList.add("btn-warning");
+    back.classList.remove("btn-danger");
+    back.innerHTML = "Back";
+    run.innerHTML = "Run";
+    run.classList.remove("disabled");
+    loadmessage.innerHTML = "";
+    loadbar.style.width = "0";
+  }
 });
 
 ipc.on("alignResult", function (event, response) {
-	run.innerHTML = "Run";
-	run.classList.remove("disabled");
-	back.classList.add("btn-warning");
-	back.classList.remove("btn-danger");
-	back.innerHTML = "Back";
-	run.innerHTML = "Run";
-	run.classList.remove("disabled");
-	loadmessage.innerHTML = "";
-	loadbar.style.width = "0";
+  run.innerHTML = "Run";
+  run.classList.remove("disabled");
+  back.classList.add("btn-warning");
+  back.classList.remove("btn-danger");
+  back.innerHTML = "Back";
+  run.innerHTML = "Run";
+  run.classList.remove("disabled");
+  loadmessage.innerHTML = "";
+  loadbar.style.width = "0";
 });
 
 ipc.once("alignError", function (event, response) {
-	run.innerHTML = "Run";
-	run.classList.remove("disabled");
+  run.innerHTML = "Run";
+  run.classList.remove("disabled");
 });
 
 ipc.on("updateLoad", function (event, response) {
-	loadbar.style.width = String(response[0]) + "%";
-	loadmessage.innerHTML = response[1];
+  loadbar.style.width = String(response[0]) + "%";
+  loadmessage.innerHTML = response[1];
 });
 
 indir.addEventListener("click", function () {
-	ipc.once("returnPath", function (event, response) {
-		if (response[1] == "indir") {
-			indir.value = response[0];
-		}
-	});
-	ipc.send("openDialog", "indir");
+  ipc.once("returnPath", function (event, response) {
+    if (response[1] == "indir") {
+      indir.value = response[0];
+    }
+  });
+  ipc.send("openDialog", "indir");
 });
 
 outdir.addEventListener("click", function () {
-	ipc.once("returnPath", function (event, response) {
-		if (response[1] == "outdir") {
-			outdir.value = response[0];
-		}
-	});
-	ipc.send("openDialog", "outdir");
+  ipc.once("returnPath", function (event, response) {
+    if (response[1] == "outdir") {
+      outdir.value = response[0];
+    }
+  });
+  ipc.send("openDialog", "outdir");
 });
