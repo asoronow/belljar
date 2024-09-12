@@ -153,7 +153,7 @@
                 class="fas fa-circle-question fa-fw fa-xs"
                 data-bs-toggle="tooltip"
                 data-bs-placement="right"
-                title="Confidence level to consider detections cells, default is 0.5"
+                title="Confidence level to consider detections cells, default is 0.1"
               ></i>
             </h5>
             <input
@@ -178,15 +178,15 @@
               placeholder="(Optional) Enter an area in px"
             />
           </div>
-          <div class="col m-1">
+          <div
+            class="col m-1"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Minimum Eccentricity of a detection to be considered a cell, default is 0.2"
+          >
             <h5>
               Eccentricity
-              <i
-                class="fas fa-circle-question fa-fw fa-xs"
-                data-bs-toggle="tooltip"
-                data-bs-placement="right"
-                title="Minimum Eccentricity of a detection to be considered a cell, default is 0.2"
-              ></i>
+              <i class="fas fa-circle-question fa-fw fa-xs"></i>
             </h5>
             <input
               type="text"

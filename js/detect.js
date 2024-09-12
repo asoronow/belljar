@@ -42,7 +42,7 @@ function checkNumber(value, message) {
 }
 
 run.addEventListener("click", function () {
-  var c = 0.5;
+  var c = 0.1;
   var e = 0.2;
   var a = 200;
   var t = 640;
