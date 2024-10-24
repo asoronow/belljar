@@ -5,13 +5,6 @@ import matplotlib.pyplot as plt
 import cv2
 from skimage.filters import sobel, gaussian, difference_of_gaussians
 
-# Check number of cores available
-import multiprocessing
-
-# Set sitk to use cores - 2
-sitk.ProcessObject_SetGlobalDefaultNumberOfThreads(multiprocessing.cpu_count() - 2)
-
-
 def match_histograms(to_match, match_to):
     """
     Match the to_match histogram to the match_to using sitk
