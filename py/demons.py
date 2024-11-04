@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import cv2
 from skimage.filters import sobel, gaussian, difference_of_gaussians
 
+
+
+
 def match_histograms(to_match, match_to):
     """
     Match the to_match histogram to the match_to using sitk
@@ -74,17 +77,42 @@ def multimodal_registration(fixed, moving):
     fixed = preprocess_image(fixed)
     moving = preprocess_image(moving)
     # Affine transformation
+
+    rigid_Tx = sitk.CenteredTransformInitializer(
+        fixed, moving, sitk.Euler2DTransform(), sitk.CenteredTransformInitializerFilter.GEOMETRY
+    )
+
+    R = sitk.ImageRegistrationMethod()
+    R.SetMetricAsMattesMutualInformation()
+    R.SetOptimizerAsGradientDescent(
+        learningRate=0.001,
+        numberOfIterations=25,
+        convergenceMinimumValue=1e-8,
+        convergenceWindowSize=20,
+    )
+    R.SetOptimizerScalesFromPhysicalShift()
+    R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+    R.SetSmoothingSigmasPerLevel(smoothingSigmas=[3, 2, 0])
+    R.SetInitialTransform(rigid_Tx)
+    R.SetInterpolator(sitk.sitkLinear)
+
+    outTx = R.Execute(fixed, moving)
+
+    rigid_moving = sitk.Resample(
+        moving, fixed, outTx, sitk.sitkLinear, 0.0, moving.GetPixelID()
+    )
+
     initialTx = sitk.CenteredTransformInitializer(
-        fixed, moving, sitk.AffineTransform(fixed.GetDimension())
+        fixed, rigid_moving, sitk.AffineTransform(fixed.GetDimension())
     )
 
     # Set up the image registration method for the affine transformation
     R = sitk.ImageRegistrationMethod()
-    R.SetMetricAsCorrelation()
+    R.SetMetricAsMattesMutualInformation()
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.01,
-        numberOfIterations=100,
-        convergenceMinimumValue=1e-12,
+        learningRate=0.001,
+        numberOfIterations=25,
+        convergenceMinimumValue=1e-10,
         convergenceWindowSize=10,
     )
     R.SetOptimizerScalesFromPhysicalShift()
@@ -93,24 +121,24 @@ def multimodal_registration(fixed, moving):
     R.SetInitialTransform(initialTx)
     R.SetInterpolator(sitk.sitkLinear)
 
-    outTx1 = R.Execute(fixed, moving)
+    outTx1 = R.Execute(fixed, rigid_moving)
 
     # Resample the moving image using the affine transformation
     resampled_moving = sitk.Resample(
-        moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
+        rigid_moving, fixed, outTx1, sitk.sitkLinear, 0.0, moving.GetPixelID()
     )
 
     # B-spline transformation
-    transformDomainMeshSize = [4] * fixed.GetDimension()
+    transformDomainMeshSize = [5] * fixed.GetDimension()
     tx = sitk.BSplineTransformInitializer(fixed, transformDomainMeshSize)
     R.SetInitialTransform(tx, inPlace=False)
-    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)  # Metric reset for B-spline
+    R.SetMetricAsMattesMutualInformation()  # Metric reset for B-spline
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
     R.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
     R.SetOptimizerAsGradientDescent(
         learningRate=0.0001,
-        numberOfIterations=100,
-        convergenceMinimumValue=1e-14,
+        numberOfIterations=25,
+        convergenceMinimumValue=1e-12,
         convergenceWindowSize=20,
     )
     R.SetOptimizerScalesFromPhysicalShift()
@@ -119,6 +147,7 @@ def multimodal_registration(fixed, moving):
 
     # Combine the transformations: Affine followed by B-spline.
     composite_transform = sitk.CompositeTransform(fixed.GetDimension())
+    composite_transform.AddTransform(outTx)
     composite_transform.AddTransform(outTx1)
     composite_transform.AddTransform(outTx2)
 
