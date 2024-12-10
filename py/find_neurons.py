@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     # add mps device if available
     if torch.cuda.is_available():
-        device = "cuda"
+        device = "cuda:0"
     elif torch.backends.mps.is_built():
         device = "mps"
     else:
