@@ -19,7 +19,7 @@ See the belljar_guide.pdf included in the repository for a detailed set of instr
 - At least 20GB of disk space
 - 32GB of memory MINIMUM (64GB recommneded)
 - Intel i5 / Apple Silicon / AMD Ryzen 4th gen
-- (REQUIRED) GPU with at least 6 GB of VRAM
+- (REQUIRED) GPU with at least 6 GB of VRAM and CUDA 11 support
 
 # Install from Release
 
