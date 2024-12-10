@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans&family=Roboto:wght@400;700&display=swap');
+
+#parent {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+
+}
+a, a:hover, a:focus, a:active {
+   text-decoration: none;
+   color: #000;
+}
+
+.rotate {
+    -moz-transition: all .25s linear;
+    -webkit-transition: all .25s linear;
+    transition: all .25s linear;
+}
+
+.rotate.down{
+    -ms-transform: rotate(180deg);
+    -moz-transform: rotate(180deg);
+    -webkit-transform: rotate(180deg);
+    transform: rotate(180deg);
+}
+
+.loadmessage {
+    position: fixed;
+    font-family: 'Open Sans', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    padding-left: 10px;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 25px;
+    z-index: 10;
+}
+.loading {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    background-color: rgb(54, 255, 67);
+    height: 25px;
+}
+.title {
+    font-family: 'Roboto', sans-serif;
+    font-size: medium;
+    font-weight: 700;
+}
+.subtext {
+    font-family: 'Open Sans', sans-serif;
+    font-weight: 400;
+    font-size: 12px;
+    margin: 0;
+}
+.info-message {
+    font-size: 12px;
+}
+.popover_title {
+    color: white;
+    font-size: 16px;
+}
+.popover__wrapper {
+    position: relative;
+    float: right;
+    margin-top: 18px;
+}
+.popover__content {
+    opacity: 0;
+    visibility: hidden;
+    position: absolute;
+    left: -150px;
+    transform: translate(0, 10px);
+    background-color: #FFFFFF;
+    padding: 5px;
+    box-shadow: 0 2px 5px 0 rgba(0, 0, 0, 0.26);
+    width: auto;
+}
+.popover__content:before {
+    position: absolute;
+    z-index: -1;
+    content: "";
+    right: calc(50% - 10px);
+    top: -8px;
+    border-style: solid;
+    border-width: 0 10px 10px 10px;
+    border-color: transparent transparent #4F5D75 transparent;
+    transition-duration: 0.3s;
+    transition-property: transform;
+}
+.popover__wrapper:hover .popover__content {
+    z-index: 10;
+    opacity: 1;
+    visibility: visible;
+    transform: translate(0, -20px);
+    transition: all 0.5s cubic-bezier(0.75, -0.02, 0.2, 0.97);
+}
+.popover__message {
+    text-align: center;
+}
+body {
+    background-color: #FFFFFF;
+    color: black;
+    font-family: 'Roboto', sans-serif;
+    overflow: hidden;
+    text-align: center;
+    padding: 10px;
+    width: 100vw;
+    height: 100vh;
+}
+a {
+    text-decoration: none;
+    color: black;
+}
+p {
+    font-family: 'Roboto', sans-serif;    
+    font-size: medium;
+ }
+h1 {
+    display:inline;
+    width:100%;
+    text-align:center;
+ }

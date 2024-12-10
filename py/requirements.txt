@@ -1,0 +1,22 @@
+--extra-index-url https://download.pytorch.org/whl/cu118
+matplotlib
+numpy<2.0.0
+opencv_python
+Pillow
+pynrrd
+scikit_learn
+scipy
+imagecodecs
+scikit-image
+tifffile
+torch
+torchvision
+ultralytics
+sahi>=0.11.0
+pyqt6
+napari
+SimpleITK
+wandb
+pytorch-msssim
+timm
+segment-anything-py

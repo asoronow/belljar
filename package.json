@@ -1,0 +1,46 @@
+{
+  "name": "belljar",
+  "description": "A tool for mouse neurohistology",
+  "version": "10.1.0",
+  "main": "main.js",
+  "repository": "asoronow/belljar",
+  "author": "Alec <a.soronow@gmail.com>",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "compile": "tsc",
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make:osx64": "electron-forge make --platform=darwin --arch=x64",
+    "make:win32": "electron-forge make --platform=win32 --arch=x64",
+    "make:linuxarm64": "electron-forge make --platform=linux --arch=arm64",
+    "make:linuxamd64": "electron-forge make --platform=linux --arch=x64",
+    "make:all": "yarn make:osx64 && yarn make:win32 && yarn make:linuxarm64 && yarn make:linuxamd64"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.1.1",
+    "node-fetch": "v2",
+    "python-shell": "^3.0.1",
+    "semver": "^7.5.4",
+    "tar": "^6.1.11"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^6.0.3",
+    "@electron-forge/maker-deb": "^6.0.3",
+    "@electron-forge/maker-dmg": "^6.2.1",
+    "@electron-forge/maker-rpm": "^6.0.3",
+    "@electron-forge/maker-squirrel": "^6.3.0",
+    "@electron-forge/maker-zip": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "^4.29.0",
+    "@typescript-eslint/parser": "^4.29.0",
+    "dotenv": "^16.3.1",
+    "electron": "18.1.0",
+    "eslint": "^7.32.0",
+    "prettier": "^2.7.1",
+    "typescript": "^4.6.3"
+  },
+  "build": {
+    "appId": "com.belljar.app",
+    "productName": "Bell Jar"
+  }
+}
