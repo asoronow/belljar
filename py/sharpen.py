@@ -64,8 +64,9 @@ def process_file(file, output_path, args, radius, amount):
 
         # Get filename stem
         stem = Path(file).stem
+        extension = Path(file).suffix
         # Save the processed image
-        cv2.imwrite(f"{output_path}/{stem}.png", img)
+        cv2.imwrite(f"{output_path}/{stem}.{extension}", img)
     except Exception as e:
         print(f"Failed to process {file}. Error: {e}", flush=True)
 

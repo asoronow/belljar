@@ -157,6 +157,7 @@ if __name__ == "__main__":
     print(f"Using model: {model_path}", flush=True)
     print(f"Using confidence level {float(args.confidence)}", flush=True)
     print(f"Found {len(files)} images", flush=True)
+    
     detection_model = AutoDetectionModel.from_pretrained(
         model_type="yolov8",
         model_path=model_path,
@@ -250,7 +251,9 @@ if __name__ == "__main__":
             
             img = equalize_adapthist(img, clip_limit=0.01)
             img = (img * 255).astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            
+            if img.shape[2] == 1:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             result = get_sliced_prediction(
                 img,
