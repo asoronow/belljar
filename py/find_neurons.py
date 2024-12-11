@@ -251,9 +251,9 @@ if __name__ == "__main__":
             
             img = equalize_adapthist(img, clip_limit=0.01)
             img = (img * 255).astype(np.uint8)
-            
-            if img.shape[2] == 1:
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+            # convert to BGR
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
             result = get_sliced_prediction(
                 img,
