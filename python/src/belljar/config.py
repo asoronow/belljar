@@ -1,0 +1,156 @@
+"""Centralized configuration for Belljar.
+
+Replaces hardcoded values scattered across demons.py, find_neurons.py, map.py, etc.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+
+class RegistrationConfig(BaseModel):
+    """Configuration for atlas-to-tissue registration."""
+
+    processing_resolution: int = Field(
+        512,
+        description="Internal processing resolution (pixels). Previous default was 360.",
+    )
+    rigid_iterations: int = Field(100, description="Max iterations for rigid registration")
+    rigid_learning_rate: float = 0.001
+    affine_iterations: int = Field(100, description="Max iterations for affine registration")
+    affine_learning_rate: float = 0.001
+    bspline_iterations: int = Field(200, description="Max iterations for B-spline registration")
+    bspline_learning_rate: float = 0.0001
+    bspline_grid_size: int = Field(
+        10,
+        description="B-spline control point grid size per dimension. Previous default was 5.",
+    )
+    histogram_levels: int = 1024
+    histogram_match_points: int = 10
+    layer_intensity_adjustments: dict[str, int] = Field(
+        default={"layer 4": 15, "layer 5": -7},
+        description="Per-layer intensity adjustments applied before registration.",
+    )
+
+
+class DetectionConfig(BaseModel):
+    """Configuration for cell/neuron detection."""
+
+    confidence_threshold: float = Field(
+        0.85, ge=0.0, le=1.0, description="Minimum detection confidence"
+    )
+    area_threshold: float = Field(
+        200.0, description="Minimum bounding box area in pixels"
+    )
+    eccentricity_threshold: float = Field(
+        0.5, ge=0.0, le=1.0, description="Maximum eccentricity for shape filtering"
+    )
+    tile_size: int = Field(640, description="Tile size for SAHI sliced prediction")
+    overlap_ratio: float = Field(
+        0.1, ge=0.0, le=0.5, description="Overlap ratio between adjacent tiles"
+    )
+    model_name: str = Field("ancientwizard.pt", description="Detection model filename")
+
+
+class AtlasConfig(BaseModel):
+    """Configuration for brain atlas."""
+
+    atlas_name: str = Field(
+        "allen_mouse_10um",
+        description="BrainGlobe atlas identifier (e.g. 'allen_mouse_10um', 'waxholm_rat_39um')",
+    )
+    reference_name: str = Field(
+        "default",
+        description=(
+            "Reference modality: 'default' (STP autofluorescence) or an additional "
+            "reference name like 'nissl'. Must be registered in the BrainGlobe atlas."
+        ),
+    )
+    cerebrum_parent_ids: list[str] = Field(
+        default=["567", "971", "940", "443", "1099", "579", "484682520", "484682512"],
+        description="Structure IDs whose descendants define the cerebrum.",
+    )
+    use_legacy: bool = False
+
+
+class DataGenerationConfig(BaseModel):
+    """Configuration for training data generation."""
+
+    num_samples: int = Field(100_000, description="Number of training samples to generate")
+    z_range: tuple[int, int] = Field(
+        (50, 1270), description="Valid z-position range (margin from volume edges)"
+    )
+    x_angle_range: tuple[float, float] = Field(
+        (-15.0, 15.0), description="X tilt angle range in degrees"
+    )
+    y_angle_range: tuple[float, float] = Field(
+        (-15.0, 15.0), description="Y tilt angle range in degrees"
+    )
+    z_angle_range: tuple[float, float] = Field(
+        (-5.0, 5.0), description="In-plane rotation range in degrees"
+    )
+    hemisphere_prob: float = Field(0.5, description="Probability of hemisphere masking")
+    augmentation_rotation_range: tuple[float, float] = Field(
+        (-15.0, 15.0), description="In-plane rotation augmentation range in degrees"
+    )
+    augmentation_shear_range: tuple[float, float] = Field(
+        (-0.15, 0.15), description="Shear augmentation range"
+    )
+    augmentation_scale_range: tuple[float, float] = Field(
+        (0.85, 1.15), description="Scale augmentation range"
+    )
+    elastic_deform_prob: float = Field(0.2, description="Probability of elastic deformation")
+    clahe_clip_limit: float = Field(2.0, description="CLAHE clip limit for normalization")
+    stain_weights: dict[str, float] = Field(
+        default={"nissl": 0.30, "dapi": 0.20, "ache": 0.15, "he": 0.15, "fluorescence": 0.20},
+        description="Relative weights for stain mode selection during domain randomization.",
+    )
+    num_workers: int | None = Field(None, description="Parallel workers (None = cpu_count)")
+
+
+class EstimationConfig(BaseModel):
+    """Configuration for slice position estimation."""
+
+    input_size: int = Field(256, description="Input image size for the estimator model")
+    normalization_mean: float = 0.1253
+    normalization_std: float = 0.0986
+    mc_dropout_samples: int = Field(
+        10, description="Number of MC dropout forward passes for uncertainty estimation"
+    )
+    preprocessing: str = Field(
+        "clahe",
+        description="Preprocessing mode: 'clahe', 'sobel' (legacy), or 'none'",
+    )
+    data_generation: DataGenerationConfig = Field(default_factory=DataGenerationConfig)
+
+
+class BelljarConfig(BaseModel):
+    """Top-level application configuration."""
+
+    registration: RegistrationConfig = Field(default_factory=RegistrationConfig)
+    detection: DetectionConfig = Field(default_factory=DetectionConfig)
+    atlas: AtlasConfig = Field(default_factory=AtlasConfig)
+    estimation: EstimationConfig = Field(default_factory=EstimationConfig)
+    home_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".belljar",
+        description="Belljar home directory for models, atlases, and logs.",
+    )
+
+    @property
+    def models_dir(self) -> Path:
+        return self.home_dir / "models"
+
+    @property
+    def log_path(self) -> Path:
+        return self.home_dir / "belljar.log"
+
+    def save(self, path: Path) -> None:
+        """Save configuration to a JSON file."""
+        path.write_text(self.model_dump_json(indent=2))
+
+    @classmethod
+    def load(cls, path: Path) -> BelljarConfig:
+        """Load configuration from a JSON file."""
+        return cls.model_validate_json(path.read_text())
