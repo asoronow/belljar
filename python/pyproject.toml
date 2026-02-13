@@ -47,6 +47,8 @@ datagen = [
     "Pillow",
     "pydantic>=2.0",
     "scipy",
+    "SimpleITK",
+    "tifffile",
 ]
 train = [
     "wandb",
