@@ -251,7 +251,7 @@ function setupPython(win) {
 // Download the required tar files from the bucket
 function downloadResources(win, fresh) {
     // Download the tar files into the homeDir and extract them to their respective folders
-    const currnet_versions = {
+    const current_versions = {
         nrrd: "v91",
         models: "v952",
         embeddings: "v6",
@@ -271,7 +271,7 @@ function downloadResources(win, fresh) {
             // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
             if (!fs.existsSync(manifestPath)) {
                 // Create manifest from current versions
-                fs.writeFileSync(manifestPath, JSON.stringify(currnet_versions, null, 2));
+                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
                 // Delete existing
                 downloading.push("models");
                 downloading.push("embeddings");
@@ -289,7 +289,7 @@ function downloadResources(win, fresh) {
                     }
                 }
             }
-            for (const [key, value] of Object.entries(currnet_versions)) {
+            for (const [key, value] of Object.entries(current_versions)) {
                 if (manifest[key] !== value) {
                     downloading.push(key);
                 }
@@ -306,7 +306,7 @@ function downloadResources(win, fresh) {
             }
             // Delete and update manifest
             if (downloading.length > 0) {
-                fs.writeFileSync(manifestPath, JSON.stringify(currnet_versions, null, 2));
+                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
             }
             downloading.reduce((promiseChain, dir, i) => {
                 return promiseChain
@@ -363,7 +363,7 @@ function downloadResources(win, fresh) {
                 }
             });
             // Creat the manifest
-            fs.writeFileSync(path.join(homeDir, "manifest.json"), JSON.stringify(currnet_versions, null, 2));
+            fs.writeFileSync(path.join(homeDir, "manifest.json"), JSON.stringify(current_versions, null, 2));
             if (!allDirsExist) {
                 // Something is missing, delete everything and download again
                 requiredDirs.forEach((dir) => {
