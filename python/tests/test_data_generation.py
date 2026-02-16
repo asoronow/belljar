@@ -17,6 +17,7 @@ from belljar.estimation.data_generation import (
     compute_anchoring_from_rotation,
     apply_domain_randomization,
     _elastic_deform,
+    _worker_generate_batch,
     generate_single_sample,
     simulate_stain,
     STAIN_PROFILES,
@@ -637,3 +638,78 @@ class TestStainSimulation:
             mean_val = float(np.mean(result))
             assert mean_val > 5, f"seed={seed}: nearly all-black (mean={mean_val:.1f})"
             assert mean_val < 250, f"seed={seed}: nearly all-white (mean={mean_val:.1f})"
+
+
+class TestMultiAtlasReferences:
+    """Test multi-atlas reference training support."""
+
+    def test_worker_accepts_multiple_references(self, config: DataGenerationConfig) -> None:
+        """_worker_generate_batch should handle multiple memmap paths."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create two small synthetic atlas volumes
+            vol1 = np.random.default_rng(0).integers(0, 255, (100, 64, 64), dtype=np.uint8)
+            vol2 = np.random.default_rng(1).integers(0, 255, (100, 64, 64), dtype=np.uint8)
+
+            # Write to temp memmaps
+            mm_path1 = Path(tmpdir) / "ref1.dat"
+            mm_path2 = Path(tmpdir) / "ref2.dat"
+
+            mm1 = np.memmap(str(mm_path1), dtype='uint8', mode='w+', shape=vol1.shape)
+            mm1[:] = vol1[:]
+            mm1.flush()
+            del mm1
+
+            mm2 = np.memmap(str(mm_path2), dtype='uint8', mode='w+', shape=vol2.shape)
+            mm2[:] = vol2[:]
+            mm2.flush()
+            del mm2
+
+            output_dir = Path(tmpdir) / "output"
+            output_dir.mkdir()
+
+            # Call worker with multiple references
+            results = _worker_generate_batch(
+                memmap_path=[str(mm_path1), str(mm_path2)],
+                atlas_shape=vol1.shape,
+                atlas_dtype=['uint8', 'uint8'],
+                seeds=[42, 43],
+                config_dict=config.model_dump(),
+                output_dir=str(output_dir),
+                ap_range=(0.0, float(vol1.shape[0])),
+                reference_names=["default", "nissl"],
+            )
+
+            assert len(results) == 2
+            for stem, metadata in results:
+                assert "reference" in metadata
+                assert metadata["reference"] in ["default", "nissl"]
+                assert (output_dir / f"{stem}.png").exists()
+
+    def test_metadata_contains_reference_field(self, config: DataGenerationConfig) -> None:
+        """Generated samples should include 'reference' field in metadata."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vol = np.random.default_rng(0).integers(0, 255, (100, 64, 64), dtype=np.uint8)
+            mm_path = Path(tmpdir) / "ref.dat"
+
+            mm = np.memmap(str(mm_path), dtype='uint8', mode='w+', shape=vol.shape)
+            mm[:] = vol[:]
+            mm.flush()
+            del mm
+
+            output_dir = Path(tmpdir) / "output"
+            output_dir.mkdir()
+
+            results = _worker_generate_batch(
+                memmap_path=str(mm_path),
+                atlas_shape=vol.shape,
+                atlas_dtype='uint8',
+                seeds=[42],
+                config_dict=config.model_dump(),
+                output_dir=str(output_dir),
+                ap_range=(0.0, float(vol.shape[0])),
+                reference_names=["nissl"],
+            )
+
+            assert len(results) == 1
+            _, metadata = results[0]
+            assert metadata["reference"] == "nissl"

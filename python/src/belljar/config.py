@@ -108,6 +108,10 @@ class DataGenerationConfig(BaseModel):
         description="Relative weights for stain mode selection during domain randomization.",
     )
     num_workers: int | None = Field(None, description="Parallel workers (None = cpu_count)")
+    reference_names: list[str] = Field(
+        default=["default", "nissl"],
+        description="List of atlas reference volumes for multi-modal training.",
+    )
 
 
 class TrainingConfig(BaseModel):

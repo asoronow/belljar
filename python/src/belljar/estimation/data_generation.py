@@ -429,24 +429,28 @@ def generate_single_sample(
 
 
 def _worker_generate_batch(
-    memmap_path: str,
+    memmap_path: str | list[str],
     atlas_shape: tuple[int, int, int],
-    atlas_dtype: str,
+    atlas_dtype: str | list[str],
     seeds: list[int],
     config_dict: dict,
     output_dir: str,
     ap_range: tuple[float, float],
+    reference_names: list[str] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Worker function for parallel generation. Reads atlas from shared memmap.
 
     Args:
-        memmap_path: Path to the memory-mapped atlas file.
+        memmap_path: Path(s) to the memory-mapped atlas file(s).
+            If a list, one per reference volume.
         atlas_shape: Shape of the atlas volume (Z, Y, X).
-        atlas_dtype: Numpy dtype string for the atlas.
+        atlas_dtype: Numpy dtype string(s) for the atlas.
+            If a list, one per reference volume.
         seeds: List of RNG seeds for each sample.
         config_dict: Serialized DataGenerationConfig.
         output_dir: Directory to write PNGs.
         ap_range: AP range for normalization.
+        reference_names: Names of references (parallel to memmap_path list).
 
     Returns:
         List of (filename_stem, metadata) tuples.
@@ -455,15 +459,30 @@ def _worker_generate_batch(
 
     config = DataGenerationConfig.model_validate(config_dict)
 
-    # Read atlas from shared memmap (read-only — no per-worker copy)
-    atlas_ref = np.memmap(memmap_path, dtype=atlas_dtype, mode="r", shape=atlas_shape)
+    # Load reference volumes from memmaps
+    if isinstance(memmap_path, list):
+        atlas_refs = [
+            np.memmap(p, dtype=d, mode="r", shape=atlas_shape)
+            for p, d in zip(memmap_path, atlas_dtype)
+        ]
+        ref_names = reference_names or [f"ref_{i}" for i in range(len(atlas_refs))]
+    else:
+        atlas_refs = [np.memmap(memmap_path, dtype=atlas_dtype, mode="r", shape=atlas_shape)]
+        ref_names = [reference_names[0] if reference_names else "default"]
 
     results: list[tuple[str, dict[str, Any]]] = []
     out_path = Path(output_dir)
 
     for seed in seeds:
         rng = np.random.default_rng(seed)
+
+        # Select reference volume randomly
+        ref_idx = rng.integers(0, len(atlas_refs))
+        atlas_ref = atlas_refs[ref_idx]
+        ref_name = ref_names[ref_idx]
+
         image, anchoring, metadata = generate_single_sample(atlas_ref, rng, config, ap_range)
+        metadata["reference"] = ref_name
 
         stem = f"S_{uuid4().hex[:12]}"
         filename = f"{stem}.png"
@@ -481,6 +500,7 @@ def generate_dataset(
     ap_range: tuple[float, float] | None = None,
     seed: int = 42,
     reference_name: str = "default",
+    reference_names: list[str] | None = None,
 ) -> Path:
     """Generate a full training dataset with parallel workers.
 
@@ -496,6 +516,9 @@ def generate_dataset(
         ap_range: AP range for normalization. If None, derived from atlas.
         seed: Master RNG seed for reproducibility.
         reference_name: Which reference volume to use (e.g. "default", "nissl").
+            Ignored if reference_names is provided.
+        reference_names: Multiple reference volumes. Workers randomly select
+            a reference per sample. If None, uses [reference_name].
 
     Returns:
         Path to the output directory.
@@ -506,44 +529,52 @@ def generate_dataset(
     if num_workers is None:
         num_workers = config.num_workers or min(os.cpu_count() or 1, 4)
 
+    # Resolve reference list
+    if reference_names is None:
+        reference_names = [reference_name]
+
     output_dir.mkdir(parents=True, exist_ok=True)
     num_samples = config.num_samples
     config_dict = config.model_dump()
 
-    # Load atlas ONCE in the main process
+    # Load atlas reference volumes
     from belljar.atlas.provider import AtlasProvider
 
-    provider = AtlasProvider(atlas_name, reference_name=reference_name)
-    atlas_ref = provider.reference
+    memmap_paths: list[str] = []
+    memmap_dtypes: list[str] = []
+    atlas_shape: tuple[int, int, int] | None = None
 
-    if ap_range is None:
-        ap_range = (0.0, float(atlas_ref.shape[0]))
+    for ref_name in reference_names:
+        provider = AtlasProvider(atlas_name, reference_name=ref_name)
+        atlas_ref = provider.reference
 
-    atlas_shape = atlas_ref.shape
-    atlas_dtype = str(atlas_ref.dtype)
-    atlas_mem_mb = atlas_ref.nbytes / (1024 * 1024)
-    logger.info(
-        "Atlas loaded: shape=%s, dtype=%s, size=%.0f MB",
-        atlas_shape,
-        atlas_dtype,
-        atlas_mem_mb,
-    )
+        if atlas_shape is None:
+            atlas_shape = atlas_ref.shape
+            if ap_range is None:
+                ap_range = (0.0, float(atlas_ref.shape[0]))
 
-    # Write atlas to a temp memmap file so workers can read it without
-    # each loading their own copy. The OS page cache ensures only one
-    # physical copy lives in RAM regardless of worker count.
-    with tempfile.NamedTemporaryFile(suffix=".dat", delete=False) as tmp:
-        memmap_path = tmp.name
+        atlas_mem_mb = atlas_ref.nbytes / (1024 * 1024)
+        logger.info(
+            "Atlas reference '%s' loaded: shape=%s, dtype=%s, size=%.0f MB",
+            ref_name, atlas_ref.shape, atlas_ref.dtype, atlas_mem_mb,
+        )
 
-    try:
-        mm = np.memmap(memmap_path, dtype=atlas_ref.dtype, mode="w+", shape=atlas_shape)
+        # Write to temp memmap
+        with tempfile.NamedTemporaryFile(suffix=f"_{ref_name}.dat", delete=False) as tmp:
+            mm_path = tmp.name
+        mm = np.memmap(mm_path, dtype=atlas_ref.dtype, mode="w+", shape=atlas_ref.shape)
         mm[:] = atlas_ref[:]
         mm.flush()
-        del mm  # close write handle; workers open read-only
+        del mm
 
-        # Free the main-process atlas copy now that the memmap is written
+        memmap_paths.append(mm_path)
+        memmap_dtypes.append(str(atlas_ref.dtype))
         del atlas_ref
 
+    assert atlas_shape is not None
+    assert ap_range is not None
+
+    try:
         # Generate unique seeds for reproducibility
         master_rng = np.random.default_rng(seed)
         all_seeds = master_rng.integers(0, 2**31, size=num_samples).tolist()
@@ -555,10 +586,8 @@ def generate_dataset(
         ]
 
         logger.info(
-            "Generating %d samples with %d workers in %s",
-            num_samples,
-            num_workers,
-            output_dir,
+            "Generating %d samples with %d workers (%d references) in %s",
+            num_samples, num_workers, len(reference_names), output_dir,
         )
 
         all_metadata: dict[str, dict[str, Any]] = {}
@@ -568,13 +597,14 @@ def generate_dataset(
             futures = [
                 executor.submit(
                     _worker_generate_batch,
-                    memmap_path,
+                    memmap_paths if len(memmap_paths) > 1 else memmap_paths[0],
                     atlas_shape,
-                    atlas_dtype,
+                    memmap_dtypes if len(memmap_dtypes) > 1 else memmap_dtypes[0],
                     batch,
                     config_dict,
                     str(output_dir),
                     ap_range,
+                    reference_names,
                 )
                 for batch in seed_batches
             ]
@@ -590,11 +620,12 @@ def generate_dataset(
                     logger.error("Worker failed: %s", e)
 
     finally:
-        # Clean up the temp memmap file
-        try:
-            os.unlink(memmap_path)
-        except OSError:
-            pass
+        # Clean up temp memmap files
+        for mm_path in memmap_paths:
+            try:
+                os.unlink(mm_path)
+            except OSError:
+                pass
 
     # Save metadata
     with open(output_dir / "metadata.pkl", "wb") as f:
