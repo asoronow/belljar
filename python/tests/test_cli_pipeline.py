@@ -29,7 +29,7 @@ def fake_model(tmp_path):
     """Create a minimal model checkpoint for testing."""
     from belljar.estimation.predictor import SliceEstimator
 
-    model = SliceEstimator(num_outputs=9, dropout_rate=0.2)
+    model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
     model_path = tmp_path / "test_model.pt"
     torch.save(
         {

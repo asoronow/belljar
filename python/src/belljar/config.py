@@ -124,15 +124,6 @@ class TrainingConfig(BaseModel):
     mixed_precision: bool = Field(True, description="Use AMP for GPU efficiency")
     checkpoint_every: int = Field(5, description="Save checkpoint every N epochs")
     early_stopping_patience: int = Field(10, description="Stop if val loss plateaus for N epochs")
-    use_learned_loss_weights: bool = Field(
-        True,
-        description="Use Kendall '18 learned multi-task uncertainty weights instead of fixed weights",
-    )
-    direction_cosine_weight: float = Field(
-        0.5,
-        ge=0.0,
-        description="Weight for cosine similarity loss on direction vectors (0 = disabled)",
-    )
     gcs_checkpoint_bucket: str | None = Field(
         None, description="GCS bucket URI for checkpoint upload (e.g. gs://my-bucket/checkpoints)"
     )

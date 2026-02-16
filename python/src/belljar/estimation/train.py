@@ -141,7 +141,11 @@ def train(
     logger.info("Dataset: %d train, %d val", n_train, n_val)
 
     # ── Model ────────────────────────────────────────────────────────────
-    model = SliceEstimator(num_outputs=9, dropout_rate=0.2).to(device)
+    model = SliceEstimator(
+        num_outputs=9,
+        dropout_rate=0.2,
+        orthogonalize=estimation_config.orthogonalize_directions,
+    ).to(device)
 
     # ── Optimizer + scheduler ────────────────────────────────────────────
     optimizer = torch.optim.AdamW(

@@ -8,12 +8,7 @@ import torch
 
 from belljar.config import EstimationConfig, TrainingConfig
 from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_model
-from belljar.estimation.train import (
-    ANCHORING_WEIGHTS,
-    AnchoringLossWithUncertainty,
-    anchoring_loss,
-    train,
-)
+from belljar.estimation.train import ANCHORING_WEIGHTS, anchoring_loss, train
 
 # Force CPU for tests — MPS has numerical instability with GradScaler/autocast
 _TEST_DEVICE = torch.device("cpu")

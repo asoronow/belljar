@@ -451,7 +451,10 @@ def load_model(
     if legacy:
         model = LegacySliceEstimator()
     else:
-        model = SliceEstimator(num_outputs=9)
+        model = SliceEstimator(
+            num_outputs=9,
+            orthogonalize=config.orthogonalize_directions,
+        )
 
     checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
 
