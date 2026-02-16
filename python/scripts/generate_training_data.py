@@ -97,14 +97,132 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _find_atlas_dir(atlas_name: str) -> Path:
+    """Locate the BrainGlobe atlas directory for the given atlas."""
+    bg_dir = Path.home() / ".brainglobe"
+    if not bg_dir.exists():
+        raise FileNotFoundError(f"BrainGlobe directory not found: {bg_dir}")
+    # BrainGlobe atlas dirs are named like allen_mouse_10um_v1.2
+    candidates = sorted(bg_dir.glob(f"{atlas_name}_v*"), reverse=True)
+    for p in candidates:
+        if p.is_dir() and (p / "metadata.json").exists():
+            return p
+    raise FileNotFoundError(
+        f"Could not find BrainGlobe atlas directory for '{atlas_name}' in {bg_dir}"
+    )
+
+
+def _ensure_nissl_installed(atlas_name: str) -> None:
+    """Download and install nissl.tiff into the BrainGlobe atlas dir if missing.
+
+    Downloads the Allen Institute ara_nissl_10.nrrd, converts to TIFF matching
+    the atlas orientation and shape, and registers it as an additional reference.
+    """
+    import json
+    import tempfile
+    from urllib.request import urlretrieve
+
+    atlas_dir = _find_atlas_dir(atlas_name)
+    tiff_path = atlas_dir / "nissl.tiff"
+
+    if tiff_path.exists():
+        logger.info("Nissl reference already installed: %s", tiff_path)
+        return
+
+    logger.info("Nissl reference not found. Downloading from Allen Institute...")
+
+    # Read expected shape from atlas metadata
+    meta_path = atlas_dir / "metadata.json"
+    with open(meta_path) as f:
+        metadata = json.load(f)
+    expected_shape = tuple(metadata["shape"])
+    logger.info("Expected volume shape: %s", expected_shape)
+
+    nissl_url = (
+        "https://download.alleninstitute.org/informatics-archive/"
+        "current-release/mouse_ccf/ara_nissl/ara_nissl_10.nrrd"
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        nrrd_path = Path(tmpdir) / "ara_nissl_10.nrrd"
+        logger.info("Downloading: %s", nissl_url)
+        urlretrieve(nissl_url, str(nrrd_path))
+        nrrd_mb = nrrd_path.stat().st_size / (1024 * 1024)
+        logger.info("Downloaded: %.0f MB", nrrd_mb)
+
+        # Convert NRRD -> TIFF with orientation matching
+        import SimpleITK as sitk
+        import numpy as np
+        import tifffile
+
+        img = sitk.ReadImage(str(nrrd_path))
+        arr = sitk.GetArrayFromImage(img)
+        logger.info("NRRD shape: %s, dtype: %s", arr.shape, arr.dtype)
+
+        if arr.shape != expected_shape:
+            logger.info("Shape mismatch: got %s, expected %s. Reorienting...", arr.shape, expected_shape)
+            for axes in [(0, 1, 2), (2, 1, 0), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1)]:
+                candidate = np.transpose(arr, axes)
+                if candidate.shape == expected_shape:
+                    arr = candidate
+                    logger.info("Reoriented with axes=%s -> shape %s", axes, arr.shape)
+                    break
+            else:
+                img_reoriented = sitk.DICOMOrient(img, "ASR")
+                arr = sitk.GetArrayFromImage(img_reoriented)
+                if arr.shape != expected_shape:
+                    logger.warning(
+                        "After reorientation, shape is %s (expected %s). May need manual inspection.",
+                        arr.shape, expected_shape,
+                    )
+
+        if arr.dtype != np.uint16:
+            if arr.max() > 65535:
+                arr = (arr / arr.max() * 65535).astype(np.uint16)
+            else:
+                arr = arr.astype(np.uint16)
+
+        logger.info("Writing TIFF: %s (shape=%s, dtype=%s)", tiff_path, arr.shape, arr.dtype)
+        tifffile.imwrite(str(tiff_path), arr)
+
+    # Update metadata.json to register nissl as additional reference
+    with open(meta_path) as f:
+        metadata = json.load(f)
+    refs = metadata.get("additional_references", [])
+    if "nissl" not in refs:
+        refs.append("nissl")
+        metadata["additional_references"] = refs
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        logger.info("Updated metadata.json: additional_references=%s", refs)
+
+    tiff_mb = tiff_path.stat().st_size / (1024 * 1024)
+    logger.info("Nissl reference installed: %s (%.0f MB)", tiff_path, tiff_mb)
+
+
 def ensure_atlas(atlas_name: str, reference_name: str = "default") -> None:
     """Pre-download the atlas so workers don't race on first load."""
     from belljar.atlas.provider import AtlasProvider
 
     logger.info("Pre-caching atlas: %s (reference: %s)", atlas_name, reference_name)
+
+    # First ensure the base atlas is downloaded
+    base_provider = AtlasProvider(atlas_name)
+    _ = base_provider.reference
+    logger.info("Base atlas cached. Shape: %s", base_provider.shape)
+
+    if reference_name == "default":
+        return
+
+    # If nissl is requested, auto-fetch it if not already installed
+    if reference_name == "nissl":
+        _ensure_nissl_installed(atlas_name)
+
+    # Re-create provider so BrainGlobe picks up the newly added
+    # nissl.tiff and updated metadata.json
     provider = AtlasProvider(atlas_name, reference_name=reference_name)
-    _ = provider.reference  # triggers download if not cached
-    logger.info("Atlas cached. Shape: %s", provider.shape)
+    _ = provider.reference
+    logger.info("Atlas cached with reference '%s'. Shape: %s", reference_name, provider.shape)
 
 
 def get_dir_size_mb(path: Path) -> float:

@@ -110,6 +110,28 @@ class DataGenerationConfig(BaseModel):
     num_workers: int | None = Field(None, description="Parallel workers (None = cpu_count)")
 
 
+class TrainingConfig(BaseModel):
+    """Configuration for model training."""
+
+    batch_size: int = Field(128, description="Training batch size")
+    num_epochs: int = Field(50, description="Maximum training epochs")
+    learning_rate: float = Field(1e-3, description="Initial learning rate for AdamW")
+    weight_decay: float = Field(1e-4, description="AdamW weight decay")
+    warmup_epochs: int = Field(5, description="Linear warmup epochs before cosine decay")
+    min_lr: float = Field(1e-6, description="Minimum LR for cosine annealing")
+    val_fraction: float = Field(0.05, ge=0.0, lt=1.0, description="Fraction of data for validation")
+    num_workers: int = Field(4, description="DataLoader workers")
+    mixed_precision: bool = Field(True, description="Use AMP for GPU efficiency")
+    checkpoint_every: int = Field(5, description="Save checkpoint every N epochs")
+    early_stopping_patience: int = Field(10, description="Stop if val loss plateaus for N epochs")
+    gcs_checkpoint_bucket: str | None = Field(
+        None, description="GCS bucket URI for checkpoint upload (e.g. gs://my-bucket/checkpoints)"
+    )
+    wandb_project: str = Field("belljar-estimator", description="Weights & Biases project name")
+    wandb_entity: str | None = Field(None, description="W&B entity/team (None = personal)")
+    seed: int = Field(42, description="Training RNG seed")
+
+
 class EstimationConfig(BaseModel):
     """Configuration for slice position estimation."""
 
@@ -133,6 +155,7 @@ class BelljarConfig(BaseModel):
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     atlas: AtlasConfig = Field(default_factory=AtlasConfig)
     estimation: EstimationConfig = Field(default_factory=EstimationConfig)
+    training: TrainingConfig = Field(default_factory=TrainingConfig)
     home_dir: Path = Field(
         default_factory=lambda: Path.home() / ".belljar",
         description="Belljar home directory for models, atlases, and logs.",

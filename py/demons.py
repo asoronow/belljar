@@ -255,12 +255,21 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     label = resize_image_nearest_neighbor(label, (360, 360))
     fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
     
-    for i in range(section_resized.shape[0]):
-        for j in range(section_resized.shape[1]):
-            if "layer 4" in structure_map[label[i, j]]["name"].lower():
-                section_resized[i, j] = min(section_resized[i, j] + 15, 255)
-            elif "layer 5" in structure_map[label[i, j]]["name"].lower():
-                section_resized[i, j] = max(section_resized[i, j] - 7, 0)
+    # Vectorized layer-specific intensity adjustment
+    label_flat = label.ravel()
+    section_flat = section_resized.ravel().astype(np.int16)
+    layer4_mask = np.zeros(label_flat.shape, dtype=bool)
+    layer5_mask = np.zeros(label_flat.shape, dtype=bool)
+    for region_id, info in structure_map.items():
+        name_lower = info["name"].lower()
+        region_mask = label_flat == region_id
+        if "layer 4" in name_lower:
+            layer4_mask |= region_mask
+        elif "layer 5" in name_lower:
+            layer5_mask |= region_mask
+    section_flat[layer4_mask] = np.clip(section_flat[layer4_mask] + 15, 0, 255)
+    section_flat[layer5_mask] = np.clip(section_flat[layer5_mask] - 7, 0, 255)
+    section_resized = section_flat.reshape(section_resized.shape).astype(np.uint8)
 
 
     moving = sitk.GetImageFromArray(section_resized, isVector=False)
@@ -284,14 +293,11 @@ def register_to_atlas(tissue, section, label, structure_map_path):
         (resampled_label.GetSize()[1], resampled_label.GetSize()[0], 3), dtype=np.uint8
     )
 
-    for i in range(resampled_label.GetSize()[1]):
-        for j in range(resampled_label.GetSize()[0]):
-            try:
-                color_label[i, j, :] = structure_map[resampled_label.GetPixel(j, i)][
-                    "color"
-                ]
-            except:
-                pass
+    label_array = sitk.GetArrayFromImage(resampled_label)
+    for region_id, info in structure_map.items():
+        mask = label_array == region_id
+        if np.any(mask):
+            color_label[mask] = info["color"]
    
    # conver color label to cv2
     color_label = cv2.cvtColor(color_label, cv2.COLOR_RGB2BGR)

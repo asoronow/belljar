@@ -1026,6 +1026,6 @@ if __name__ == "__main__":
         model_path=args.model.strip(),
         sam_path=args.sam.strip(),
         spacing=args.spacing if args.spacing else None,
-        is_whole=eval(args.whole),
-        use_legacy=eval(args.legacy),
+        is_whole=args.whole.strip().lower() == "true",
+        use_legacy=args.legacy.strip().lower() == "true",
     )
