@@ -8,7 +8,13 @@ import torch
 
 from belljar.config import EstimationConfig, TrainingConfig
 from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_model
-from belljar.estimation.train import ANCHORING_WEIGHTS, _mixup_batch, anchoring_loss, train
+from belljar.estimation.train import (
+    ANCHORING_WEIGHTS,
+    _compute_sample_weights,
+    _mixup_batch,
+    anchoring_loss,
+    train,
+)
 
 # Force CPU for tests — MPS has numerical instability with GradScaler/autocast
 _TEST_DEVICE = torch.device("cpu")
@@ -268,6 +274,76 @@ class TestMixUpAugmentation:
         # Some samples should have intermediate values
         unique_vals = img_mixed.unique()
         assert len(unique_vals) > 2  # More than just the original two values
+
+
+# ---------------------------------------------------------------------------
+# Hard negative mining tests
+# ---------------------------------------------------------------------------
+
+
+class TestHardNegativeMining:
+    def test_compute_sample_weights_shape(self, small_training_data):
+        """_compute_sample_weights should return weights for every sample."""
+        from torchvision import transforms
+        from belljar.estimation.dataset import AngledAtlasDataset
+
+        tx = transforms.Compose([transforms.ToTensor()])
+        dataset = AngledAtlasDataset(small_training_data, transform=tx, output_format="anchoring")
+
+        model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
+        model.eval()
+
+        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+        assert len(weights) == len(dataset)
+
+    def test_hard_samples_get_higher_weight(self, small_training_data):
+        """Top fraction samples should have weight 3.0, rest should have 1.0."""
+        from torchvision import transforms
+        from belljar.estimation.dataset import AngledAtlasDataset
+
+        tx = transforms.Compose([transforms.ToTensor()])
+        dataset = AngledAtlasDataset(small_training_data, transform=tx, output_format="anchoring")
+
+        model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
+        model.eval()
+
+        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+
+        # Should have exactly two weight values: 1.0 and 3.0
+        unique_weights = set(weights)
+        assert unique_weights == {1.0, 3.0}
+
+        # Top 20% should be upweighted
+        n_hard = sum(1 for w in weights if w == 3.0)
+        expected_hard = max(1, int(len(dataset) * 0.2))
+        assert abs(n_hard - expected_hard) <= 1  # Allow for rounding
+
+    def test_train_with_hard_negative_mining(self, small_training_data, tmp_path):
+        """Training with hard_negative_mining=True should complete successfully."""
+        output_dir = tmp_path / "output"
+        config = TrainingConfig(
+            batch_size=16,
+            num_epochs=2,
+            learning_rate=1e-3,
+            warmup_epochs=1,
+            val_fraction=0.2,
+            num_workers=0,
+            mixed_precision=False,
+            checkpoint_every=10,
+            early_stopping_patience=100,
+            hard_negative_mining=True,
+            hard_negative_top_fraction=0.2,
+        )
+
+        best_path = train(
+            data_dir=small_training_data,
+            config=config,
+            estimation_config=EstimationConfig(),
+            output_dir=output_dir,
+            device=_TEST_DEVICE,
+        )
+
+        assert best_path.exists()
 
 
 # ---------------------------------------------------------------------------

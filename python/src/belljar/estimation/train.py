@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, WeightedRandomSampler, random_split
 from torchvision import transforms
 
 from belljar.config import EstimationConfig, TrainingConfig
@@ -93,6 +93,52 @@ def _mixup_batch(
     images_mix = lam * images + (1.0 - lam) * images[perm]
     labels_mix = lam * labels + (1.0 - lam) * labels[perm]
     return images_mix, labels_mix
+
+
+def _compute_sample_weights(
+    model: nn.Module,
+    dataset: torch.utils.data.Dataset,
+    device: torch.device,
+    top_fraction: float,
+    batch_size: int,
+) -> list[float]:
+    """Compute per-sample weights for hard negative mining.
+
+    Runs inference on the full training set, records per-sample loss,
+    then assigns weight 3.0 to the top ``top_fraction`` highest-loss
+    samples and 1.0 to the rest.
+
+    Args:
+        model: Trained model (set to eval mode internally).
+        dataset: Training dataset.
+        device: Compute device.
+        top_fraction: Fraction of hardest samples to upweight.
+        batch_size: Batch size for inference.
+
+    Returns:
+        List of per-sample weights (length = len(dataset)).
+    """
+    model.eval()
+    weights_tensor = ANCHORING_WEIGHTS.to(device)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+
+    per_sample_losses: list[float] = []
+    with torch.no_grad():
+        for images, labels in loader:
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
+            preds = model(images)
+            # Per-sample weighted MSE (mean over 9 components, not batch)
+            sample_losses = (weights_tensor * (preds - labels) ** 2).mean(dim=1)
+            per_sample_losses.extend(sample_losses.cpu().tolist())
+
+    model.train()
+
+    # Threshold: top_fraction get weight 3.0, rest get 1.0
+    n_hard = max(1, int(len(per_sample_losses) * top_fraction))
+    threshold = sorted(per_sample_losses, reverse=True)[min(n_hard - 1, len(per_sample_losses) - 1)]
+    sample_weights = [3.0 if loss >= threshold else 1.0 for loss in per_sample_losses]
+    return sample_weights
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +346,27 @@ def train(
                 periodic_path, model, optimizer, scheduler, epoch + 1,
                 val_loss, val_metrics, estimation_config, config,
             )
+
+        # ── Hard negative mining ──────────────────────────────────────
+        if config.hard_negative_mining and epoch < config.num_epochs - 1:
+            sample_weights = _compute_sample_weights(
+                model, train_dataset, device,
+                top_fraction=config.hard_negative_top_fraction,
+                batch_size=config.batch_size,
+            )
+            sampler = WeightedRandomSampler(
+                sample_weights, num_samples=len(sample_weights), replacement=True,
+            )
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=config.batch_size,
+                sampler=sampler,
+                num_workers=config.num_workers,
+                pin_memory=use_pin_memory,
+                persistent_workers=config.num_workers > 0,
+            )
+            n_hard = sum(1 for w in sample_weights if w > 1.0)
+            logger.info("Hard negative mining: %d/%d samples upweighted", n_hard, len(sample_weights))
 
         # ── Early stopping ───────────────────────────────────────────
         if patience_counter >= config.early_stopping_patience:

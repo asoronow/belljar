@@ -138,6 +138,14 @@ class TrainingConfig(BaseModel):
         0.2,
         description="MixUp augmentation parameter (0 = disabled, 0.2 = light, 0.4 = moderate).",
     )
+    hard_negative_mining: bool = Field(
+        False,
+        description="Enable hard negative mining (oversample high-loss samples).",
+    )
+    hard_negative_top_fraction: float = Field(
+        0.2,
+        description="Fraction of hardest samples to upweight (3x) during hard negative mining.",
+    )
 
 
 class EstimationConfig(BaseModel):
