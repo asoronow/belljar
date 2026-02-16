@@ -7,8 +7,13 @@ import pytest
 import torch
 
 from belljar.config import EstimationConfig, TrainingConfig
-from belljar.estimation.predictor import SliceEstimator, load_model
-from belljar.estimation.train import ANCHORING_WEIGHTS, anchoring_loss, train
+from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_model
+from belljar.estimation.train import (
+    ANCHORING_WEIGHTS,
+    AnchoringLossWithUncertainty,
+    anchoring_loss,
+    train,
+)
 
 # Force CPU for tests — MPS has numerical instability with GradScaler/autocast
 _TEST_DEVICE = torch.device("cpu")
@@ -228,3 +233,39 @@ class TestTrainLoop:
         assert "u_mae" in metrics
         assert "v_mae" in metrics
         assert all(isinstance(v, float) for v in metrics.values())
+
+
+# ---------------------------------------------------------------------------
+# Gram-Schmidt orthogonalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestGramSchmidt:
+    def test_output_orthogonal(self):
+        """u and v output vectors should be orthogonal (dot product ~0)."""
+        raw = torch.randn(16, 6)
+        result = gram_schmidt_6d(raw)
+        u = result[:, :3]
+        v = result[:, 3:]
+        dot = (u * v).sum(dim=-1)
+        assert torch.allclose(dot, torch.zeros(16), atol=1e-6)
+
+    def test_output_unit_length(self):
+        """u and v output vectors should each have unit length."""
+        raw = torch.randn(16, 6)
+        result = gram_schmidt_6d(raw)
+        u = result[:, :3]
+        v = result[:, 3:]
+        u_norm = torch.linalg.norm(u, dim=-1)
+        v_norm = torch.linalg.norm(v, dim=-1)
+        assert torch.allclose(u_norm, torch.ones(16), atol=1e-6)
+        assert torch.allclose(v_norm, torch.ones(16), atol=1e-6)
+
+    def test_gradient_flow(self):
+        """Gradients should flow through gram_schmidt_6d."""
+        raw = torch.randn(4, 6, requires_grad=True)
+        result = gram_schmidt_6d(raw)
+        loss = result.sum()
+        loss.backward()
+        assert raw.grad is not None
+        assert not torch.all(raw.grad == 0)

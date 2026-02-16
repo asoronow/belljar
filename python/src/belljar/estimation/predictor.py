@@ -36,6 +36,35 @@ from belljar.config import EstimationConfig
 logger = logging.getLogger(__name__)
 
 
+def gram_schmidt_6d(raw: torch.Tensor) -> torch.Tensor:
+    """Project 6D raw direction vectors onto SO(3) via Gram-Schmidt.
+
+    Takes a (B, 6) tensor of raw u and v direction vectors and returns
+    orthonormal u, v vectors. This is differentiable and avoids the
+    singularities of Euler angles or quaternion normalization.
+
+    Reference: Zhou et al., "On the Continuity of Rotation Representations
+    in Neural Networks" (CVPR 2019).
+
+    Args:
+        raw: Tensor of shape (B, 6) — first 3 = u_raw, last 3 = v_raw.
+
+    Returns:
+        Tensor of shape (B, 6) with orthonormal u and v vectors.
+    """
+    u_raw = raw[:, :3]
+    v_raw = raw[:, 3:]
+
+    # Normalize u
+    u = F.normalize(u_raw, dim=-1)
+
+    # Remove the component of v along u, then normalize
+    v_proj = (v_raw * u).sum(dim=-1, keepdim=True) * u
+    v = F.normalize(v_raw - v_proj, dim=-1)
+
+    return torch.cat([u, v], dim=-1)
+
+
 class SliceEstimator(nn.Module):
     """Pretrained ResNet50 backbone for slice position estimation.
 
@@ -43,8 +72,14 @@ class SliceEstimator(nn.Module):
     Uses MC Dropout for uncertainty estimation during inference.
     """
 
-    def __init__(self, num_outputs: int = 9, dropout_rate: float = 0.2) -> None:
+    def __init__(
+        self,
+        num_outputs: int = 9,
+        dropout_rate: float = 0.2,
+        orthogonalize: bool = True,
+    ) -> None:
         super().__init__()
+        self.orthogonalize = orthogonalize
         # Load pretrained ResNet50 (or use default weights=None for training from scratch)
         backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
 
@@ -84,6 +119,12 @@ class SliceEstimator(nn.Module):
         x = torch.flatten(x, 1)
         x = self.dropout(x)
         x = self.fc(x)
+
+        if self.orthogonalize:
+            origin = x[:, :3]
+            dirs = x[:, 3:]
+            dirs = gram_schmidt_6d(dirs)
+            x = torch.cat([origin, dirs], dim=-1)
 
         return x
 
