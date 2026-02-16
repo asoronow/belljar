@@ -63,6 +63,39 @@ def anchoring_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
+# Data augmentation
+# ---------------------------------------------------------------------------
+
+
+def _mixup_batch(
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply MixUp augmentation to a batch.
+
+    Linearly interpolates random pairs of samples using a Beta-distributed
+    mixing coefficient. When alpha <= 0, returns inputs unchanged.
+
+    Args:
+        images: Batch of images, shape (B, C, H, W).
+        labels: Batch of labels, shape (B, D).
+        alpha: Beta distribution parameter. Higher = more mixing.
+
+    Returns:
+        Tuple of (mixed_images, mixed_labels).
+    """
+    if alpha <= 0.0:
+        return images, labels
+
+    lam = float(torch.distributions.Beta(alpha, alpha).sample())
+    perm = torch.randperm(images.size(0), device=images.device)
+    images_mix = lam * images + (1.0 - lam) * images[perm]
+    labels_mix = lam * labels + (1.0 - lam) * labels[perm]
+    return images_mix, labels_mix
+
+
+# ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
 
@@ -200,6 +233,8 @@ def train(
         for images, labels in train_loader:
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
+
+            images, labels = _mixup_batch(images, labels, config.mixup_alpha)
 
             optimizer.zero_grad(set_to_none=True)
 

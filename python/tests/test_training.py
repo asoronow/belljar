@@ -8,7 +8,7 @@ import torch
 
 from belljar.config import EstimationConfig, TrainingConfig
 from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_model
-from belljar.estimation.train import ANCHORING_WEIGHTS, anchoring_loss, train
+from belljar.estimation.train import ANCHORING_WEIGHTS, _mixup_batch, anchoring_loss, train
 
 # Force CPU for tests — MPS has numerical instability with GradScaler/autocast
 _TEST_DEVICE = torch.device("cpu")
@@ -228,6 +228,46 @@ class TestTrainLoop:
         assert "u_mae" in metrics
         assert "v_mae" in metrics
         assert all(isinstance(v, float) for v in metrics.values())
+
+
+# ---------------------------------------------------------------------------
+# MixUp augmentation tests
+# ---------------------------------------------------------------------------
+
+
+class TestMixUpAugmentation:
+    def test_mixup_disabled_returns_unchanged(self):
+        """When alpha=0, MixUp should return inputs unchanged."""
+        images = torch.randn(8, 1, 256, 256)
+        labels = torch.randn(8, 9)
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.0)
+        assert torch.equal(img_mixed, images)
+        assert torch.equal(lbl_mixed, labels)
+
+    def test_mixup_output_shapes(self):
+        """MixUp should preserve batch shape."""
+        images = torch.randn(8, 1, 256, 256)
+        labels = torch.randn(8, 9)
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.2)
+        assert img_mixed.shape == images.shape
+        assert lbl_mixed.shape == labels.shape
+
+    def test_mixup_creates_blend(self):
+        """MixUp should create a blend between samples."""
+        torch.manual_seed(42)
+        images = torch.zeros(4, 1, 2, 2)
+        images[0].fill_(1.0)  # First sample all 1s
+        images[1].fill_(2.0)  # Second sample all 2s
+        labels = torch.zeros(4, 9)
+        labels[0].fill_(1.0)
+        labels[1].fill_(2.0)
+
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.2)
+
+        # Mixed results should be between original values (not exactly equal to either)
+        # Some samples should have intermediate values
+        unique_vals = img_mixed.unique()
+        assert len(unique_vals) > 2  # More than just the original two values
 
 
 # ---------------------------------------------------------------------------

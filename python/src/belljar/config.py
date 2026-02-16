@@ -130,6 +130,10 @@ class TrainingConfig(BaseModel):
     wandb_project: str = Field("belljar-estimator", description="Weights & Biases project name")
     wandb_entity: str | None = Field(None, description="W&B entity/team (None = personal)")
     seed: int = Field(42, description="Training RNG seed")
+    mixup_alpha: float = Field(
+        0.2,
+        description="MixUp augmentation parameter (0 = disabled, 0.2 = light, 0.4 = moderate).",
+    )
 
 
 class EstimationConfig(BaseModel):
