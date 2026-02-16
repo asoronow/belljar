@@ -19,6 +19,7 @@ from belljar.config import BelljarConfig
 from belljar.estimation.model_manager import ensure_model
 from belljar.estimation.postprocess import (
     denormalize_predictions,
+    enforce_orthogonality,
     integrate_angles,
     regularize_spacing,
 )
@@ -136,10 +137,11 @@ class EstimateStep(PipelineStep):
                 warnings=warnings,
             )
 
-        # Postprocess: denormalize → smooth angles → regularize spacing
+        # Postprocess: denormalize → smooth angles → regularize spacing → orthogonalize
         predictions = denormalize_predictions(predictions)
         predictions = integrate_angles(predictions)
-        predictions = regularize_spacing(predictions)
+        predictions = regularize_spacing(predictions, method="ransac")
+        predictions = enforce_orthogonality(predictions)
 
         # Build alignments list for downstream steps
         alignments = []

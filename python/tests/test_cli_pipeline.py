@@ -240,6 +240,191 @@ class TestEstimateStep:
 
 
 # ---------------------------------------------------------------------------
+# Postprocessing tests (E1, E2, E3)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceWeightedIntegration:
+    """Tests for confidence-weighted angle integration (E1)."""
+
+    def _make_predictions(self, x_angles, y_angles):
+        return [
+            {"x_angle": x, "y_angle": y, "z_position": float(i * 5)}
+            for i, (x, y) in enumerate(zip(x_angles, y_angles))
+        ]
+
+    def test_high_uncertainty_adjusted_more(self):
+        """Sections with high uncertainty should be pulled toward neighbors."""
+        from belljar.estimation.postprocess import integrate_angles
+
+        # 10 sections: all near 2.0 degrees except index 5 which is an outlier
+        x_angles = [2.0] * 10
+        y_angles = [2.0] * 10
+        x_angles[5] = 10.0  # outlier
+        y_angles[5] = 10.0
+
+        preds = self._make_predictions(x_angles, y_angles)
+
+        # High uncertainty on the outlier, low on others
+        uncertainties = [0.1] * 10
+        uncertainties[5] = 10.0  # very uncertain
+
+        result = integrate_angles(preds, window_size=5, uncertainties=uncertainties)
+
+        # The outlier's angle should be pulled substantially toward 2.0
+        assert result[5]["x_angle"] < 5.0, (
+            f"Expected outlier x_angle < 5.0, got {result[5]['x_angle']}"
+        )
+        assert result[5]["y_angle"] < 5.0, (
+            f"Expected outlier y_angle < 5.0, got {result[5]['y_angle']}"
+        )
+
+    def test_no_uncertainty_falls_back(self):
+        """When uncertainties=None, result should match rolling median."""
+        from belljar.estimation.postprocess import integrate_angles
+
+        x_angles = [1.0, 2.0, 3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0, 2.0]
+        y_angles = [0.5, 1.0, 1.5, 1.0, 0.5, 1.0, 1.5, 1.0, 0.5, 1.0]
+        preds = self._make_predictions(x_angles, y_angles)
+
+        result_none = integrate_angles(preds, window_size=5, uncertainties=None)
+        result_default = integrate_angles(preds, window_size=5)
+
+        for a, b in zip(result_none, result_default):
+            assert a["x_angle"] == pytest.approx(b["x_angle"])
+            assert a["y_angle"] == pytest.approx(b["y_angle"])
+
+
+class TestRANSACSpacing:
+    """Tests for RANSAC spacing regularization (E2)."""
+
+    def test_outlier_corrected(self):
+        """RANSAC should correct a single large outlier better than linear blend."""
+        from belljar.estimation.postprocess import regularize_spacing
+
+        # 20 sections with expected 5-slice spacing, one massive outlier
+        n = 20
+        preds = []
+        for i in range(n):
+            z = 100.0 + i * 5.0
+            preds.append({"z_position": z, "section_name": f"s{i:03d}"})
+
+        # Inject outlier at index 10 (off by 100 slices)
+        preds[10]["z_position"] = 100.0 + 10 * 5.0 + 100.0
+
+        # RANSAC should correct the outlier substantially
+        result_ransac = regularize_spacing(preds, method="ransac")
+        expected_z = 100.0 + 10 * 5.0  # what it should be
+
+        ransac_error = abs(result_ransac[10]["z_position"] - expected_z)
+        assert ransac_error < 10.0, (
+            f"RANSAC error {ransac_error} should be < 10 for a 100-slice outlier"
+        )
+
+        # Linear blend only halves the error (alpha=0.5 blend)
+        result_linear = regularize_spacing(preds, method="linear")
+        linear_error = abs(result_linear[10]["z_position"] - expected_z)
+        assert ransac_error < linear_error, (
+            "RANSAC should correct outlier better than linear blend"
+        )
+
+    def test_preserves_raw_position(self):
+        """Regularized output should preserve z_position_raw."""
+        from belljar.estimation.postprocess import regularize_spacing
+
+        preds = [
+            {"z_position": float(i * 5), "section_name": f"s{i}"}
+            for i in range(10)
+        ]
+        result = regularize_spacing(preds, method="ransac")
+        for i, r in enumerate(result):
+            assert r["z_position_raw"] == float(i * 5)
+
+
+class TestOrthogonalityEnforcement:
+    """Tests for orthogonality enforcement via numpy Gram-Schmidt (E3)."""
+
+    def test_nonorthogonal_input_becomes_orthogonal(self):
+        """u . v should be approximately 0 after enforcement."""
+        from belljar.estimation.postprocess import enforce_orthogonality
+
+        # u and v are NOT orthogonal (dot product != 0)
+        preds = [
+            {
+                "anchoring_vectors": {
+                    "ox": 0.5, "oy": 0.5, "oz": 0.3,
+                    "ux": 1.0, "uy": 0.5, "uz": 0.0,
+                    "vx": 0.5, "vy": 1.0, "vz": 0.2,
+                },
+                "z_position": 100.0,
+            }
+        ]
+
+        result = enforce_orthogonality(preds)
+        av = result[0]["anchoring_vectors"]
+        u = np.array([av["ux"], av["uy"], av["uz"]])
+        v = np.array([av["vx"], av["vy"], av["vz"]])
+
+        dot = np.dot(u, v)
+        assert abs(dot) < 1e-7, f"u . v = {dot}, expected ~0"
+
+    def test_unit_length(self):
+        """|u| and |v| should be approximately 1 after enforcement."""
+        from belljar.estimation.postprocess import enforce_orthogonality
+
+        preds = [
+            {
+                "anchoring_vectors": {
+                    "ox": 0.5, "oy": 0.5, "oz": 0.3,
+                    "ux": 3.0, "uy": 0.0, "uz": 0.0,
+                    "vx": 0.0, "vy": 2.0, "vz": 1.0,
+                },
+                "z_position": 100.0,
+            }
+        ]
+
+        result = enforce_orthogonality(preds)
+        av = result[0]["anchoring_vectors"]
+        u = np.array([av["ux"], av["uy"], av["uz"]])
+        v = np.array([av["vx"], av["vy"], av["vz"]])
+
+        assert abs(np.linalg.norm(u) - 1.0) < 1e-7, (
+            f"|u| = {np.linalg.norm(u)}, expected 1.0"
+        )
+        assert abs(np.linalg.norm(v) - 1.0) < 1e-7, (
+            f"|v| = {np.linalg.norm(v)}, expected 1.0"
+        )
+
+    def test_flat_anchoring_format(self):
+        """Should also handle flat 9-element 'anchoring' list."""
+        from belljar.estimation.postprocess import enforce_orthogonality
+
+        preds = [
+            {
+                "anchoring": [0.5, 0.5, 0.3, 1.0, 0.5, 0.0, 0.5, 1.0, 0.2],
+                "z_position": 100.0,
+            }
+        ]
+
+        result = enforce_orthogonality(preds)
+        a = result[0]["anchoring"]
+        u = np.array(a[3:6])
+        v = np.array(a[6:9])
+
+        assert abs(np.dot(u, v)) < 1e-7
+        assert abs(np.linalg.norm(u) - 1.0) < 1e-7
+        assert abs(np.linalg.norm(v) - 1.0) < 1e-7
+
+    def test_no_anchoring_passes_through(self):
+        """Predictions without anchoring data should be unmodified."""
+        from belljar.estimation.postprocess import enforce_orthogonality
+
+        preds = [{"z_position": 100.0, "x_angle": 2.0}]
+        result = enforce_orthogonality(preds)
+        assert result[0] == preds[0]
+
+
+# ---------------------------------------------------------------------------
 # Server integration tests
 # ---------------------------------------------------------------------------
 
