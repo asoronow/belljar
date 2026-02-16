@@ -11,6 +11,8 @@ from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_m
 from belljar.estimation.train import (
     ANCHORING_WEIGHTS,
     AnchoringLossWithUncertainty,
+    _compute_sample_weights,
+    _mixup_batch,
     anchoring_loss,
     geodesic_rotation_loss,
     train,
@@ -424,6 +426,116 @@ class TestTrainLoop:
         assert "u_mae" in metrics
         assert "v_mae" in metrics
         assert all(isinstance(v, float) for v in metrics.values())
+
+
+# ---------------------------------------------------------------------------
+# MixUp augmentation tests
+# ---------------------------------------------------------------------------
+
+
+class TestMixUpAugmentation:
+    def test_mixup_disabled_returns_unchanged(self):
+        """When alpha=0, MixUp should return inputs unchanged."""
+        images = torch.randn(8, 1, 256, 256)
+        labels = torch.randn(8, 9)
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.0)
+        assert torch.equal(img_mixed, images)
+        assert torch.equal(lbl_mixed, labels)
+
+    def test_mixup_output_shapes(self):
+        """MixUp should preserve batch shape."""
+        images = torch.randn(8, 1, 256, 256)
+        labels = torch.randn(8, 9)
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.2)
+        assert img_mixed.shape == images.shape
+        assert lbl_mixed.shape == labels.shape
+
+    def test_mixup_creates_blend(self):
+        """MixUp should create a blend between samples."""
+        torch.manual_seed(42)
+        images = torch.zeros(4, 1, 2, 2)
+        images[0].fill_(1.0)  # First sample all 1s
+        images[1].fill_(2.0)  # Second sample all 2s
+        labels = torch.zeros(4, 9)
+        labels[0].fill_(1.0)
+        labels[1].fill_(2.0)
+
+        img_mixed, lbl_mixed = _mixup_batch(images, labels, alpha=0.2)
+
+        # Mixed results should be between original values (not exactly equal to either)
+        # Some samples should have intermediate values
+        unique_vals = img_mixed.unique()
+        assert len(unique_vals) > 2  # More than just the original two values
+
+
+# ---------------------------------------------------------------------------
+# Hard negative mining tests
+# ---------------------------------------------------------------------------
+
+
+class TestHardNegativeMining:
+    def test_compute_sample_weights_shape(self, small_training_data):
+        """_compute_sample_weights should return weights for every sample."""
+        from torchvision import transforms
+        from belljar.estimation.dataset import AngledAtlasDataset
+
+        tx = transforms.Compose([transforms.ToTensor()])
+        dataset = AngledAtlasDataset(small_training_data, transform=tx, output_format="anchoring")
+
+        model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
+        model.eval()
+
+        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+        assert len(weights) == len(dataset)
+
+    def test_hard_samples_get_higher_weight(self, small_training_data):
+        """Top fraction samples should have weight 3.0, rest should have 1.0."""
+        from torchvision import transforms
+        from belljar.estimation.dataset import AngledAtlasDataset
+
+        tx = transforms.Compose([transforms.ToTensor()])
+        dataset = AngledAtlasDataset(small_training_data, transform=tx, output_format="anchoring")
+
+        model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
+        model.eval()
+
+        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+
+        # Should have exactly two weight values: 1.0 and 3.0
+        unique_weights = set(weights)
+        assert unique_weights == {1.0, 3.0}
+
+        # Top 20% should be upweighted
+        n_hard = sum(1 for w in weights if w == 3.0)
+        expected_hard = max(1, int(len(dataset) * 0.2))
+        assert abs(n_hard - expected_hard) <= 1  # Allow for rounding
+
+    def test_train_with_hard_negative_mining(self, small_training_data, tmp_path):
+        """Training with hard_negative_mining=True should complete successfully."""
+        output_dir = tmp_path / "output"
+        config = TrainingConfig(
+            batch_size=16,
+            num_epochs=2,
+            learning_rate=1e-3,
+            warmup_epochs=1,
+            val_fraction=0.2,
+            num_workers=0,
+            mixed_precision=False,
+            checkpoint_every=10,
+            early_stopping_patience=100,
+            hard_negative_mining=True,
+            hard_negative_top_fraction=0.2,
+        )
+
+        best_path = train(
+            data_dir=small_training_data,
+            config=config,
+            estimation_config=EstimationConfig(),
+            output_dir=output_dir,
+            device=_TEST_DEVICE,
+        )
+
+        assert best_path.exists()
 
 
 # ---------------------------------------------------------------------------

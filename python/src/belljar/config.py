@@ -108,6 +108,10 @@ class DataGenerationConfig(BaseModel):
         description="Relative weights for stain mode selection during domain randomization.",
     )
     num_workers: int | None = Field(None, description="Parallel workers (None = cpu_count)")
+    reference_names: list[str] = Field(
+        default=["default", "nissl"],
+        description="List of atlas reference volumes for multi-modal training.",
+    )
 
 
 class TrainingConfig(BaseModel):
@@ -143,6 +147,18 @@ class TrainingConfig(BaseModel):
     wandb_project: str = Field("belljar-estimator", description="Weights & Biases project name")
     wandb_entity: str | None = Field(None, description="W&B entity/team (None = personal)")
     seed: int = Field(42, description="Training RNG seed")
+    mixup_alpha: float = Field(
+        0.2,
+        description="MixUp augmentation parameter (0 = disabled, 0.2 = light, 0.4 = moderate).",
+    )
+    hard_negative_mining: bool = Field(
+        False,
+        description="Enable hard negative mining (oversample high-loss samples).",
+    )
+    hard_negative_top_fraction: float = Field(
+        0.2,
+        description="Fraction of hardest samples to upweight (3x) during hard negative mining.",
+    )
 
 
 class EstimationConfig(BaseModel):
