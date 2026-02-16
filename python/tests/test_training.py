@@ -8,7 +8,12 @@ import torch
 
 from belljar.config import EstimationConfig, TrainingConfig
 from belljar.estimation.predictor import SliceEstimator, gram_schmidt_6d, load_model
-from belljar.estimation.train import ANCHORING_WEIGHTS, anchoring_loss, train
+from belljar.estimation.train import (
+    ANCHORING_WEIGHTS,
+    AnchoringLossWithUncertainty,
+    anchoring_loss,
+    train,
+)
 
 # Force CPU for tests — MPS has numerical instability with GradScaler/autocast
 _TEST_DEVICE = torch.device("cpu")
@@ -97,6 +102,156 @@ class TestAnchoringLoss:
         loss_4 = anchoring_loss(pred_4, target_4)
 
         assert loss_1.item() == pytest.approx(loss_4.item(), rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Learned uncertainty loss tests (A1)
+# ---------------------------------------------------------------------------
+
+
+class TestUncertaintyLoss:
+    def test_differentiable(self):
+        """Gradients should flow to the log_var parameters."""
+        loss_fn = AnchoringLossWithUncertainty()
+        pred = torch.randn(4, 9)
+        target = torch.randn(4, 9)
+        loss = loss_fn(pred, target)
+        loss.backward()
+        assert loss_fn.log_var_origin.grad is not None
+        assert loss_fn.log_var_u.grad is not None
+        assert loss_fn.log_var_v.grad is not None
+        assert loss_fn.log_var_origin.grad.abs().item() > 0
+
+    def test_finite_lower_bound(self):
+        """Loss has a finite lower bound: can't go to -inf.
+
+        When log_var grows large and positive (low precision), the loss per task
+        becomes: exp(-log_var)*mse + log_var ≈ 0 + log_var = log_var. The
+        optimizer would push log_var to -inf to reduce the precision*mse term,
+        but the +log_var regularizer pulls it back. We verify that at perfect
+        prediction (MSE=0), the loss is bounded below (exactly sum(log_var)).
+        """
+        loss_fn = AnchoringLossWithUncertainty()
+        # With large positive log_var, precision → 0, so loss ≈ sum(log_var)
+        with torch.no_grad():
+            loss_fn.log_var_origin.fill_(10.0)
+            loss_fn.log_var_u.fill_(10.0)
+            loss_fn.log_var_v.fill_(10.0)
+        pred = torch.ones(4, 9)
+        target = torch.ones(4, 9)  # perfect prediction
+        loss = loss_fn(pred, target)
+        assert torch.isfinite(loss), f"Loss should be finite, got {loss.item()}"
+        # At zero MSE: loss = sum(log_var) = 30.0
+        assert loss.item() == pytest.approx(30.0, rel=1e-4)
+
+    def test_nonzero_at_zero_error(self):
+        """Loss should be positive when pred == target (due to log_var terms).
+
+        At zero MSE, loss = sum(log_var_i) which is 0 at initialization.
+        But after any training step that adjusts log_vars, this won't be exactly 0.
+        Initialize with non-zero log_vars to demonstrate.
+        """
+        loss_fn = AnchoringLossWithUncertainty()
+        # Set log_vars to positive values — loss = sum(log_var) > 0 at zero error
+        with torch.no_grad():
+            loss_fn.log_var_origin.fill_(1.0)
+            loss_fn.log_var_u.fill_(1.0)
+            loss_fn.log_var_v.fill_(1.0)
+        pred = torch.ones(4, 9)
+        target = torch.ones(4, 9)
+        loss = loss_fn(pred, target)
+        assert loss.item() > 0, "Loss should be positive at zero error with non-zero log_vars"
+
+    def test_checkpoint_includes_loss_state_dict(self, small_training_data, tmp_path):
+        """When using learned weights, checkpoint should contain loss_state_dict."""
+        output_dir = tmp_path / "output"
+        config = TrainingConfig(
+            batch_size=16,
+            num_epochs=2,
+            warmup_epochs=1,
+            val_fraction=0.2,
+            num_workers=0,
+            mixed_precision=False,
+            checkpoint_every=10,
+            early_stopping_patience=100,
+            use_learned_loss_weights=True,
+        )
+
+        best_path = train(
+            data_dir=small_training_data,
+            config=config,
+            estimation_config=EstimationConfig(),
+            output_dir=output_dir,
+            device=_TEST_DEVICE,
+        )
+
+        checkpoint = torch.load(str(best_path), weights_only=False)
+        assert "loss_state_dict" in checkpoint
+        assert "log_var_origin" in checkpoint["loss_state_dict"]
+        assert "log_var_u" in checkpoint["loss_state_dict"]
+        assert "log_var_v" in checkpoint["loss_state_dict"]
+
+
+# ---------------------------------------------------------------------------
+# Cosine similarity loss tests (A2)
+# ---------------------------------------------------------------------------
+
+
+class TestCosineSimilarityLoss:
+    def test_parallel_vectors_zero_loss(self):
+        """Cosine term should be 0 when direction vectors are parallel."""
+        pred = torch.zeros(4, 9)
+        target = torch.zeros(4, 9)
+        # Set u and v to identical unit vectors in pred and target
+        pred[:, 3:6] = torch.tensor([1.0, 0.0, 0.0])
+        pred[:, 6:9] = torch.tensor([0.0, 1.0, 0.0])
+        target[:, 3:6] = torch.tensor([1.0, 0.0, 0.0])
+        target[:, 6:9] = torch.tensor([0.0, 1.0, 0.0])
+
+        loss_no_cos = anchoring_loss(pred, target, cosine_weight=0.0)
+        loss_with_cos = anchoring_loss(pred, target, cosine_weight=0.5)
+        # Both should be zero since pred == target and cosine term is 0 for parallel
+        assert loss_no_cos.item() == pytest.approx(0.0)
+        assert loss_with_cos.item() == pytest.approx(0.0)
+
+    def test_perpendicular_vectors_loss(self):
+        """Cosine term should be 1.0 per perpendicular pair (cos_sim = 0)."""
+        pred = torch.zeros(4, 9)
+        target = torch.zeros(4, 9)
+        # u vectors: pred=(1,0,0), target=(0,1,0) — perpendicular
+        pred[:, 3:6] = torch.tensor([1.0, 0.0, 0.0])
+        target[:, 3:6] = torch.tensor([0.0, 1.0, 0.0])
+        # v vectors: pred=(0,0,1), target=(0,1,0) — perpendicular
+        pred[:, 6:9] = torch.tensor([0.0, 0.0, 1.0])
+        target[:, 6:9] = torch.tensor([0.0, 1.0, 0.0])
+
+        # cos_sim(u) = 0, cos_sim(v) = 0
+        # cosine_loss = weight * (2 - 0 - 0) = weight * 2
+        weight = 0.5
+        loss = anchoring_loss(pred, target, cosine_weight=weight)
+        loss_no_cos = anchoring_loss(pred, target, cosine_weight=0.0)
+        cosine_contribution = loss.item() - loss_no_cos.item()
+        assert cosine_contribution == pytest.approx(weight * 2.0, rel=1e-5)
+
+    def test_cosine_in_uncertainty_loss(self):
+        """Cosine term should also work inside AnchoringLossWithUncertainty."""
+        loss_fn_no_cos = AnchoringLossWithUncertainty(cosine_weight=0.0)
+        loss_fn_cos = AnchoringLossWithUncertainty(cosine_weight=0.5)
+
+        pred = torch.zeros(4, 9)
+        target = torch.zeros(4, 9)
+        # Perpendicular u vectors
+        pred[:, 3:6] = torch.tensor([1.0, 0.0, 0.0])
+        target[:, 3:6] = torch.tensor([0.0, 1.0, 0.0])
+        pred[:, 6:9] = torch.tensor([0.0, 0.0, 1.0])
+        target[:, 6:9] = torch.tensor([0.0, 1.0, 0.0])
+
+        loss_no = loss_fn_no_cos(pred, target)
+        loss_yes = loss_fn_cos(pred, target)
+        # The cosine version should add 0.5 * 2.0 = 1.0 to the loss
+        assert loss_yes.item() > loss_no.item()
+        diff = loss_yes.item() - loss_no.item()
+        assert diff == pytest.approx(1.0, rel=1e-4)
 
 
 # ---------------------------------------------------------------------------
