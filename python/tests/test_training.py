@@ -12,6 +12,7 @@ from belljar.estimation.train import (
     ANCHORING_WEIGHTS,
     AnchoringLossWithUncertainty,
     anchoring_loss,
+    geodesic_rotation_loss,
     train,
 )
 
@@ -252,6 +253,46 @@ class TestCosineSimilarityLoss:
         assert loss_yes.item() > loss_no.item()
         diff = loss_yes.item() - loss_no.item()
         assert diff == pytest.approx(1.0, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Geodesic loss tests (B2)
+# ---------------------------------------------------------------------------
+
+
+class TestGeodesicLoss:
+    def test_identity_rotation_zero_loss(self):
+        """Identical direction vectors should give zero geodesic loss."""
+        # Orthonormal u and v vectors
+        u = torch.tensor([[1.0, 0.0, 0.0]])
+        v = torch.tensor([[0.0, 1.0, 0.0]])
+        dirs = torch.cat([u, v], dim=1)  # (1, 6)
+
+        loss = geodesic_rotation_loss(dirs, dirs)
+        assert loss.item() == pytest.approx(0.0, abs=1e-6)
+
+    def test_90_degree_rotation(self):
+        """A 90-degree rotation about one axis should give loss ~pi/2."""
+        import math
+
+        # Identity rotation: u=[1,0,0], v=[0,1,0]
+        pred = torch.tensor([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]])
+        # 90-degree rotation about z-axis: u=[0,1,0], v=[-1,0,0]
+        target = torch.tensor([[0.0, 1.0, 0.0, -1.0, 0.0, 0.0]])
+
+        loss = geodesic_rotation_loss(pred, target)
+        assert loss.item() == pytest.approx(math.pi / 2, abs=1e-5)
+
+    def test_gradients_finite(self):
+        """Gradients through geodesic loss should be finite (no NaN/Inf)."""
+        pred = torch.randn(8, 6, requires_grad=True)
+        target = torch.randn(8, 6)
+
+        loss = geodesic_rotation_loss(pred, target)
+        loss.backward()
+
+        assert pred.grad is not None
+        assert torch.isfinite(pred.grad).all()
 
 
 # ---------------------------------------------------------------------------

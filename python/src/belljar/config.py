@@ -124,6 +124,10 @@ class TrainingConfig(BaseModel):
     mixed_precision: bool = Field(True, description="Use AMP for GPU efficiency")
     checkpoint_every: int = Field(5, description="Save checkpoint every N epochs")
     early_stopping_patience: int = Field(10, description="Stop if val loss plateaus for N epochs")
+    loss_type: str = Field(
+        "mse",
+        description="Loss function type: 'mse' (weighted MSE), 'cosine' (MSE + cosine similarity), 'geodesic' (origin MSE + SO(3) geodesic distance)",
+    )
     use_learned_loss_weights: bool = Field(
         True,
         description="Use Kendall '18 learned multi-task uncertainty weights instead of fixed weights",
