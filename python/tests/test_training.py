@@ -264,3 +264,54 @@ class TestGramSchmidt:
         loss.backward()
         assert raw.grad is not None
         assert not torch.all(raw.grad == 0)
+
+
+# ---------------------------------------------------------------------------
+# DINOv2 estimator tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeViTBackbone(torch.nn.Module):
+    """Minimal stand-in for DINOv2 ViT-B that outputs (B, 768) features."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = torch.nn.Linear(3 * 224 * 224, 768)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear(x.flatten(1))
+
+
+class TestDINOv2Estimator:
+    @pytest.fixture(autouse=True)
+    def _patch_timm(self, monkeypatch):
+        """Replace timm.create_model to avoid downloading real weights."""
+        import timm
+
+        def _fake_create_model(*_args, **_kwargs):
+            return _FakeViTBackbone()
+
+        monkeypatch.setattr(timm, "create_model", _fake_create_model)
+
+    def test_forward_shape(self):
+        from belljar.estimation.predictor import DINOv2Estimator
+
+        model = DINOv2Estimator(num_outputs=9, orthogonalize=True)
+        x = torch.randn(2, 1, 224, 224)
+        with torch.no_grad():
+            out = model(x)
+        assert out.shape == (2, 9)
+
+    def test_backbone_frozen(self):
+        from belljar.estimation.predictor import DINOv2Estimator
+
+        model = DINOv2Estimator(num_outputs=9)
+        for param in model.backbone.parameters():
+            assert not param.requires_grad
+
+    def test_head_trainable(self):
+        from belljar.estimation.predictor import DINOv2Estimator
+
+        model = DINOv2Estimator(num_outputs=9)
+        for param in model.head.parameters():
+            assert param.requires_grad
