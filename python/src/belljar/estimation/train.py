@@ -16,6 +16,7 @@ Usage (CLI):
 from __future__ import annotations
 
 import logging
+import math
 import subprocess
 import time
 from pathlib import Path
@@ -117,6 +118,86 @@ class AnchoringLossWithUncertainty(nn.Module):
             "weight_u": torch.exp(-self.log_var_u).item(),
             "weight_v": torch.exp(-self.log_var_v).item(),
         }
+
+
+def geodesic_rotation_loss(
+    pred_dirs: torch.Tensor, target_dirs: torch.Tensor
+) -> torch.Tensor:
+    """Geodesic distance on SO(3) between predicted and target rotation matrices.
+
+    Constructs rotation matrices from direction vectors u and v by computing
+    w = u x v (cross product) to form R = [u | v | w]. The geodesic distance
+    is: arccos(clamp((trace(R_pred^T @ R_gt) - 1) / 2, -1, 1)).
+
+    Args:
+        pred_dirs: Predicted direction vectors, shape (B, 6) — [u(3), v(3)].
+        target_dirs: Ground truth direction vectors, shape (B, 6).
+
+    Returns:
+        Scalar mean geodesic distance in radians.
+    """
+    pred_u = pred_dirs[:, :3]
+    pred_v = pred_dirs[:, 3:]
+    pred_w = torch.linalg.cross(pred_u, pred_v, dim=-1)
+
+    target_u = target_dirs[:, :3]
+    target_v = target_dirs[:, 3:]
+    target_w = torch.linalg.cross(target_u, target_v, dim=-1)
+
+    # Build rotation matrices: (B, 3, 3) with columns [u, v, w]
+    R_pred = torch.stack([pred_u, pred_v, pred_w], dim=-1)
+    R_target = torch.stack([target_u, target_v, target_w], dim=-1)
+
+    # R_pred^T @ R_target
+    R_rel = torch.bmm(R_pred.transpose(1, 2), R_target)
+
+    # trace of each (B, 3, 3) matrix
+    trace = R_rel.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+
+    # Geodesic distance: arccos(clamp((trace - 1) / 2, -1, 1))
+    cos_angle = torch.clamp((trace - 1.0) / 2.0, -1.0, 1.0)
+    angle = torch.acos(cos_angle)
+
+    return angle.mean()
+
+
+def _compute_loss(
+    preds: torch.Tensor,
+    labels: torch.Tensor,
+    loss_type: str,
+    direction_cosine_weight: float,
+    loss_fn: AnchoringLossWithUncertainty | None = None,
+) -> torch.Tensor:
+    """Compute loss based on loss_type config.
+
+    Args:
+        preds: Predicted anchoring vectors, shape (B, 9).
+        labels: Ground truth anchoring vectors, shape (B, 9).
+        loss_type: One of "mse", "cosine", "geodesic".
+        direction_cosine_weight: Weight for cosine term (only used with "cosine").
+        loss_fn: Optional learned uncertainty weights module.
+
+    Returns:
+        Scalar loss tensor.
+    """
+    if loss_type == "geodesic":
+        # MSE for origin (0:3) + geodesic for directions (3:9)
+        origin_weights = ANCHORING_WEIGHTS[:3].to(preds.device)
+        origin_mse = (origin_weights * (preds[:, :3] - labels[:, :3]) ** 2).mean()
+        geo_loss = geodesic_rotation_loss(preds[:, 3:9], labels[:, 3:9])
+        return origin_mse + geo_loss
+
+    # For "mse" and "cosine", use learned uncertainty weights if provided
+    if loss_fn is not None:
+        return loss_fn(preds, labels)
+
+    # Fallback to fixed-weight losses
+    if loss_type == "cosine":
+        base = anchoring_loss(preds, labels, cosine_weight=direction_cosine_weight)
+        return base
+
+    # Default: "mse"
+    return anchoring_loss(preds, labels, cosine_weight=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -252,8 +333,8 @@ def train(
     best_path = output_dir / "best_model.pt"
 
     logger.info(
-        "Starting training: %d epochs, batch_size=%d, lr=%.1e, AMP=%s",
-        config.num_epochs, config.batch_size, config.learning_rate, use_amp,
+        "Starting training: %d epochs, batch_size=%d, lr=%.1e, AMP=%s, loss_type=%s",
+        config.num_epochs, config.batch_size, config.learning_rate, use_amp, config.loss_type,
     )
 
     for epoch in range(config.num_epochs):
@@ -274,13 +355,12 @@ def train(
 
             with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
-                if loss_fn is not None:
-                    loss = loss_fn(preds, labels)
-                else:
-                    loss = anchoring_loss(
-                        preds, labels,
-                        cosine_weight=config.direction_cosine_weight,
-                    )
+                loss = _compute_loss(
+                    preds, labels,
+                    loss_type=config.loss_type,
+                    direction_cosine_weight=config.direction_cosine_weight,
+                    loss_fn=loss_fn,
+                )
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -304,8 +384,9 @@ def train(
         # -- Validation epoch --------------------------------------------------
         val_loss, val_metrics = _validate(
             model, val_loader, device, use_amp, amp_dtype,
+            loss_type=config.loss_type,
+            direction_cosine_weight=config.direction_cosine_weight,
             loss_fn=loss_fn,
-            cosine_weight=config.direction_cosine_weight,
         )
 
         elapsed = time.time() - t0
@@ -404,8 +485,9 @@ def _validate(
     use_amp: bool,
     amp_dtype: torch.dtype,
     *,
+    loss_type: str = "mse",
+    direction_cosine_weight: float = 0.0,
     loss_fn: AnchoringLossWithUncertainty | None = None,
-    cosine_weight: float = 0.0,
 ) -> tuple[float, dict[str, float]]:
     """Run validation and compute per-component metrics."""
     model.eval()
@@ -422,12 +504,12 @@ def _validate(
 
             with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
-                if loss_fn is not None:
-                    loss = loss_fn(preds, labels)
-                else:
-                    loss = anchoring_loss(
-                        preds, labels, cosine_weight=cosine_weight,
-                    )
+                loss = _compute_loss(
+                    preds, labels,
+                    loss_type=loss_type,
+                    direction_cosine_weight=direction_cosine_weight,
+                    loss_fn=loss_fn,
+                )
 
             loss_sum += loss.item() * images.size(0)
             count += images.size(0)
