@@ -22,6 +22,7 @@ from belljar.pipeline.align import AlignStep
 from belljar.pipeline.collate import CollateStep
 from belljar.pipeline.count import CountStep
 from belljar.pipeline.detect import DetectStep
+from belljar.pipeline.estimate import EstimateStep
 from belljar.pipeline.max_projection import MaxProjectionStep
 from belljar.pipeline.sharpen import SharpenStep
 from belljar.types import StepResult
@@ -62,6 +63,7 @@ class BelljarServer:
         self._handlers["pipeline.detect"] = self._run_detect
         self._handlers["pipeline.count"] = self._run_count
         self._handlers["pipeline.collate"] = self._run_collate
+        self._handlers["pipeline.estimate"] = self._run_estimate
 
         # Validation
         self._handlers["pipeline.validate"] = self._validate_step
@@ -76,6 +78,7 @@ class BelljarServer:
                 "detect": DetectStep,
                 "count": CountStep,
                 "collate": CollateStep,
+                "estimate": EstimateStep,
             }
             cls = step_classes.get(step_name)
             if cls is None:
@@ -105,6 +108,10 @@ class BelljarServer:
 
     def _run_collate(self, **kwargs: Any) -> dict[str, Any]:
         step = self._get_step("collate")
+        return _step_result_to_dict(step.run(self.send_progress, **kwargs))
+
+    def _run_estimate(self, **kwargs: Any) -> dict[str, Any]:
+        step = self._get_step("estimate")
         return _step_result_to_dict(step.run(self.send_progress, **kwargs))
 
     def _validate_step(self, step: str, **kwargs: Any) -> dict[str, Any]:

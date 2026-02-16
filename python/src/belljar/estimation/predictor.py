@@ -412,7 +412,19 @@ def load_model(
     else:
         model = SliceEstimator(num_outputs=9)
 
-    state_dict = torch.load(str(model_path), map_location=device, weights_only=True)
+    checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
+
+    # Support enriched checkpoint format from train.py
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+        logger.info(
+            "Loaded enriched checkpoint (epoch=%d, val_loss=%.6f)",
+            checkpoint.get("epoch", -1),
+            checkpoint.get("val_loss", float("nan")),
+        )
+    else:
+        state_dict = checkpoint
+
     model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()

@@ -134,3 +134,9 @@ dist
 # Wandb files
 py/wandb/
 wandb/
+
+# Claude Code
+CLAUDE.md
+
+# Internal plans
+python/ESTIMATOR_IMPROVEMENTS.md

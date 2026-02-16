@@ -52,7 +52,11 @@ datagen = [
 ]
 train = [
     "wandb",
+    "tensorboard",
 ]
+
+[project.scripts]
+belljar = "belljar.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/belljar"]
