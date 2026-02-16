@@ -23,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 
@@ -38,28 +39,84 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Weights for the 9 anchoring components:
-# Origin (ox, oy, oz) gets weight 1.0 — position in atlas space.
-# Direction vectors u and v get weight 2.0 — small errors in plane
+# Origin (ox, oy, oz) gets weight 1.0 -- position in atlas space.
+# Direction vectors u and v get weight 2.0 -- small errors in plane
 # orientation propagate into large spatial errors at image edges
-# (256px half-width * 0.01 error ≈ 2.56px displacement).
+# (256px half-width * 0.01 error ~ 2.56px displacement).
 ANCHORING_WEIGHTS = torch.tensor(
     [1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
     dtype=torch.float32,
 )
 
 
-def anchoring_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def anchoring_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    cosine_weight: float = 0.0,
+) -> torch.Tensor:
     """Weighted MSE loss for 9-value anchoring vectors.
 
     Args:
         pred: Predicted anchoring vectors, shape (B, 9).
         target: Ground truth anchoring vectors, shape (B, 9).
+        cosine_weight: Weight for cosine similarity loss on direction vectors.
+            When > 0, adds ``w * (2 - cos_sim(u) - cos_sim(v))`` to the loss.
 
     Returns:
         Scalar loss tensor.
     """
     weights = ANCHORING_WEIGHTS.to(pred.device)
-    return (weights * (pred - target) ** 2).mean()
+    mse = (weights * (pred - target) ** 2).mean()
+    if cosine_weight > 0.0:
+        cos_u = F.cosine_similarity(pred[:, 3:6], target[:, 3:6], dim=1).mean()
+        cos_v = F.cosine_similarity(pred[:, 6:9], target[:, 6:9], dim=1).mean()
+        mse = mse + cosine_weight * (2.0 - cos_u - cos_v)
+    return mse
+
+
+class AnchoringLossWithUncertainty(nn.Module):
+    """Learned multi-task uncertainty weights (Kendall & Gal, CVPR 2018).
+
+    Instead of fixed weights for origin / u-vector / v-vector, learns three
+    log-variance parameters that automatically balance the loss contributions.
+    Loss per task: ``precision * mse + log_var`` where ``precision = exp(-log_var)``.
+    The ``log_var`` term acts as a regularizer that prevents the precision from
+    collapsing to zero (which would make the loss go to -inf).
+    """
+
+    def __init__(self, cosine_weight: float = 0.0) -> None:
+        super().__init__()
+        self.log_var_origin = nn.Parameter(torch.zeros(1))
+        self.log_var_u = nn.Parameter(torch.zeros(1))
+        self.log_var_v = nn.Parameter(torch.zeros(1))
+        self.cosine_weight = cosine_weight
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        slices = [
+            (0, 3, self.log_var_origin),
+            (3, 6, self.log_var_u),
+            (6, 9, self.log_var_v),
+        ]
+        loss = torch.tensor(0.0, device=pred.device)
+        for s, e, log_var in slices:
+            mse = ((pred[:, s:e] - target[:, s:e]) ** 2).mean()
+            precision = torch.exp(-log_var)
+            loss = loss + precision * mse + log_var
+
+        if self.cosine_weight > 0.0:
+            cos_u = F.cosine_similarity(pred[:, 3:6], target[:, 3:6], dim=1).mean()
+            cos_v = F.cosine_similarity(pred[:, 6:9], target[:, 6:9], dim=1).mean()
+            loss = loss + self.cosine_weight * (2.0 - cos_u - cos_v)
+
+        return loss
+
+    def get_weights(self) -> dict[str, float]:
+        """Return the effective precision weights (exp(-log_var)) for logging."""
+        return {
+            "weight_origin": torch.exp(-self.log_var_origin).item(),
+            "weight_u": torch.exp(-self.log_var_u).item(),
+            "weight_v": torch.exp(-self.log_var_v).item(),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +153,7 @@ def train(
         device = _get_device()
     logger.info("Training on device: %s", device)
 
-    # ── Dataset ──────────────────────────────────────────────────────────
+    # -- Dataset ---------------------------------------------------------------
     tx = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(
@@ -140,16 +197,26 @@ def train(
 
     logger.info("Dataset: %d train, %d val", n_train, n_val)
 
-    # ── Model ────────────────────────────────────────────────────────────
+    # -- Model -----------------------------------------------------------------
     model = SliceEstimator(
         num_outputs=9,
         dropout_rate=0.2,
         orthogonalize=estimation_config.orthogonalize_directions,
     ).to(device)
 
-    # ── Optimizer + scheduler ────────────────────────────────────────────
+    # -- Loss function ---------------------------------------------------------
+    loss_fn: AnchoringLossWithUncertainty | None = None
+    if config.use_learned_loss_weights:
+        loss_fn = AnchoringLossWithUncertainty(
+            cosine_weight=config.direction_cosine_weight,
+        ).to(device)
+
+    # -- Optimizer + scheduler -------------------------------------------------
+    params = list(model.parameters())
+    if loss_fn is not None:
+        params = params + list(loss_fn.parameters())
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        params,
         lr=config.learning_rate,
         weight_decay=config.weight_decay,
     )
@@ -170,15 +237,15 @@ def train(
         milestones=[warmup_steps],
     )
 
-    # ── AMP scaler ───────────────────────────────────────────────────────
+    # -- AMP scaler ------------------------------------------------------------
     use_amp = config.mixed_precision and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     amp_dtype = torch.float16 if use_amp else torch.float32
 
-    # ── wandb (optional) ─────────────────────────────────────────────────
+    # -- wandb (optional) ------------------------------------------------------
     wandb_run = _init_wandb(config, estimation_config, n_train, n_val)
 
-    # ── Training ─────────────────────────────────────────────────────────
+    # -- Training --------------------------------------------------------------
     best_val_loss = float("inf")
     best_epoch = -1
     patience_counter = 0
@@ -192,10 +259,12 @@ def train(
     for epoch in range(config.num_epochs):
         t0 = time.time()
 
-        # ── Train epoch ──────────────────────────────────────────────
+        # -- Train epoch -------------------------------------------------------
         model.train()
         train_loss_sum = 0.0
         train_count = 0
+        clip_count = 0
+        step_count = 0
 
         for images, labels in train_loader:
             images = images.to(device, non_blocking=True)
@@ -205,7 +274,13 @@ def train(
 
             with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
-                loss = anchoring_loss(preds, labels)
+                if loss_fn is not None:
+                    loss = loss_fn(preds, labels)
+                else:
+                    loss = anchoring_loss(
+                        preds, labels,
+                        cosine_weight=config.direction_cosine_weight,
+                    )
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -217,10 +292,21 @@ def train(
             train_loss_sum += loss.item() * images.size(0)
             train_count += images.size(0)
 
-        train_loss = train_loss_sum / max(train_count, 1)
+            # Gradient clip diagnostics
+            norm_val = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+            if norm_val > 10.0:
+                clip_count += 1
+            step_count += 1
 
-        # ── Validation epoch ─────────────────────────────────────────
-        val_loss, val_metrics = _validate(model, val_loader, device, use_amp, amp_dtype)
+        train_loss = train_loss_sum / max(train_count, 1)
+        clip_fraction = clip_count / max(step_count, 1)
+
+        # -- Validation epoch --------------------------------------------------
+        val_loss, val_metrics = _validate(
+            model, val_loader, device, use_amp, amp_dtype,
+            loss_fn=loss_fn,
+            cosine_weight=config.direction_cosine_weight,
+        )
 
         elapsed = time.time() - t0
         lr = optimizer.param_groups[0]["lr"]
@@ -230,23 +316,30 @@ def train(
             epoch + 1, config.num_epochs, train_loss, val_loss, lr, elapsed,
         )
 
-        # ── wandb logging ────────────────────────────────────────────
+        # -- wandb logging -----------------------------------------------------
         if wandb_run is not None:
             import wandb
 
-            wandb.log({
+            log_dict = {
                 "epoch": epoch + 1,
                 "train/loss": train_loss,
+                "train/grad_clip_fraction": clip_fraction,
                 "val/loss": val_loss,
                 "val/oz_mae": val_metrics["oz_mae"],
                 "val/u_mae": val_metrics["u_mae"],
                 "val/v_mae": val_metrics["v_mae"],
                 "lr": lr,
-                "grad_norm": grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm,
+                "grad_norm": norm_val,
                 "epoch_time_s": elapsed,
-            })
+            }
+            if loss_fn is not None:
+                w = loss_fn.get_weights()
+                log_dict["val/weight_origin"] = w["weight_origin"]
+                log_dict["val/weight_u"] = w["weight_u"]
+                log_dict["val/weight_v"] = w["weight_v"]
+            wandb.log(log_dict)
 
-        # ── Checkpointing ────────────────────────────────────────────
+        # -- Checkpointing -----------------------------------------------------
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch + 1
@@ -254,6 +347,7 @@ def train(
             _save_checkpoint(
                 best_path, model, optimizer, scheduler, epoch + 1,
                 val_loss, val_metrics, estimation_config, config,
+                loss_fn=loss_fn,
             )
             logger.info("New best model (epoch %d, val_loss=%.6f)", best_epoch, best_val_loss)
         else:
@@ -264,9 +358,10 @@ def train(
             _save_checkpoint(
                 periodic_path, model, optimizer, scheduler, epoch + 1,
                 val_loss, val_metrics, estimation_config, config,
+                loss_fn=loss_fn,
             )
 
-        # ── Early stopping ───────────────────────────────────────────
+        # -- Early stopping ----------------------------------------------------
         if patience_counter >= config.early_stopping_patience:
             logger.info(
                 "Early stopping at epoch %d (no improvement for %d epochs)",
@@ -276,11 +371,11 @@ def train(
 
     logger.info("Training complete. Best epoch: %d, best val_loss: %.6f", best_epoch, best_val_loss)
 
-    # ── Upload to GCS ────────────────────────────────────────────────
+    # -- Upload to GCS ---------------------------------------------------------
     if config.gcs_checkpoint_bucket:
         _upload_to_gcs(best_path, config.gcs_checkpoint_bucket)
 
-    # ── wandb finish ─────────────────────────────────────────────────
+    # -- wandb finish ----------------------------------------------------------
     if wandb_run is not None:
         import wandb
 
@@ -308,6 +403,9 @@ def _validate(
     device: torch.device,
     use_amp: bool,
     amp_dtype: torch.dtype,
+    *,
+    loss_fn: AnchoringLossWithUncertainty | None = None,
+    cosine_weight: float = 0.0,
 ) -> tuple[float, dict[str, float]]:
     """Run validation and compute per-component metrics."""
     model.eval()
@@ -324,7 +422,12 @@ def _validate(
 
             with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
-                loss = anchoring_loss(preds, labels)
+                if loss_fn is not None:
+                    loss = loss_fn(preds, labels)
+                else:
+                    loss = anchoring_loss(
+                        preds, labels, cosine_weight=cosine_weight,
+                    )
 
             loss_sum += loss.item() * images.size(0)
             count += images.size(0)
@@ -358,21 +461,22 @@ def _save_checkpoint(
     val_metrics: dict[str, float],
     estimation_config: EstimationConfig,
     training_config: TrainingConfig,
+    loss_fn: AnchoringLossWithUncertainty | None = None,
 ) -> None:
     """Save an enriched checkpoint."""
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "epoch": epoch,
-            "val_loss": val_loss,
-            "val_metrics": val_metrics,
-            "config": estimation_config.model_dump(),
-            "training_config": training_config.model_dump(),
-        },
-        str(path),
-    )
+    data: dict = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "epoch": epoch,
+        "val_loss": val_loss,
+        "val_metrics": val_metrics,
+        "config": estimation_config.model_dump(),
+        "training_config": training_config.model_dump(),
+    }
+    if loss_fn is not None:
+        data["loss_state_dict"] = loss_fn.state_dict()
+    torch.save(data, str(path))
 
 
 def _init_wandb(
