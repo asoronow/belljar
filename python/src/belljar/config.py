@@ -162,6 +162,10 @@ class EstimationConfig(BaseModel):
         True,
         description="Apply Gram-Schmidt orthogonalization to predicted direction vectors.",
     )
+    backbone: str = Field(
+        "resnet50",
+        description="Model backbone: 'resnet50' (25M params) or 'dinov2' (frozen ViT-B, ~650K trainable).",
+    )
     data_generation: DataGenerationConfig = Field(default_factory=DataGenerationConfig)
 
 

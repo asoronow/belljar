@@ -144,6 +144,72 @@ class SliceEstimator(nn.Module):
         return torch.flatten(x, 1)
 
 
+class DINOv2Estimator(nn.Module):
+    """DINOv2 ViT-B/14 backbone with frozen features and trainable MLP head.
+
+    Uses a pretrained DINOv2 ViT-B backbone (~85M params, all frozen) with
+    a lightweight MLP head (~650K trainable params). Compared to the ResNet50
+    SliceEstimator (~25M trainable params), this dramatically reduces the
+    trainable parameter count while leveraging stronger pretrained features.
+
+    The backbone expects 3-channel 224x224 input; grayscale images are
+    repeated across channels automatically.
+    """
+
+    def __init__(
+        self,
+        num_outputs: int = 9,
+        orthogonalize: bool = True,
+        dropout_rate: float = 0.2,
+    ) -> None:
+        super().__init__()
+        self.orthogonalize = orthogonalize
+
+        import timm
+
+        self.backbone = timm.create_model(
+            "vit_base_patch14_dinov2.lvd142m",
+            pretrained=True,
+            num_classes=0,
+        )
+        # Freeze all backbone parameters
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(768),
+            nn.Linear(768, 512),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, num_outputs),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # DINOv2 expects 3-channel input
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
+
+        features = self.backbone(x)  # (B, 768)
+        out = self.head(features)  # (B, num_outputs)
+
+        if self.orthogonalize:
+            origin = out[:, :3]
+            dirs = out[:, 3:]
+            dirs = gram_schmidt_6d(dirs)
+            out = torch.cat([origin, dirs], dim=-1)
+
+        return out
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract backbone features before the prediction head."""
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
+        return self.backbone(x)
+
+
 class LegacySliceEstimator(nn.Module):
     """Backward-compatible wrapper for v1 TissuePredictor weights.
 
