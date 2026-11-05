@@ -45,6 +45,23 @@ def fake_model(tmp_path):
     return model_path
 
 
+CONSTANT_OUTPUT = [0.5, 0.5, 0.05, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+
+@pytest.fixture
+def constant_model(tmp_path):
+    """Checkpoint whose head ignores its input and emits CONSTANT_OUTPUT."""
+    from belljar.estimation.predictor import SliceEstimator
+
+    model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
+    with torch.no_grad():
+        model.fc.weight.zero_()
+        model.fc.bias.copy_(torch.tensor(CONSTANT_OUTPUT))
+    model_path = tmp_path / "constant_model.pt"
+    torch.save({"model_state_dict": model.state_dict()}, str(model_path))
+    return model_path
+
+
 @pytest.fixture
 def section_images(tmp_path):
     """Create a few fake section images."""
@@ -237,6 +254,97 @@ class TestEstimateStep:
             sa = SliceAlignment(**a)
             assert isinstance(sa.ap_position, float)
             assert isinstance(sa.x_angle, float)
+
+
+class TestDirectionUncertainty:
+    @pytest.mark.parametrize(
+        "std,expected",
+        [
+            ([0.0] * 3 + [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3.5),
+            ([9.0, 2.0, 4.0], 3.0),
+        ],
+    )
+    def test_known_output_counts(self, std, expected):
+        from belljar.pipeline.estimate import _direction_uncertainty
+
+        assert _direction_uncertainty(std) == pytest.approx(expected)
+
+    def test_other_output_count_raises(self):
+        from belljar.pipeline.estimate import _direction_uncertainty
+
+        with pytest.raises(ValueError, match="5"):
+            _direction_uncertainty([0.1] * 5)
+
+
+class TestEstimateStepDenormalization:
+    """AP position and angles are scaled to physical units exactly once."""
+
+    def _run(self, step, img_dir, out_dir, model_path, **kwargs):
+        result = step.run(
+            _noop_progress,
+            input_dir=str(img_dir),
+            output_dir=str(out_dir),
+            model_path=str(model_path),
+            **kwargs,
+        )
+        assert result.success, result.errors
+        with open(result.output_path) as f:
+            return json.load(f)["alignments"]
+
+    def test_single_section_ap_matches_raw_output(self, constant_model, tmp_path):
+        import cv2
+
+        img_dir = tmp_path / "one"
+        img_dir.mkdir()
+        rng = np.random.default_rng(0)
+        cv2.imwrite(
+            str(img_dir / "s0.png"), rng.integers(0, 256, (256, 256), dtype=np.uint8)
+        )
+
+        # oz bias of 0.05 over the 1324-slice Allen CCF depth
+        expected_ap = 0.05 * 1324.0
+
+        alignments = self._run(
+            EstimateStep(BelljarConfig()), img_dir, tmp_path / "out", constant_model
+        )
+        assert alignments[0]["ap_position"] == pytest.approx(expected_ap)
+        assert alignments[0]["x_angle"] == pytest.approx(0.0, abs=1e-6)
+        assert alignments[0]["y_angle"] == pytest.approx(0.0, abs=1e-6)
+
+    @pytest.mark.parametrize("uncertainty", [False, True])
+    def test_outputs_in_range(self, section_images, constant_model, tmp_path, uncertainty):
+        from belljar.estimation.predictor import DEFAULT_AP_RANGE
+
+        alignments = self._run(
+            EstimateStep(BelljarConfig()),
+            section_images,
+            tmp_path / "out",
+            constant_model,
+            uncertainty=uncertainty,
+        )
+        assert len(alignments) == 5
+        for a in alignments:
+            assert DEFAULT_AP_RANGE[0] <= a["ap_position"] <= DEFAULT_AP_RANGE[1]
+            assert abs(a["x_angle"]) <= 10.0
+            assert abs(a["y_angle"]) <= 10.0
+            assert np.isfinite([a["ap_position"], a["x_angle"], a["y_angle"]]).all()
+            if uncertainty:
+                assert len(a["uncertainty"]) == 9
+                assert np.isfinite(a["uncertainty"]).all()
+            else:
+                assert "uncertainty" not in a
+
+    def test_uncertainty_with_random_head(self, section_images, fake_model, tmp_path):
+        alignments = self._run(
+            EstimateStep(BelljarConfig()),
+            section_images,
+            tmp_path / "out",
+            fake_model,
+            uncertainty=True,
+        )
+        for a in alignments:
+            assert len(a["uncertainty"]) == 9
+            assert np.isfinite([a["ap_position"], a["x_angle"], a["y_angle"]]).all()
 
 
 # ---------------------------------------------------------------------------
