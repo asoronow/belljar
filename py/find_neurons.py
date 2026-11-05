@@ -185,7 +185,7 @@ if __name__ == "__main__":
                     raise Exception("Image has more than 3 dimensions!")
             else:
                 img = cv2.imread(file_path)
-                width, height, channels = img.shape
+                height, width, channels = img.shape
         except Exception as e:
             print(f"Error reading {file}!", flush=True)
             print(e, flush=True)

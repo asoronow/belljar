@@ -6,7 +6,7 @@ import cv2
 import pickle
 from pathlib import Path
 from find_neurons import DetectionResult
-from demons import resize_image_nearest_neighbor
+from demons import resize_image_nearest_neighbor, resolve_image_dimensions
 from section_pairing import UnpairedSectionsError, pair_sections
 
 
@@ -157,11 +157,15 @@ if __name__ == "__main__":
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
-            predicted_size = predictions[0].image_dimensions
+            predicted_height, predicted_width = resolve_image_dimensions(
+                predictions[0].image_dimensions,
+                reference_shape=annotation.shape,
+                boxes=[box for p in predictions for box in p.boxes],
+            )
 
             # Count the area of each region in the annotation
             annotation_rescaled = resize_image_nearest_neighbor(
-                annotation, predicted_size
+                annotation, height=predicted_height, width=predicted_width
             )
 
             unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
@@ -222,11 +226,10 @@ if __name__ == "__main__":
                 try:
                     atlas_id = annotation_rescaled[yPos, xPos]
                 except IndexError:
-                    # Resize was in the wrong order
-                    annotation_rescaled = resize_image_nearest_neighbor(
-                        annotation, predicted_size[::-1]
+                    raise IndexError(
+                        f"Box {box} in section '{section_name}' lies outside "
+                        f"the {predicted_height}x{predicted_width} annotation"
                     )
-                    atlas_id = annotation_rescaled[yPos, xPos]
 
                 region_info = regions[atlas_id]
                 acronym = region_info["acronym"]

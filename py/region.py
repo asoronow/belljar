@@ -95,7 +95,7 @@ if __name__ == "__main__":
             annotation = pickle.load(f)
 
             annotation_recaled = resize_image_nearest_neighbor(
-                annotation, (width, height)
+                annotation, height=height, width=width
             )
             required_regions = [
                 "VISa",

@@ -52,7 +52,9 @@ def main():
     new_shape = (1140, 800)
     for z in range(atlas.shape[0]):
         new_slice = cv2.resize(atlas[z, :, :], new_shape, interpolation=cv2.INTER_CUBIC)
-        new_annotation = resize_image_nearest_neighbor(annotation[z, :, :], new_shape)
+        new_annotation = resize_image_nearest_neighbor(
+            annotation[z, :, :], height=new_shape[1], width=new_shape[0]
+        )
         resized_annotation.append(new_annotation)
         resized_atlas.append(new_slice)
 
