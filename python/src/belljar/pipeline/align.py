@@ -2,12 +2,15 @@
 
 Combines atlas slicing, registration, and annotation warping into a single
 pipeline step that processes a batch of tissue sections.
+
+Outputs are flat files named ``<Kind>_<section>.<ext>`` in the output
+directory, the layout the count step and the v1 adjust/count tools pair
+by section stem.
 """
 
 from __future__ import annotations
 
 import logging
-import pickle
 from typing import Any
 
 import cv2
@@ -94,17 +97,14 @@ class AlignStep(PipelineStep[AlignParams]):
                     self.config.registration,
                 )
 
-                # Save outputs
-                section_dir = output_dir / alignment.section_name
-                section_dir.mkdir(exist_ok=True)
-
-                np.save(str(section_dir / "annotation.npy"), warped_labels)
-                cv2.imwrite(str(section_dir / "atlas.png"), warped_atlas)
-                cv2.imwrite(str(section_dir / "color_label.png"), color_label)
-
-                # Save annotation as pickle for backward compatibility
-                with open(section_dir / "annotation.pkl", "wb") as f:
-                    pickle.dump(warped_labels, f)
+                stem = alignment.section_name
+                np.save(str(output_dir / f"Annotation_{stem}.npy"), warped_labels)
+                cv2.imwrite(str(output_dir / f"Atlas_{stem}.png"), warped_atlas)
+                cv2.imwrite(str(output_dir / f"Label_{stem}.png"), color_label)
+                composite = cv2.addWeighted(
+                    cv2.cvtColor(tissue, cv2.COLOR_GRAY2RGB), 0.8, color_label, 0.2, 0
+                )
+                cv2.imwrite(str(output_dir / f"Composite_{stem}.png"), composite)
 
                 metrics_all.append({
                     "section": alignment.section_name,
