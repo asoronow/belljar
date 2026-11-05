@@ -60,6 +60,43 @@ class TestSliceEstimator:
         np.testing.assert_array_equal(o1, o2)
 
 
+class TestPredictWithUncertainty:
+    """MC dropout must perturb only dropout layers, never BatchNorm state."""
+
+    def _bn_buffers(self, model: torch.nn.Module) -> dict[str, torch.Tensor]:
+        return {
+            name: buf.detach().clone()
+            for name, buf in model.named_buffers()
+            if name.endswith(("running_mean", "running_var", "num_batches_tracked"))
+        }
+
+    def test_batchnorm_buffers_untouched_and_dropout_active(self) -> None:
+        from belljar.estimation.predictor import predict_with_uncertainty
+
+        torch.manual_seed(0)
+        model = SliceEstimator(num_outputs=9, dropout_rate=0.5)
+        config = EstimationConfig(mc_dropout_samples=4)
+        image = np.random.default_rng(0).integers(0, 256, (256, 256), dtype=np.uint8)
+
+        before = self._bn_buffers(model)
+        assert before, "model is expected to contain BatchNorm layers"
+
+        result = predict_with_uncertainty(
+            image, model, config, device=torch.device("cpu")
+        )
+
+        after = self._bn_buffers(model)
+        for name, buf in before.items():
+            assert torch.equal(buf, after[name]), f"{name} changed during MC dropout"
+
+        samples = np.asarray(result["mc_samples"])
+        assert samples.shape == (4, 9)
+        assert not np.allclose(samples, samples[0]), "dropout was not active"
+
+        assert not model.training
+        assert all(not m.training for m in model.modules())
+
+
 class TestPreprocessImage:
     def test_output_shape(self) -> None:
         config = EstimationConfig()

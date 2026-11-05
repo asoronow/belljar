@@ -403,16 +403,24 @@ def predict_with_uncertainty(
     input_tensor = _preprocess_image(image, config).to(device)
     n_samples = config.mc_dropout_samples
 
-    # Enable dropout during inference
-    model.train()
+    # Only dropout layers switch to train mode: model.train() would also put
+    # BatchNorm into training mode and overwrite its running statistics.
+    model.eval()
+    dropout_layers = [
+        m for m in model.modules() if isinstance(m, nn.modules.dropout._DropoutNd)
+    ]
     samples = []
 
-    with torch.no_grad():
-        for _ in range(n_samples):
-            output = model(input_tensor).cpu().numpy()[0]
-            samples.append(output)
-
-    model.eval()
+    try:
+        for layer in dropout_layers:
+            layer.train()
+        with torch.no_grad():
+            for _ in range(n_samples):
+                output = model(input_tensor).cpu().numpy()[0]
+                samples.append(output)
+    finally:
+        for layer in dropout_layers:
+            layer.eval()
 
     samples_array = np.array(samples)
     mean_pred = samples_array.mean(axis=0)
