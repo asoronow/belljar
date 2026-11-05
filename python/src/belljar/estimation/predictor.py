@@ -35,6 +35,11 @@ from belljar.config import EstimationConfig
 
 logger = logging.getLogger(__name__)
 
+# Normalisation ranges the estimator is trained against: AP position as a
+# fraction of the Allen CCF 10um depth, tilt angles as a fraction of +/-10 deg.
+DEFAULT_AP_RANGE: tuple[float, float] = (0.0, 1324.0)
+DEFAULT_ANGLE_RANGE: tuple[float, float] = (-10.0, 10.0)
+
 
 def gram_schmidt_6d(raw: torch.Tensor) -> torch.Tensor:
     """Project 6D raw direction vectors onto SO(3) via Gram-Schmidt.
@@ -328,8 +333,10 @@ def predict_slice_position(
         device: Device to run inference on.
 
     Returns:
-        Dict with 'prediction' (raw model output), 'z_position', 'x_angle',
-        'y_angle', and optionally 'uncertainty' if MC dropout is used.
+        Dict with 'raw_output' (model output as a list), 'z_position' in atlas
+        slices, 'x_angle' and 'y_angle' in degrees, and 'anchoring_vectors'
+        for 9-output models. This is the only place model outputs are scaled
+        to physical units.
     """
     if device is None:
         device = _get_device()
@@ -356,9 +363,11 @@ def predict_slice_position(
         result["y_angle"] = y_angle
     elif len(output) == 3:
         # Legacy 3-value format (normalized)
-        result["z_position"] = output[0]
-        result["x_angle"] = output[1]
-        result["y_angle"] = output[2]
+        ap_span = DEFAULT_AP_RANGE[1] - DEFAULT_AP_RANGE[0]
+        angle_span = DEFAULT_ANGLE_RANGE[1] - DEFAULT_ANGLE_RANGE[0]
+        result["z_position"] = float(output[0] * ap_span + DEFAULT_AP_RANGE[0])
+        result["x_angle"] = float(output[1] * angle_span + DEFAULT_ANGLE_RANGE[0])
+        result["y_angle"] = float(output[2] * angle_span + DEFAULT_ANGLE_RANGE[0])
     else:
         result["z_position"] = output[0] if len(output) > 0 else 0.0
         result["x_angle"] = output[1] if len(output) > 1 else 0.0
@@ -385,7 +394,8 @@ def predict_with_uncertainty(
         device: Device for inference.
 
     Returns:
-        Dict with 'prediction' (mean), 'uncertainty' (std), and 'samples'.
+        The :func:`predict_slice_position` dict plus 'uncertainty' (per-output
+        std over the MC samples), 'mc_samples', and 'mean_prediction'.
     """
     if device is None:
         device = _get_device()
@@ -418,8 +428,8 @@ def predict_with_uncertainty(
 
 def anchoring_to_legacy(
     anchoring: NDArray | list[float],
-    ap_range: tuple[float, float] = (0.0, 1324.0),
-    angle_range: tuple[float, float] = (-10.0, 10.0),
+    ap_range: tuple[float, float] = DEFAULT_AP_RANGE,
+    angle_range: tuple[float, float] = DEFAULT_ANGLE_RANGE,
 ) -> tuple[float, float, float]:
     """Convert 9-value anchoring vectors to legacy (z_pos, x_angle, y_angle).
 
@@ -462,7 +472,7 @@ def legacy_to_anchoring(
     z_position: float,
     x_angle: float,
     y_angle: float,
-    ap_range: tuple[float, float] = (0.0, 1324.0),
+    ap_range: tuple[float, float] = DEFAULT_AP_RANGE,
 ) -> list[float]:
     """Convert legacy (z_pos, x_angle, y_angle) to 9-value anchoring vectors.
 

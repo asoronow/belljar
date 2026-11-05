@@ -18,7 +18,6 @@ import numpy as np
 from belljar.config import BelljarConfig
 from belljar.estimation.model_manager import ensure_model
 from belljar.estimation.postprocess import (
-    denormalize_predictions,
     enforce_orthogonality,
     integrate_angles,
     regularize_spacing,
@@ -44,6 +43,21 @@ def _json_default(obj: Any) -> Any:
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _direction_uncertainty(per_output_std: list[float]) -> float:
+    """Collapse per-output MC std into one scalar for angle smoothing.
+
+    Angles derive from the u and v direction vectors (outputs 3..8), so the
+    origin components are excluded. A 3-output legacy model has no direction
+    vectors; its angle outputs (1..2) are used instead.
+    """
+    std = np.asarray(per_output_std, dtype=np.float64)
+    if std.size == 9:
+        return float(std[3:].mean())
+    if std.size == 3:
+        return float(std[1:].mean())
+    raise ValueError(f"Expected 9 or 3 model outputs, got {std.size}")
 
 
 class EstimateStep(PipelineStep):
@@ -115,11 +129,7 @@ class EstimateStep(PipelineStep):
                 image = read_image(img_path, grayscale=True)
 
                 if use_uncertainty:
-                    result = predict_with_uncertainty(
-                        image, model, estimation_config
-                    )
-                    pred = result["prediction"]
-                    pred["uncertainty"] = result["uncertainty"].tolist()
+                    pred = predict_with_uncertainty(image, model, estimation_config)
                 else:
                     pred = predict_slice_position(image, model, estimation_config)
 
@@ -137,9 +147,14 @@ class EstimateStep(PipelineStep):
                 warnings=warnings,
             )
 
-        # Postprocess: denormalize → smooth angles → regularize spacing → orthogonalize
-        predictions = denormalize_predictions(predictions)
-        predictions = integrate_angles(predictions)
+        # Predictions are already in physical units; smooth angles, regularize
+        # spacing, then orthogonalize.
+        angle_uncertainties = None
+        if use_uncertainty:
+            angle_uncertainties = [
+                _direction_uncertainty(pred["uncertainty"]) for pred in predictions
+            ]
+        predictions = integrate_angles(predictions, uncertainties=angle_uncertainties)
         predictions = regularize_spacing(predictions, method="ransac")
         predictions = enforce_orthogonality(predictions)
 
@@ -157,6 +172,8 @@ class EstimateStep(PipelineStep):
                 "linked": True,
                 "anchoring_vectors": pred.get("anchoring_vectors"),
             })
+            if "uncertainty" in pred:
+                alignments[-1]["uncertainty"] = pred["uncertainty"]
 
         # Save output
         output_file = output_dir / "estimates.json"
