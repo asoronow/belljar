@@ -8,61 +8,45 @@ from __future__ import annotations
 
 import logging
 import pickle
-from pathlib import Path
-from typing import Any
 
-import numpy as np
-import tifffile as tiff
-
-from belljar.config import BelljarConfig
 from belljar.detection.detector import (
+    _prepare_for_detection,
     create_detection_model,
     detect_neurons,
     export_bboxes,
     load_image,
-    _prepare_for_detection,
 )
 from belljar.io.formats import list_images
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import DetectParams
 from belljar.types import DetectionResult, StepResult
 
 logger = logging.getLogger(__name__)
 
 
-class DetectStep(PipelineStep):
+class DetectStep(PipelineStep[DetectParams]):
     """Detect cells/neurons in tissue images using YOLO + SAHI."""
+
+    params_class = DetectParams
 
     @property
     def name(self) -> str:
         return "Detect"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
+    def validate_inputs(self, params: DetectParams) -> list[str]:
         errors: list[str] = []
-        input_dir = kwargs.get("input_dir")
-        output_dir = kwargs.get("output_dir")
-        model_path = kwargs.get("model_path")
-
-        if not input_dir:
-            errors.append("input_dir is required")
-        elif not Path(input_dir).is_dir():
-            errors.append(f"Input directory does not exist: {input_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        if not model_path:
-            errors.append("model_path is required")
-        elif not Path(model_path).is_file():
-            errors.append(f"Model file does not exist: {model_path}")
-
+        if not params.input_dir.is_dir():
+            errors.append(f"Input directory does not exist: {params.input_dir}")
+        if not params.model_path.is_file():
+            errors.append(f"Model file does not exist: {params.model_path}")
         return errors
 
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_dir = Path(kwargs["input_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: DetectParams) -> StepResult:
+        input_dir = params.input_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        model_path = Path(kwargs["model_path"])
-        save_visualizations: bool = kwargs.get("save_visualizations", True)
+        model_path = params.model_path
+        save_visualizations = params.save_visualizations
 
         config = self.config.detection
 

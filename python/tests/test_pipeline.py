@@ -10,9 +10,10 @@ import pytest
 from belljar.config import BelljarConfig
 from belljar.pipeline.base import _noop_progress
 from belljar.pipeline.collate import collate_counts
-from belljar.pipeline.count import iou, compute_overlaps, percent_colocalized
+from belljar.pipeline.count import compute_overlaps, iou, percent_colocalized
 from belljar.pipeline.max_projection import MaxProjectionStep
-from belljar.pipeline.sharpen import SharpenStep, sharpen_image, enhance_contrast
+from belljar.pipeline.params import MaxProjectionParams, SharpenParams
+from belljar.pipeline.sharpen import SharpenStep, enhance_contrast, sharpen_image
 
 
 @pytest.fixture
@@ -28,27 +29,27 @@ def temp_dirs():
 
 
 class TestMaxProjectionStep:
-    def test_validates_missing_input(self, config: BelljarConfig) -> None:
-        step = MaxProjectionStep(config)
-        errors = step.validate_inputs(output_dir="/tmp/out")
-        assert any("input_dir" in e for e in errors)
-
-    def test_validates_missing_output(self, config: BelljarConfig) -> None:
-        step = MaxProjectionStep(config)
-        errors = step.validate_inputs(input_dir="/tmp/in")
-        assert any("output_dir" in e for e in errors)
-
     def test_validates_nonexistent_dir(self, config: BelljarConfig) -> None:
         step = MaxProjectionStep(config)
-        errors = step.validate_inputs(input_dir="/nonexistent", output_dir="/tmp/out")
+        params = MaxProjectionParams(input_dir="/nonexistent", output_dir="/tmp/out")
+        errors = step.validate_inputs(params)
         assert any("does not exist" in e for e in errors)
+
+    def test_validates_existing_dir(
+        self, config: BelljarConfig, temp_dirs: tuple[Path, Path]
+    ) -> None:
+        input_dir, output_dir = temp_dirs
+        step = MaxProjectionStep(config)
+        params = MaxProjectionParams(input_dir=input_dir, output_dir=output_dir)
+        assert step.validate_inputs(params) == []
 
     def test_no_files_returns_failure(
         self, config: BelljarConfig, temp_dirs: tuple[Path, Path]
     ) -> None:
         input_dir, output_dir = temp_dirs
         step = MaxProjectionStep(config)
-        result = step.run(_noop_progress, input_dir=str(input_dir), output_dir=str(output_dir))
+        params = MaxProjectionParams(input_dir=input_dir, output_dir=output_dir)
+        result = step.run(_noop_progress, params)
         assert not result.success
         assert result.errors
 
@@ -61,7 +62,8 @@ class TestMaxProjectionStep:
         cv2.imwrite(str(input_dir / "test.tif"), img)
 
         step = MaxProjectionStep(config)
-        result = step.run(_noop_progress, input_dir=str(input_dir), output_dir=str(output_dir))
+        params = MaxProjectionParams(input_dir=input_dir, output_dir=output_dir)
+        result = step.run(_noop_progress, params)
         assert result.success
         assert result.metrics["files_processed"] == 1
         assert (output_dir / "test.tif").exists()
@@ -70,9 +72,9 @@ class TestMaxProjectionStep:
 class TestSharpenStep:
     def test_validates_inputs(self, config: BelljarConfig) -> None:
         step = SharpenStep(config)
-        errors = step.validate_inputs(input_dir="/tmp/in", output_dir="/tmp/out")
+        params = SharpenParams(input_dir="/tmp/in", output_dir="/tmp/out")
         # /tmp/in doesn't exist
-        assert len(errors) > 0
+        assert len(step.validate_inputs(params)) > 0
 
     def test_sharpen_image_preserves_dtype(self) -> None:
         img = np.random.randint(0, 255, (50, 50), dtype=np.uint8)
@@ -135,7 +137,7 @@ class TestCollate:
             "\n"
         )
         structure_map = {
-            np.uint32(1): {"name": "Primary visual area", "acronym": "VISp", "id_path": "997/8/1"}
+            1: {"name": "Primary visual area", "acronym": "VISp", "id_path": "997/8/1"}
         }
         result = collate_counts(csv_path, structure_map, output_dir / "out.csv")
         assert "VISp" in result

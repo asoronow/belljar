@@ -10,12 +10,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from belljar.config import BelljarConfig
 from belljar.estimation.model_manager import ensure_model
 from belljar.estimation.postprocess import (
     enforce_orthogonality,
@@ -29,6 +27,7 @@ from belljar.estimation.predictor import (
 )
 from belljar.io.formats import list_images, read_image
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import EstimateParams
 from belljar.types import StepResult
 
 logger = logging.getLogger(__name__)
@@ -36,9 +35,9 @@ logger = logging.getLogger(__name__)
 
 def _json_default(obj: Any) -> Any:
     """JSON encoder for numpy types."""
-    if isinstance(obj, (np.floating, np.float32, np.float64)):
+    if isinstance(obj, np.floating):
         return float(obj)
-    if isinstance(obj, (np.integer, np.int32, np.int64)):
+    if isinstance(obj, np.integer):
         return int(obj)
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -60,47 +59,35 @@ def _direction_uncertainty(per_output_std: list[float]) -> float:
     raise ValueError(f"Expected 9 or 3 model outputs, got {std.size}")
 
 
-class EstimateStep(PipelineStep):
+class EstimateStep(PipelineStep[EstimateParams]):
     """Estimate slice positions and orientations for tissue sections."""
+
+    params_class = EstimateParams
 
     @property
     def name(self) -> str:
         return "Estimate"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
+    def validate_inputs(self, params: EstimateParams) -> list[str]:
         errors: list[str] = []
-        input_dir = kwargs.get("input_dir")
-        output_dir = kwargs.get("output_dir")
-
-        if not input_dir:
-            errors.append("input_dir is required")
-        elif not Path(input_dir).is_dir():
-            errors.append(f"Input directory does not exist: {input_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        # Model must be resolvable (explicit path, cached, or downloadable)
-        model_path = kwargs.get("model_path")
-        if model_path and not Path(model_path).exists():
-            errors.append(f"Model file not found: {model_path}")
-
+        if not params.input_dir.is_dir():
+            errors.append(f"Input directory does not exist: {params.input_dir}")
+        # A model given explicitly must exist; otherwise the cache or GCS is tried at run time.
+        if params.model_path is not None and not params.model_path.exists():
+            errors.append(f"Model file not found: {params.model_path}")
         return errors
 
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_dir = Path(kwargs["input_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: EstimateParams) -> StepResult:
+        input_dir = params.input_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        model_path_arg = kwargs.get("model_path")
-        gcs_model_uri = kwargs.get("gcs_model_uri")
-        use_uncertainty = kwargs.get("uncertainty", False)
+        use_uncertainty = params.uncertainty
 
-        # Resolve model
         try:
             model_path = ensure_model(
-                model_path=Path(model_path_arg) if model_path_arg else None,
-                gcs_uri=gcs_model_uri,
+                model_path=params.model_path,
+                gcs_uri=params.gcs_model_uri,
             )
         except FileNotFoundError as e:
             return StepResult(success=False, errors=[str(e)])

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 from functools import cached_property
-from typing import Any
-
-import numpy as np
-from numpy.typing import NDArray
+from typing import TYPE_CHECKING, Any
 
 from belljar.atlas.intensity import rescale_reference
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -107,23 +108,21 @@ class AtlasProvider:
     def structure_map(self) -> dict[int, dict[str, Any]]:
         """Build a belljar-compatible structure map from BrainGlobe structures.
 
-        Returns a dict mapping region_id -> {name, acronym, color, id_path}.
-        Compatible with the existing pipeline's structure_map format.
+        Returns a dict mapping region_id (int) -> {name, acronym, color, id_path}.
+        Keys are plain ints so lookups work with values read from JSON or from
+        uint32 annotation arrays alike.
         """
         smap: dict[int, dict[str, Any]] = {}
 
         for structure_id, structure in self.atlas.structures.items():
             # BrainGlobe provides RGB color as a list
-            color = structure.get("rgb_triplet", [128, 128, 128])
-            if isinstance(color, (list, tuple)):
-                color = tuple(color[:3])
-            else:
-                color = (128, 128, 128)
+            rgb = structure.get("rgb_triplet", [128, 128, 128])
+            color = tuple(rgb[:3]) if isinstance(rgb, (list, tuple)) else (128, 128, 128)
 
             # Build id_path from structure_id_path
             id_path = "/".join(str(x) for x in structure.get("structure_id_path", [structure_id]))
 
-            smap[np.uint32(structure_id)] = {
+            smap[int(structure_id)] = {
                 "name": structure.get("name", "Unknown"),
                 "acronym": structure.get("acronym", "?"),
                 "color": color,
@@ -131,7 +130,7 @@ class AtlasProvider:
             }
 
         # Add "Lost in Warp" entry for region ID 0
-        smap[np.uint32(0)] = {
+        smap[0] = {
             "name": "Lost in Warp",
             "acronym": "LIW",
             "color": (0, 0, 0),

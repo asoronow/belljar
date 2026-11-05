@@ -7,10 +7,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class RegistrationConfig(BaseModel):
+class StrictModel(BaseModel):
+    """Configuration base; a misspelled or removed key is an error, not ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RegistrationConfig(StrictModel):
     """Configuration for atlas-to-tissue registration."""
 
     processing_resolution: int = Field(
@@ -39,7 +45,7 @@ class RegistrationConfig(BaseModel):
     )
 
 
-class DetectionConfig(BaseModel):
+class DetectionConfig(StrictModel):
     """Configuration for cell/neuron detection."""
 
     confidence_threshold: float = Field(
@@ -58,7 +64,7 @@ class DetectionConfig(BaseModel):
     model_name: str = Field("ancientwizard.pt", description="Detection model filename")
 
 
-class AtlasConfig(BaseModel):
+class AtlasConfig(StrictModel):
     """Configuration for brain atlas."""
 
     atlas_name: str = Field(
@@ -79,7 +85,7 @@ class AtlasConfig(BaseModel):
     use_legacy: bool = False
 
 
-class DataGenerationConfig(BaseModel):
+class DataGenerationConfig(StrictModel):
     """Configuration for training data generation."""
 
     num_samples: int = Field(100_000, description="Number of training samples to generate")
@@ -118,7 +124,7 @@ class DataGenerationConfig(BaseModel):
     )
 
 
-class TrainingConfig(BaseModel):
+class TrainingConfig(StrictModel):
     """Configuration for model training."""
 
     batch_size: int = Field(128, description="Training batch size")
@@ -134,11 +140,16 @@ class TrainingConfig(BaseModel):
     early_stopping_patience: int = Field(10, description="Stop if val loss plateaus for N epochs")
     loss_type: str = Field(
         "mse",
-        description="Loss function type: 'mse' (weighted MSE), 'cosine' (MSE + cosine similarity), 'geodesic' (origin MSE + SO(3) geodesic distance)",
+        description=(
+            "Loss function type: 'mse' (weighted MSE), 'cosine' (MSE + cosine "
+            "similarity), 'geodesic' (origin MSE + SO(3) geodesic distance)"
+        ),
     )
     use_learned_loss_weights: bool = Field(
         True,
-        description="Use Kendall '18 learned multi-task uncertainty weights instead of fixed weights",
+        description=(
+            "Use Kendall '18 learned multi-task uncertainty weights instead of fixed weights"
+        ),
     )
     direction_cosine_weight: float = Field(
         0.5,
@@ -165,7 +176,7 @@ class TrainingConfig(BaseModel):
     )
 
 
-class EstimationConfig(BaseModel):
+class EstimationConfig(StrictModel):
     """Configuration for slice position estimation."""
 
     input_size: int = Field(256, description="Input image size for the estimator model")
@@ -184,12 +195,15 @@ class EstimationConfig(BaseModel):
     )
     backbone: str = Field(
         "resnet50",
-        description="Model backbone: 'resnet50' (25M params) or 'dinov2' (frozen ViT-B, ~650K trainable).",
+        description=(
+            "Model backbone: 'resnet50' (25M params) or 'dinov2' (frozen ViT-B, "
+            "~650K trainable)."
+        ),
     )
     data_generation: DataGenerationConfig = Field(default_factory=DataGenerationConfig)
 
 
-class BelljarConfig(BaseModel):
+class BelljarConfig(StrictModel):
     """Top-level application configuration."""
 
     registration: RegistrationConfig = Field(default_factory=RegistrationConfig)
