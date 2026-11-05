@@ -102,6 +102,36 @@ def _shift(image: np.ndarray, dx: int, dy: int) -> np.ndarray:
     return shifted
 
 
+class TestComputeRegistrationQuality:
+    """Tests for compute_registration_quality."""
+
+    def test_identical_images_score_high(self) -> None:
+        import SimpleITK as sitk
+
+        from belljar.registration.metrics import compute_registration_quality
+
+        image = sitk.GetImageFromArray(_blob_image(64))
+        metrics = compute_registration_quality(image, image)
+
+        assert metrics.mutual_information > 0
+        assert metrics.normalized_cross_correlation == pytest.approx(1.0, abs=1e-6)
+
+    def test_shifted_copy_scores_lower(self) -> None:
+        import SimpleITK as sitk
+
+        from belljar.registration.metrics import compute_registration_quality
+
+        array = _blob_image(64)
+        fixed = sitk.GetImageFromArray(array)
+        shifted = sitk.GetImageFromArray(_shift(array, 10, 0))
+
+        aligned = compute_registration_quality(fixed, fixed)
+        misaligned = compute_registration_quality(fixed, shifted)
+
+        assert misaligned.mutual_information < aligned.mutual_information
+        assert misaligned.normalized_cross_correlation < aligned.normalized_cross_correlation
+
+
 class TestMultimodalRegistrationKnownAnswer:
     """The rigid stage must recover a known translation."""
 

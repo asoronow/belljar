@@ -23,12 +23,15 @@ def compute_registration_quality(
         warped_moving: Atlas image warped to match the tissue.
 
     Returns:
-        RegistrationMetrics with MI and NCC values.
+        RegistrationMetrics with MI (higher is better) and NCC values.
     """
-    # Mutual Information
+    # MetricEvaluate requires a transform; identity translation evaluates the
+    # images as given. Mattes MI is a cost (negative), so negate it so that a
+    # higher score means better alignment.
     mi_filter = sitk.ImageRegistrationMethod()
     mi_filter.SetMetricAsMattesMutualInformation()
-    mi_value = mi_filter.MetricEvaluate(fixed, warped_moving)
+    mi_filter.SetInitialTransform(sitk.TranslationTransform(fixed.GetDimension()))
+    mi_value = -mi_filter.MetricEvaluate(fixed, warped_moving)
 
     # Normalized Cross-Correlation
     fixed_array = sitk.GetArrayFromImage(fixed).ravel().astype(np.float64)
