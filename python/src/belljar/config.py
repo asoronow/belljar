@@ -45,7 +45,7 @@ class DetectionConfig(BaseModel):
         200.0, description="Minimum bounding box area in pixels"
     )
     eccentricity_threshold: float = Field(
-        0.5, ge=0.0, le=1.0, description="Maximum eccentricity for shape filtering"
+        0.95, ge=0.0, le=1.0, description="Maximum eccentricity for shape filtering"
     )
     tile_size: int = Field(640, description="Tile size for SAHI sliced prediction")
     overlap_ratio: float = Field(

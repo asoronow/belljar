@@ -85,9 +85,8 @@ if __name__ == "__main__":
             intensity = tifffile.imread(intensity_file)
             # get the image width and height
             height, width = intensity.shape
-        except:
-            print(f"Erorr loading {iName}! Channels > 1 or bad image.", flush=True)
-            continue
+        except (OSError, ValueError) as e:
+            sys.exit(f"Error loading {iName}: channels > 1 or bad image ({e})")
 
         # load the annotation
         with open(annotation_file, "rb") as f:

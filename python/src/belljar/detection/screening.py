@@ -17,6 +17,10 @@ from skimage.measure import label, regionprops
 
 logger = logging.getLogger(__name__)
 
+# Bumped whenever the shape screening semantics change, so results produced
+# by different filters can be told apart.
+ECCENTRICITY_FILTER_VERSION = 2
+
 
 def xyxy_to_area(box: list[float]) -> float:
     """Compute bounding box area from [x1, y1, x2, y2] format."""
@@ -28,28 +32,30 @@ def check_eccentricity(
     threshold: float,
     image: NDArray,
 ) -> bool:
-    """Check if the object in a bounding box exceeds an eccentricity threshold.
+    """Decide whether a detection is round enough to keep.
 
-    Segments the cell using Otsu thresholding and computes the eccentricity
-    of the largest region.
+    Segments the cell using Otsu thresholding and compares the eccentricity
+    of the largest region against the threshold. A check that fails for any
+    reason keeps the box and logs a warning rather than dropping a detection.
 
     Args:
         box: Bounding box [x1, y1, x2, y2].
-        threshold: Eccentricity threshold (objects above this are removed).
+        threshold: Maximum eccentricity to keep (0 = circle, 1 = line).
         image: Full image (BGR uint8).
 
     Returns:
-        True if the object exceeds the threshold (should be removed).
+        True if the box should be kept.
     """
     try:
         x1, y1, x2, y2 = [int(b) for b in box]
         pad = 5
+        height, width = image.shape[:2]
         cell_image = image[
-            max(y1 - pad, 0) : y2 + pad,
-            max(x1 - pad, 0) : x2 + pad,
+            max(y1 - pad, 0) : min(y2 + pad, height),
+            max(x1 - pad, 0) : min(x2 + pad, width),
         ]
         if cell_image.size == 0:
-            return False
+            return True
 
         if len(cell_image.shape) > 2:
             cell_image = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
@@ -60,13 +66,13 @@ def check_eccentricity(
         regions = regionprops(labeled_mask)
 
         if not regions:
-            return False
+            return True
 
         largest_region = max(regions, key=lambda r: r.area)
-        return largest_region.eccentricity > threshold
+        return largest_region.eccentricity <= threshold
 
     except Exception as e:
-        logger.debug("Failed eccentricity check: %s", e)
+        logger.warning("Eccentricity check failed for box %s, keeping it: %s", box, e)
         return True
 
 
@@ -116,7 +122,7 @@ def screen_predictions(
     if eccentricity_threshold is not None and image is not None:
         second_pass = [
             obj for obj in second_pass
-            if not check_eccentricity(obj.bbox.to_xyxy(), eccentricity_threshold, image)
+            if check_eccentricity(obj.bbox.to_xyxy(), eccentricity_threshold, image)
         ]
     elif eccentricity_threshold is not None and image is None:
         logger.warning("Image not provided — eccentricity screening skipped.")
