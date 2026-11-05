@@ -9,13 +9,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from pydantic import ConfigDict
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
 class SliceAlignment:
     """Alignment state for a single histological section."""
+
+    __pydantic_config__ = ConfigDict(extra="forbid")
 
     section_name: str
     ap_position: float
@@ -26,6 +32,10 @@ class SliceAlignment:
     hemisphere: str = "W"  # "W"=Whole, "L"=Left
     linked: bool = True
     mask_path: str | None = None
+    # Written by the estimate step: predicted (ox..vz) components and the
+    # per-output MC-dropout std when uncertainty estimation was on.
+    anchoring_vectors: dict[str, float] | None = None
+    uncertainty: list[float] | None = None
 
 
 @dataclass

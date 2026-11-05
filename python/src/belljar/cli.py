@@ -1,15 +1,17 @@
 """Command-line interface for the belljar pipeline.
 
 Provides subcommands for each pipeline step, a full pipeline run,
-and the JSON-RPC server.
+and the JSON-RPC server. Every subcommand builds the same params model
+the JSON-RPC server builds, so the two entry points validate identically.
 
 Usage:
-    belljar estimate --input-dir /path/to/sections --output-dir /path/to/output --model-path model.pt
-    belljar align --input-dir /path/to/sections --output-dir /path/to/output --estimates /path/to/estimates.json
-    belljar detect --input-dir /path/to/sections --output-dir /path/to/output
-    belljar count --input-dir /path/to/detections --output-dir /path/to/output
-    belljar collate --input-dir /path/to/counts --output-dir /path/to/output
-    belljar run --input-dir /path/to/sections --output-dir /path/to/output --model-path model.pt
+    belljar estimate --input-dir SECTIONS --output-dir OUT --model-path model.pt
+    belljar align --input-dir SECTIONS --output-dir OUT --estimates OUT/estimates.json
+    belljar detect --input-dir SECTIONS --output-dir OUT --model-path yolo.pt
+    belljar count --predictions-dir DETECTIONS --annotations-dir ALIGNED --output-dir OUT
+    belljar collate --input-csv OUT/count_results.csv --output-dir OUT
+    belljar run --input-dir SECTIONS --output-dir OUT --model-path model.pt \\
+        --detection-model yolo.pt
     belljar server
 """
 
@@ -20,7 +22,27 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from pydantic import ValidationError
+
+from belljar.config import BelljarConfig
+from belljar.pipeline.params import (
+    AlignParams,
+    CollateParams,
+    CountParams,
+    DetectParams,
+    EstimateParams,
+    MaxProjectionParams,
+    SharpenParams,
+    StepParams,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from belljar.pipeline.base import PipelineStep
+    from belljar.server import BelljarServer
 
 logger = logging.getLogger(__name__)
 
@@ -35,177 +57,243 @@ def _progress(current: int, total: int, message: str) -> None:
         sys.stderr.flush()
 
 
-def _run_step(step_name: str, args: argparse.Namespace) -> int:
-    """Run a single pipeline step from CLI args."""
-    from belljar.config import BelljarConfig
+class InputError(Exception):
+    """An input file could not be read or does not have the expected shape."""
 
-    config = BelljarConfig()
 
-    step_kwargs: dict[str, Any] = {
-        "input_dir": str(args.input_dir),
-        "output_dir": str(args.output_dir),
-    }
-
-    # Step-specific arguments
-    if step_name == "estimate":
-        from belljar.pipeline.estimate import EstimateStep
-
-        if args.model_path:
-            step_kwargs["model_path"] = str(args.model_path)
-        if hasattr(args, "gcs_model_uri") and args.gcs_model_uri:
-            step_kwargs["gcs_model_uri"] = args.gcs_model_uri
-        if hasattr(args, "uncertainty") and args.uncertainty:
-            step_kwargs["uncertainty"] = True
-        step = EstimateStep(config)
-
-    elif step_name == "align":
-        from belljar.pipeline.align import AlignStep
-
-        estimates_path = Path(args.estimates)
-        if not estimates_path.exists():
-            logger.error("Estimates file not found: %s", estimates_path)
-            return 1
+def _load_alignments(estimates_path: Path) -> list[dict[str, Any]]:
+    try:
         with open(estimates_path) as f:
             data = json.load(f)
-        step_kwargs["alignments"] = data["alignments"]
-        step = AlignStep(config)
+    except (OSError, ValueError) as e:
+        raise InputError(f"Could not read {estimates_path}: {e}") from e
+    if not isinstance(data, dict) or "alignments" not in data:
+        raise InputError(f"{estimates_path} has no 'alignments' list")
+    return data["alignments"]
 
-    elif step_name == "detect":
-        from belljar.pipeline.detect import DetectStep
 
-        step = DetectStep(config)
+def _max_projection_params(args: argparse.Namespace) -> StepParams:
+    return MaxProjectionParams(input_dir=args.input_dir, output_dir=args.output_dir)
 
-    elif step_name == "count":
-        from belljar.pipeline.count import CountStep
 
-        step = CountStep(config)
+def _sharpen_params(args: argparse.Namespace) -> StepParams:
+    return SharpenParams(
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
+        equalize=args.equalize,
+        radius=args.radius,
+        amount=args.amount,
+    )
 
-    elif step_name == "collate":
-        from belljar.pipeline.collate import CollateStep
 
-        step = CollateStep(config)
+def _estimate_params(args: argparse.Namespace) -> StepParams:
+    return EstimateParams(
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
+        model_path=args.model_path,
+        gcs_model_uri=args.gcs_model_uri,
+        uncertainty=args.uncertainty,
+    )
 
-    else:
-        logger.error("Unknown step: %s", step_name)
-        return 1
 
-    # Validate
-    errors = step.validate_inputs(**step_kwargs)
+def _align_params(args: argparse.Namespace) -> StepParams:
+    return _align_params_from(args.input_dir, args.output_dir, args.estimates)
+
+
+def _align_params_from(input_dir: Path, output_dir: Path, estimates: Path) -> AlignParams:
+    return AlignParams.model_validate(
+        {
+            "input_dir": input_dir,
+            "output_dir": output_dir,
+            "alignments": _load_alignments(estimates),
+        }
+    )
+
+
+def _detect_params(args: argparse.Namespace) -> StepParams:
+    return DetectParams(
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
+        model_path=args.model_path,
+        save_visualizations=not args.no_visualizations,
+    )
+
+
+def _count_params(args: argparse.Namespace) -> StepParams:
+    return CountParams(
+        predictions_dir=args.predictions_dir,
+        annotations_dir=args.annotations_dir,
+        output_dir=args.output_dir,
+        include_layers=args.include_layers,
+    )
+
+
+def _collate_params(args: argparse.Namespace) -> StepParams:
+    return CollateParams(
+        input_csv=args.input_csv,
+        output_dir=args.output_dir,
+        include_layers=args.include_layers,
+    )
+
+
+_PARAM_BUILDERS: dict[str, Callable[[argparse.Namespace], StepParams]] = {
+    "max_projection": _max_projection_params,
+    "sharpen": _sharpen_params,
+    "estimate": _estimate_params,
+    "align": _align_params,
+    "detect": _detect_params,
+    "count": _count_params,
+    "collate": _collate_params,
+}
+
+
+def build_step_params(args: argparse.Namespace) -> StepParams:
+    """Build the params model for the subcommand in ``args``."""
+    return _PARAM_BUILDERS[args.command](args)
+
+
+def _make_step(step_name: str, config: BelljarConfig) -> PipelineStep[Any]:
+    from belljar.server import STEP_CLASSES
+
+    return STEP_CLASSES[step_name](config)
+
+
+def _execute(step: PipelineStep[Any], params: StepParams) -> bool:
+    """Validate then run one step, logging the outcome."""
+    errors = step.validate_inputs(params)
     if errors:
         for err in errors:
             logger.error("Validation error: %s", err)
-        return 1
+        return False
 
-    # Run
-    result = step.run(_progress, **step_kwargs)
+    result = step.run(_progress, params)
 
     if result.success:
-        logger.info("Step '%s' completed successfully", step_name)
+        logger.info("Step '%s' completed successfully", step.name)
         if result.output_path:
             logger.info("Output: %s", result.output_path)
         if result.metrics:
             logger.info("Metrics: %s", json.dumps(result.metrics, indent=2))
     else:
-        logger.error("Step '%s' failed", step_name)
+        logger.error("Step '%s' failed", step.name)
         for err in result.errors:
             logger.error("  %s", err)
 
     for w in result.warnings:
         logger.warning("  %s", w)
 
-    return 0 if result.success else 1
+    return result.success
 
 
-def _run_full_pipeline(args: argparse.Namespace) -> int:
-    """Run the full pipeline: estimate -> align -> detect -> count -> collate."""
-    from belljar.config import BelljarConfig
-    from belljar.pipeline.align import AlignStep
-    from belljar.pipeline.collate import CollateStep
-    from belljar.pipeline.count import CountStep
-    from belljar.pipeline.detect import DetectStep
-    from belljar.pipeline.estimate import EstimateStep
+def _run_step(args: argparse.Namespace, config: BelljarConfig) -> int:
+    """Run a single pipeline step from CLI args."""
+    try:
+        params = build_step_params(args)
+    except ValidationError as e:
+        logger.error("Invalid arguments: %s", e)
+        return 1
+    except InputError as e:
+        logger.error("%s", e)
+        return 1
+    return 0 if _execute(_make_step(args.command, config), params) else 1
 
-    config = BelljarConfig()
-    input_dir = Path(args.input_dir)
-    output_dir = Path(args.output_dir)
+
+def _run_full_pipeline(args: argparse.Namespace, config: BelljarConfig) -> int:
+    """Run estimate -> align -> detect -> count -> collate; 1 on any failure."""
+    try:
+        return _run_pipeline_steps(args, config)
+    except ValidationError as e:
+        logger.error("Invalid arguments: %s", e)
+        return 1
+    except InputError as e:
+        logger.error("%s", e)
+        return 1
+
+
+def _run_pipeline_steps(args: argparse.Namespace, config: BelljarConfig) -> int:
+    """``--detections-dir`` reuses existing detection results in place of detect."""
+    input_dir: Path = args.input_dir
+    output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    steps = [
-        ("estimate", EstimateStep(config), {
-            "input_dir": str(input_dir),
-            "output_dir": str(output_dir / "estimates"),
-            "model_path": str(args.model_path) if args.model_path else None,
-        }),
-    ]
+    estimates_dir = output_dir / "estimates"
+    aligned_dir = output_dir / "aligned"
+    detections_dir: Path = args.detections_dir or output_dir / "detections"
+    counts_dir = output_dir / "counts"
+    results_dir = output_dir / "results"
 
-    # Run estimate
     logger.info("=== Step 1/5: Estimate ===")
-    est_result = steps[0][1].run(_progress, **steps[0][2])
-    if not est_result.success:
-        logger.error("Estimation failed: %s", est_result.errors)
+    estimate = EstimateParams(
+        input_dir=input_dir,
+        output_dir=estimates_dir,
+        model_path=args.model_path,
+        gcs_model_uri=args.gcs_model_uri,
+        uncertainty=args.uncertainty,
+    )
+    if not _execute(_make_step("estimate", config), estimate):
         return 1
 
-    # Load estimates for alignment
-    estimates_path = output_dir / "estimates" / "estimates.json"
-    with open(estimates_path) as f:
-        estimates_data = json.load(f)
-
-    # Align
     logger.info("=== Step 2/5: Align ===")
-    align_step = AlignStep(config)
-    align_result = align_step.run(_progress, **{
-        "input_dir": str(input_dir),
-        "output_dir": str(output_dir / "aligned"),
-        "alignments": estimates_data["alignments"],
-    })
-    if not align_result.success:
-        logger.error("Alignment failed: %s", align_result.errors)
+    align = _align_params_from(input_dir, aligned_dir, estimates_dir / "estimates.json")
+    if not _execute(_make_step("align", config), align):
         return 1
 
-    # Detect
-    logger.info("=== Step 3/5: Detect ===")
-    detect_step = DetectStep(config)
-    detect_result = detect_step.run(_progress, **{
-        "input_dir": str(input_dir),
-        "output_dir": str(output_dir / "detections"),
-    })
-    if not detect_result.success:
-        logger.error("Detection failed: %s", detect_result.errors)
-        return 1
+    if args.detections_dir is None:
+        logger.info("=== Step 3/5: Detect ===")
+        detect = DetectParams(
+            input_dir=input_dir,
+            output_dir=detections_dir,
+            model_path=args.detection_model,
+        )
+        if not _execute(_make_step("detect", config), detect):
+            return 1
+    else:
+        logger.info("=== Step 3/5: Detect (using %s) ===", detections_dir)
 
-    # Count
     logger.info("=== Step 4/5: Count ===")
-    count_step = CountStep(config)
-    count_result = count_step.run(_progress, **{
-        "input_dir": str(output_dir / "detections"),
-        "output_dir": str(output_dir / "counts"),
-    })
-    if not count_result.success:
-        logger.error("Counting failed: %s", count_result.errors)
+    count = CountParams(
+        predictions_dir=detections_dir,
+        annotations_dir=aligned_dir,
+        output_dir=counts_dir,
+        include_layers=args.include_layers,
+    )
+    if not _execute(_make_step("count", config), count):
         return 1
 
-    # Collate
     logger.info("=== Step 5/5: Collate ===")
-    collate_step = CollateStep(config)
-    collate_result = collate_step.run(_progress, **{
-        "input_dir": str(output_dir / "counts"),
-        "output_dir": str(output_dir / "results"),
-    })
-    if not collate_result.success:
-        logger.error("Collation failed: %s", collate_result.errors)
+    collate = CollateParams(
+        input_csv=counts_dir / "count_results.csv",
+        output_dir=results_dir,
+        include_layers=args.include_layers,
+    )
+    if not _execute(_make_step("collate", config), collate):
         return 1
 
     logger.info("=== Pipeline complete ===")
-    logger.info("Results: %s", output_dir / "results")
+    logger.info("Results: %s", results_dir)
     return 0
+
+
+def _build_server(args: argparse.Namespace) -> BelljarServer:
+    from belljar.server import BelljarServer
+
+    return BelljarServer(_load_config(args.config))
 
 
 def _run_server(args: argparse.Namespace) -> int:
-    """Start the JSON-RPC server."""
-    from belljar.server import main as server_main
-
-    server_main()
+    """Start the JSON-RPC server on stdio."""
+    try:
+        server = _build_server(args)
+    except (OSError, ValidationError) as e:
+        logger.error("Could not load config %s: %s", args.config, e)
+        return 1
+    server.run()
     return 0
+
+
+def _add_io_dirs(parser: argparse.ArgumentParser, input_help: str, output_help: str) -> None:
+    parser.add_argument("--input-dir", type=Path, required=True, help=input_help)
+    parser.add_argument("--output-dir", type=Path, required=True, help=output_help)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -214,55 +302,127 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Belljar: automatic alignment tool for mouse brain histology.",
     )
     parser.add_argument(
-        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity (default: INFO).",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="JSON file of BelljarConfig overrides (default: built-in defaults).",
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    # ── estimate ──────────────────────────────────────────────────────
+    sections_help = "Directory of tissue section images."
+
+    mxp = subparsers.add_parser("max_projection", help="Max-project z-stacks to 2D images.")
+    _add_io_dirs(mxp, "Directory of z-stack TIFFs.", "Output directory for projected images.")
+
+    shp = subparsers.add_parser("sharpen", help="Sharpen tissue images.")
+    _add_io_dirs(shp, sections_help, "Output directory for sharpened images.")
+    shp.add_argument("--equalize", action="store_true", help="Apply CLAHE before sharpening.")
+    shp.add_argument("--radius", type=float, default=3.0, help="Unsharp mask radius.")
+    shp.add_argument("--amount", type=float, default=2.0, help="Unsharp mask amount.")
+
     est = subparsers.add_parser("estimate", help="Estimate slice positions and angles.")
-    est.add_argument("--input-dir", type=Path, required=True, help="Directory of tissue section images.")
-    est.add_argument("--output-dir", type=Path, required=True, help="Output directory for estimates JSON.")
-    est.add_argument("--model-path", type=Path, default=None, help="Path to estimator model checkpoint.")
-    est.add_argument("--gcs-model-uri", type=str, default=None, help="GCS URI to download model from.")
-    est.add_argument("--uncertainty", action="store_true", help="Enable MC Dropout uncertainty estimation.")
+    _add_io_dirs(est, sections_help, "Output directory for estimates JSON.")
+    est.add_argument(
+        "--model-path", type=Path, default=None, help="Path to estimator model checkpoint."
+    )
+    est.add_argument(
+        "--gcs-model-uri", type=str, default=None, help="GCS URI to download model from."
+    )
+    est.add_argument(
+        "--uncertainty", action="store_true", help="Enable MC Dropout uncertainty estimation."
+    )
 
-    # ── align ─────────────────────────────────────────────────────────
     aln = subparsers.add_parser("align", help="Register tissue sections to atlas.")
-    aln.add_argument("--input-dir", type=Path, required=True, help="Directory of tissue section images.")
-    aln.add_argument("--output-dir", type=Path, required=True, help="Output directory for registration results.")
-    aln.add_argument("--estimates", type=Path, required=True, help="Path to estimates.json from estimate step.")
+    _add_io_dirs(aln, sections_help, "Output directory for registration results.")
+    aln.add_argument(
+        "--estimates", type=Path, required=True, help="Path to estimates.json from estimate step."
+    )
 
-    # ── detect ────────────────────────────────────────────────────────
     det = subparsers.add_parser("detect", help="Detect cells in tissue sections.")
-    det.add_argument("--input-dir", type=Path, required=True, help="Directory of tissue section images.")
-    det.add_argument("--output-dir", type=Path, required=True, help="Output directory for detection results.")
+    _add_io_dirs(det, sections_help, "Output directory for detection results.")
+    det.add_argument(
+        "--model-path", type=Path, required=True, help="Path to the YOLO detection model."
+    )
+    det.add_argument(
+        "--no-visualizations", action="store_true", help="Skip writing detection overlay PNGs."
+    )
 
-    # ── count ─────────────────────────────────────────────────────────
     cnt = subparsers.add_parser("count", help="Count detected cells per brain region.")
-    cnt.add_argument("--input-dir", type=Path, required=True, help="Directory of detection results.")
-    cnt.add_argument("--output-dir", type=Path, required=True, help="Output directory for count results.")
+    cnt.add_argument(
+        "--predictions-dir", type=Path, required=True, help="Directory of detection pickles."
+    )
+    cnt.add_argument(
+        "--annotations-dir",
+        type=Path,
+        required=True,
+        help="Directory of Annotation_<section>.npy/.pkl files from the align step.",
+    )
+    cnt.add_argument(
+        "--output-dir", type=Path, required=True, help="Output directory for count results."
+    )
+    cnt.add_argument(
+        "--include-layers", action="store_true", help="Count cortical layers separately."
+    )
 
-    # ── collate ───────────────────────────────────────────────────────
     col = subparsers.add_parser("collate", help="Collate counts into summary CSV.")
-    col.add_argument("--input-dir", type=Path, required=True, help="Directory of count results.")
-    col.add_argument("--output-dir", type=Path, required=True, help="Output directory for summary CSV.")
+    col.add_argument(
+        "--input-csv", type=Path, required=True, help="count_results.csv from the count step."
+    )
+    col.add_argument(
+        "--output-dir", type=Path, required=True, help="Output directory for summary CSV."
+    )
+    col.add_argument(
+        "--include-layers", action="store_true", help="Keep cortical layers as separate rows."
+    )
 
-    # ── run ────────────────────────────────────────────────────────────
-    run = subparsers.add_parser("run", help="Run the full pipeline (estimate → align → detect → count → collate).")
-    run.add_argument("--input-dir", type=Path, required=True, help="Directory of tissue section images.")
-    run.add_argument("--output-dir", type=Path, required=True, help="Output directory for all results.")
-    run.add_argument("--model-path", type=Path, default=None, help="Path to estimator model checkpoint.")
+    run = subparsers.add_parser(
+        "run", help="Run the full pipeline (estimate -> align -> detect -> count -> collate)."
+    )
+    _add_io_dirs(run, sections_help, "Output directory for all results.")
+    run.add_argument(
+        "--model-path", type=Path, default=None, help="Path to estimator model checkpoint."
+    )
+    run.add_argument(
+        "--gcs-model-uri", type=str, default=None, help="GCS URI to download the estimator from."
+    )
+    run.add_argument(
+        "--uncertainty", action="store_true", help="Enable MC Dropout uncertainty estimation."
+    )
+    detection_source = run.add_mutually_exclusive_group(required=True)
+    detection_source.add_argument(
+        "--detection-model", type=Path, help="Path to the YOLO detection model."
+    )
+    detection_source.add_argument(
+        "--detections-dir", type=Path, help="Existing detection pickles; skips the detect step."
+    )
+    run.add_argument(
+        "--include-layers", action="store_true", help="Count cortical layers separately."
+    )
 
-    # ── server ────────────────────────────────────────────────────────
     subparsers.add_parser("server", help="Start the JSON-RPC server (for Electron frontend).")
 
     return parser
 
 
-def main() -> int:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    return _build_parser().parse_args(argv)
+
+
+def _load_config(path: Path | None) -> BelljarConfig:
+    if path is None:
+        return BelljarConfig()
+    return BelljarConfig.load(path)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -277,11 +437,16 @@ def main() -> int:
     if args.command == "server":
         return _run_server(args)
 
-    if args.command == "run":
-        return _run_full_pipeline(args)
+    try:
+        config = _load_config(args.config)
+    except (OSError, ValidationError) as e:
+        logger.error("Could not load config %s: %s", args.config, e)
+        return 1
 
-    # Single step commands
-    return _run_step(args.command, args)
+    if args.command == "run":
+        return _run_full_pipeline(args, config)
+
+    return _run_step(args, config)
 
 
 if __name__ == "__main__":

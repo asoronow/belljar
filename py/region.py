@@ -5,7 +5,12 @@ from pathlib import Path
 import tifffile
 import numpy as np
 from demons import resize_image_nearest_neighbor
-from section_pairing import UnpairedSectionsError, pair_sections
+from section_pairing import (
+    ANNOTATION_SUFFIXES,
+    UnpairedSectionsError,
+    load_annotation,
+    pair_sections,
+)
 import cv2
 
 
@@ -67,7 +72,7 @@ if __name__ == "__main__":
             intensityPath,
             annotationPath,
             first_suffixes=(".tif", ".tiff"),
-            second_suffixes=(".pkl",),
+            second_suffixes=ANNOTATION_SUFFIXES,
             first_label="image",
         )
     except UnpairedSectionsError as e:
@@ -89,100 +94,99 @@ if __name__ == "__main__":
             sys.exit(f"Error loading {iName}: channels > 1 or bad image ({e})")
 
         # load the annotation
-        with open(annotation_file, "rb") as f:
-            print("Processing " + iName, flush=True)
-            annotation = pickle.load(f)
+        print("Processing " + iName, flush=True)
+        annotation = load_annotation(annotation_file)
 
-            annotation_recaled = resize_image_nearest_neighbor(
-                annotation, height=height, width=width
-            )
-            required_regions = [
-                "VISa",
-                "VISal",
-                "VISam",
-                "VISp",
-                "VISl",
-                "VISli",
-                "VISpl",
-                "VISpm",
-                "VISpor",
-                "VISrl",
-                "RSPagl",
-                "RSPd",
-                "RSPv",
-            ]
+        annotation_recaled = resize_image_nearest_neighbor(
+            annotation, height=height, width=width
+        )
+        required_regions = [
+            "VISa",
+            "VISal",
+            "VISam",
+            "VISp",
+            "VISl",
+            "VISli",
+            "VISpl",
+            "VISpm",
+            "VISpor",
+            "VISrl",
+            "RSPagl",
+            "RSPd",
+            "RSPv",
+        ]
 
-            required_ids = [
-                atlas_id
-                for atlas_id, data in structure_map.items()
-                if data["acronym"] in required_regions
-            ]
+        required_ids = [
+            atlas_id
+            for atlas_id, data in structure_map.items()
+            if data["acronym"] in required_regions
+        ]
 
-            intensities = {required_id: {} for required_id in required_ids}
+        intensities = {required_id: {} for required_id in required_ids}
 
-            # Get all children of the required regions in a dict
-            # Dict helps us check which parent a child belongs to
-            # Child == Parent in ID_PATH
-            children_ids = {required_id: [] for required_id in required_ids}
-            for required_id in required_ids:
-                for atlas_id, data in structure_map.items():
-                    if required_id in [
-                        int(sub_id) for sub_id in data["id_path"].split("/")
-                    ]:
-                        children_ids[required_id].append(atlas_id)
+        # Get all children of the required regions in a dict
+        # Dict helps us check which parent a child belongs to
+        # Child == Parent in ID_PATH
+        children_ids = {required_id: [] for required_id in required_ids}
+        for required_id in required_ids:
+            for atlas_id, data in structure_map.items():
+                if required_id in [
+                    int(sub_id) for sub_id in data["id_path"].split("/")
+                ]:
+                    children_ids[required_id].append(atlas_id)
 
-            # Scan resized annotation for any child ids
-            # If found, add its vertex and intensity to the parent
-            for parent_id, children in children_ids.items():
-                for child_id in children:
-                    # Get the vertex of the child
-                    verts = np.where(annotation_recaled == child_id)
-                    if verts[0].size == 0:
-                        continue
-                    for point in zip(*verts):
-                        # check if whole
-                        if not is_whole:
-                            intensities[parent_id][point] = intensity[point]
-                        else:
-                            # take only points in the left half
-                            if point[1] < width // 2:
-                                intensities[parent_id][point] = intensity[point]
-
-            # Save the intensity values and the verticies as ROI package pkls
-            for region in intensities.keys():
-                # reconstruct the region
-                if intensities[region] == {}:  # skip empty regions
+        # Scan resized annotation for any child ids
+        # If found, add its vertex and intensity to the parent
+        for parent_id, children in children_ids.items():
+            for child_id in children:
+                # Get the vertex of the child
+                verts = np.where(annotation_recaled == child_id)
+                if verts[0].size == 0:
                     continue
+                for point in zip(*verts):
+                    # check if whole
+                    if not is_whole:
+                        intensities[parent_id][point] = intensity[point]
+                    else:
+                        # take only points in the left half
+                        if point[1] < width // 2:
+                            intensities[parent_id][point] = intensity[point]
 
-                name = iName.split(".")[0]
-                region_name = structure_map[region]["acronym"]
+        # Save the intensity values and the verticies as ROI package pkls
+        for region in intensities.keys():
+            # reconstruct the region
+            if intensities[region] == {}:  # skip empty regions
+                continue
 
-                # debug = reconstruct_region(intensities[region])
-                # debug = cv2.normalize(debug, None, 0, 255, cv2.NORM_MINMAX)
-                # cv2.imwrite(
-                #     str(
-                #         Path(
-                #             args.output.strip()
-                #             + "/"
-                #             + f"{name}_{region_name}_debug"
-                #             + ".png"
-                #         )
-                #     ),
-                #     debug,
-                # )
+            name = iName.split(".")[0]
+            region_name = structure_map[region]["acronym"]
 
-                # split file name
-                outputPath = Path(
-                    args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
+            # debug = reconstruct_region(intensities[region])
+            # debug = cv2.normalize(debug, None, 0, 255, cv2.NORM_MINMAX)
+            # cv2.imwrite(
+            #     str(
+            #         Path(
+            #             args.output.strip()
+            #             + "/"
+            #             + f"{name}_{region_name}_debug"
+            #             + ".png"
+            #         )
+            #     ),
+            #     debug,
+            # )
+
+            # split file name
+            outputPath = Path(
+                args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
+            )
+            
+            with open(outputPath, "wb") as f:
+                pickle.dump(
+                    {
+                        "roi": intensities[region],
+                        "name": region_name,
+                    },
+                    f,
                 )
-                
-                with open(outputPath, "wb") as f:
-                    pickle.dump(
-                        {
-                            "roi": intensities[region],
-                            "name": region_name,
-                        },
-                        f,
-                    )
 
     print("Done!", flush=True)

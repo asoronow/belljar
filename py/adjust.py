@@ -23,7 +23,13 @@ from qtpy.QtWidgets import (
 from qtpy.QtGui import QImage, QPixmap, QPainter, QColor
 from qtpy.QtCore import Qt, QPoint, QEvent
 from slice_atlas import add_outlines
-from section_pairing import UnpairedSectionsError, pair_sections
+from section_pairing import (
+    ANNOTATION_SUFFIXES,
+    UnpairedSectionsError,
+    load_annotation,
+    pair_sections,
+    save_annotation,
+)
 
 
 def numpy_array_to_qimage(array):
@@ -137,7 +143,7 @@ class AnnotationViewer(QMainWindow):
                 img_dir,
                 annotation_dir,
                 first_suffixes=(".png",),
-                second_suffixes=(".pkl",),
+                second_suffixes=ANNOTATION_SUFFIXES,
                 first_label="image",
             )
         except UnpairedSectionsError as e:
@@ -145,9 +151,7 @@ class AnnotationViewer(QMainWindow):
         self.images = [str(image) for _, image, _ in section_pairs]
         self.annotations = [str(annotation) for _, _, annotation in section_pairs]
 
-        self.current_label = None
-        with open(self.annotations[self.current_index], "rb") as f:
-            self.current_label = pickle.load(f)
+        self.current_label = load_annotation(self.annotations[self.current_index])
 
         # GUI Components
         self.initUI()
@@ -420,8 +424,7 @@ class AnnotationViewer(QMainWindow):
             return
 
         # Save the current label
-        with open(self.annotations[self.current_index], "wb") as f:
-            pickle.dump(self.current_label, f)
+        save_annotation(self.annotations[self.current_index], self.current_label)
         self.was_changed = False
 
     def prev_image(self):
@@ -434,8 +437,7 @@ class AnnotationViewer(QMainWindow):
                 if not self.warn_unsaved_changes():
                     return
             self.current_index -= 1
-            with open(self.annotations[self.current_index], "rb") as f:
-                self.current_label = pickle.load(f)
+            self.current_label = load_annotation(self.annotations[self.current_index])
 
             # Load the current image
             self.img_pixmap = QPixmap(self.images[self.current_index])
@@ -458,8 +460,7 @@ class AnnotationViewer(QMainWindow):
                     return
 
             self.current_index += 1
-            with open(self.annotations[self.current_index], "rb") as f:
-                self.current_label = pickle.load(f)
+            self.current_label = load_annotation(self.annotations[self.current_index])
 
             # Load the current image
             self.img_pixmap = QPixmap(self.images[self.current_index])

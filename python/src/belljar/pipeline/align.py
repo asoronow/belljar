@@ -2,68 +2,54 @@
 
 Combines atlas slicing, registration, and annotation warping into a single
 pipeline step that processes a batch of tissue sections.
+
+Outputs are flat files named ``<Kind>_<section>.<ext>`` in the output
+directory, the layout the count step and the v1 adjust/count tools pair
+by section stem.
 """
 
 from __future__ import annotations
 
 import logging
-import pickle
-from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
-from numpy.typing import NDArray
 
-from belljar.atlas.provider import AtlasProvider
 from belljar.atlas.slicer import slice_atlas_and_annotation
-from belljar.config import BelljarConfig
 from belljar.io.formats import list_images, read_image
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import AlignParams
 from belljar.registration.classical import register_to_atlas
-from belljar.types import SliceAlignment, StepResult
+from belljar.types import StepResult
 
 logger = logging.getLogger(__name__)
 
 
-class AlignStep(PipelineStep):
+class AlignStep(PipelineStep[AlignParams]):
     """Register tissue sections to atlas slices."""
+
+    params_class = AlignParams
 
     @property
     def name(self) -> str:
         return "Align"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
+    def validate_inputs(self, params: AlignParams) -> list[str]:
         errors: list[str] = []
-        input_dir = kwargs.get("input_dir")
-        output_dir = kwargs.get("output_dir")
-        alignments = kwargs.get("alignments")
-
-        if not input_dir:
-            errors.append("input_dir is required")
-        elif not Path(input_dir).is_dir():
-            errors.append(f"Input directory does not exist: {input_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        if not alignments:
-            errors.append("alignments list is required")
-
+        if not params.input_dir.is_dir():
+            errors.append(f"Input directory does not exist: {params.input_dir}")
+        if not params.alignments:
+            errors.append("alignments list is empty")
         return errors
 
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_dir = Path(kwargs["input_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: AlignParams) -> StepResult:
+        input_dir = params.input_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        alignments: list[dict[str, Any]] = kwargs["alignments"]
-
-        # Load atlas
-        atlas_provider = AtlasProvider(
-            self.config.atlas.atlas_name,
-            reference_name=self.config.atlas.reference_name,
-        )
+        alignments = params.alignments
+        atlas_provider = self.atlas_provider
 
         files = list_images(input_dir)
         if not files:
@@ -72,11 +58,10 @@ class AlignStep(PipelineStep):
             )
 
         warnings: list[str] = []
-        metrics_all: list[dict[str, float]] = []
+        metrics_all: list[dict[str, Any]] = []
         processed = 0
 
-        for i, alignment_data in enumerate(alignments):
-            alignment = SliceAlignment(**alignment_data)
+        for i, alignment in enumerate(alignments):
             progress(i, len(alignments), f"Registering {alignment.section_name}")
 
             # Find matching file
@@ -112,17 +97,14 @@ class AlignStep(PipelineStep):
                     self.config.registration,
                 )
 
-                # Save outputs
-                section_dir = output_dir / alignment.section_name
-                section_dir.mkdir(exist_ok=True)
-
-                np.save(str(section_dir / "annotation.npy"), warped_labels)
-                cv2.imwrite(str(section_dir / "atlas.png"), warped_atlas)
-                cv2.imwrite(str(section_dir / "color_label.png"), color_label)
-
-                # Save annotation as pickle for backward compatibility
-                with open(section_dir / "annotation.pkl", "wb") as f:
-                    pickle.dump(warped_labels, f)
+                stem = alignment.section_name
+                np.save(str(output_dir / f"Annotation_{stem}.npy"), warped_labels)
+                cv2.imwrite(str(output_dir / f"Atlas_{stem}.png"), warped_atlas)
+                cv2.imwrite(str(output_dir / f"Label_{stem}.png"), color_label)
+                composite = cv2.addWeighted(
+                    cv2.cvtColor(tissue, cv2.COLOR_GRAY2RGB), 0.8, color_label, 0.2, 0
+                )
+                cv2.imwrite(str(output_dir / f"Composite_{stem}.png"), composite)
 
                 metrics_all.append({
                     "section": alignment.section_name,
