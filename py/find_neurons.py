@@ -13,11 +13,20 @@ import tifffile as tiff
 import torch
 
 
+# Bumped whenever the shape screening semantics change, so results produced
+# by different filters can be told apart. Pickles written before versioning
+# unpickle with None.
+ECCENTRICITY_FILTER_VERSION = 2
+
+
 class DetectionResult:
+    eccentricity_filter_version = None
+
     def __init__(self, boxes, scores, image_dimensions):
         self.boxes = boxes
         self.scores = scores
         self.image_dimensions = image_dimensions
+        self.eccentricity_filter_version = ECCENTRICITY_FILTER_VERSION
 
 
 def export_bboxes(image, boxes, output_path):
@@ -29,35 +38,30 @@ def export_bboxes(image, boxes, output_path):
 
 
 def check_eccentricity(box, threshold, image):
-    # psuedo code
-    # for each box, segment the cell in the center with SAM
-    # compute the eccentricity of the mask
-    # if eccentricity > threshold, remove the box 
+    """Return True when the box should be kept: the largest Otsu-segmented
+    blob has eccentricity at or below threshold. A failed check keeps the box."""
     try:
         box = [int(b) for b in box]
-        cell_image = image[box[1]-5:box[3]+5, box[0]-5:box[2]+5, :]
+        height, width = image.shape[:2]
+        y1, y2 = max(box[1] - 5, 0), min(box[3] + 5, height)
+        x1, x2 = max(box[0] - 5, 0), min(box[2] + 5, width)
+        cell_image = image[y1:y2, x1:x2]
         if len(cell_image.shape) > 2:
             cell_image = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
         mask = cell_image > threshold_otsu(cell_image)
 
         labeled_mask = label(mask)
-        # Get all region properties
         regions = regionprops(labeled_mask)
-        
+
         if not regions:
-            return False  # Return False if no regions are detected
-        
-        # Find the region with the largest area
+            return True
+
         largest_region = max(regions, key=lambda r: r.area)
-        
-        # Compute the eccentricity of the largest region
-        eccentricity = largest_region.eccentricity
-        
-        # Return True if the eccentricity is greater than the threshold, otherwise False
-        return eccentricity > threshold
+
+        return largest_region.eccentricity <= threshold
 
     except Exception as e:
-        print("Failed to check eccentricity. Error: ", e)
+        print(f"Eccentricity check failed for box {box}, keeping it. Error: {e}", flush=True)
         return True
 
 def xyxy_to_area(box):
@@ -99,7 +103,7 @@ def screen_predictions(prediction_objects, area_threshold, eccentricity_threshol
 
     return second_pass
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(description="Find neurons in images")
     parser.add_argument(
         "-o",
@@ -118,7 +122,7 @@ if __name__ == "__main__":
         "-m", "--model", help="specify model file", default="../models/ancientwizard.pt"
     )
     parser.add_argument("-s", "--sam", default="~/.belljar/models/sam_vit_b.pth")
-    parser.add_argument("-e", "--eccentricity", help="eccentricity threshold", default=0.5)
+    parser.add_argument("-e", "--eccentricity", help="eccentricity threshold", type=float, default=0.95)
     parser.add_argument(
         "-n",
         "--multichannel",
@@ -132,7 +136,11 @@ if __name__ == "__main__":
         help="area threshold for screening",
         default=200,
     )
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
 
     input_dir = Path(args.input.strip())
     output_dir = Path(args.output.strip())
@@ -226,7 +234,7 @@ if __name__ == "__main__":
                 predicted_objects = screen_predictions(
                     result.object_prediction_list, 
                     float(args.area.strip()),
-                    eccentricity_threshold=float(args.eccentricity.strip()),
+                    eccentricity_threshold=args.eccentricity,
                     image=chan_img,
                     sam_model_path=Path(args.sam.strip()).expanduser(),
                     )
@@ -268,7 +276,7 @@ if __name__ == "__main__":
                                                    float(args.area.strip()), 
                                                    image=img, 
                                                    sam_model_path=Path(args.sam.strip()).expanduser(), 
-                                                   eccentricity_threshold=float(args.eccentricity.strip())
+                                                   eccentricity_threshold=args.eccentricity
                                                    )
 
             bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
