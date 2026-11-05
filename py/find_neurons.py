@@ -1,6 +1,7 @@
 import cv2
 import pickle
 import os
+import sys
 from skimage.measure import label, regionprops
 from skimage.filters import threshold_otsu
 import numpy as np
@@ -190,14 +191,14 @@ if __name__ == "__main__":
                     height, width = img.shape
                     channels = 1
                 else:
-                    raise Exception("Image has more than 3 dimensions!")
+                    raise ValueError("Image has more than 3 dimensions!")
             else:
                 img = cv2.imread(file_path)
+                if img is None:
+                    raise ValueError("cv2 could not decode the image")
                 height, width, channels = img.shape
-        except Exception as e:
-            print(f"Error reading {file}!", flush=True)
-            print(e, flush=True)
-            continue
+        except (OSError, ValueError) as e:
+            sys.exit(f"Error reading {file}: {e}")
 
         # If multichannel, split into individual channels
         split_channels = []

@@ -7,6 +7,7 @@ import argparse
 import tifffile as tiff
 import concurrent.futures
 from functools import partial
+import sys
 
 def enhance_contrast(image, saturation_level=0.05):
     """
@@ -67,8 +68,8 @@ def process_file(file, output_path, args, radius, amount):
         extension = Path(file).suffix
         # Save the processed image
         cv2.imwrite(f"{output_path}/{stem}.{extension}", img)
-    except Exception as e:
-        print(f"Failed to process {file}. Error: {e}", flush=True)
+    except (OSError, ValueError, cv2.error) as e:
+        raise RuntimeError(f"Failed to process {file}: {e}") from e
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process z-stack images")
@@ -110,7 +111,8 @@ if __name__ == "__main__":
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
-            except Exception as e:
-                print(f"An error occurred: {e}", flush=True)
+            except RuntimeError as e:
+                executor.shutdown(wait=False, cancel_futures=True)
+                sys.exit(str(e))
 
     print("Done!", flush=True)

@@ -1,6 +1,7 @@
 from tkinter import filedialog, simpledialog
 import tifffile as tf
 import os
+import sys
 import tkinter as tk
 import cv2
 import numpy as np
@@ -53,7 +54,7 @@ if __name__ == "__main__":
         filterSize = int(args.filter.strip())
 
     os.chdir(inputDirectory)
-    files = os.listdir(".")
+    files = [f for f in os.listdir(".") if f.lower().endswith((".tif", ".tiff"))]
     # Pass number of files to electron
     print(len(files), flush=True)
     for file in files:
@@ -67,7 +68,7 @@ if __name__ == "__main__":
             tophat = cv2.morphologyEx(img, cv2.MORPH_TOPHAT, kernel)
             final = adjust_gamma(tophat, float(args.correction))
             tf.imwrite(f"{outputDirectory}/{file}", final)
-        except:
-            print("Invalid image!", flush=True)
+        except (OSError, ValueError, cv2.error) as e:
+            sys.exit(f"Invalid image {file}: {e}")
 
     print("Done!")
