@@ -1,5 +1,8 @@
 import os
+import pickle
 from pathlib import Path
+
+import numpy as np
 
 # Output prefixes written by find_neurons.py and map.py respectively.
 SECTION_PREFIXES = ("Predictions_", "Annotation_")
@@ -78,3 +81,26 @@ def pair_sections(
         raise UnpairedSectionsError("\n".join(lines))
 
     return [(stem, first[stem], second[stem]) for stem in sorted(first)]
+
+
+# map.py wrote Annotation_<stem>.pkl; the v2 align step writes Annotation_<stem>.npy.
+ANNOTATION_SUFFIXES = (".pkl", ".npy")
+
+
+def load_annotation(path):
+    """Load a warped annotation array from either a pickle or a .npy file."""
+    path = Path(path)
+    if path.suffix.lower() == ".npy":
+        return np.load(path)
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def save_annotation(path, annotation):
+    """Write an annotation array back in the format its file name names."""
+    path = Path(path)
+    if path.suffix.lower() == ".npy":
+        np.save(path, annotation)
+        return
+    with open(path, "wb") as f:
+        pickle.dump(annotation, f)

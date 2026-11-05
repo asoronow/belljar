@@ -216,7 +216,7 @@ class CountStep(PipelineStep[CountParams]):
                 with open(pred_path, "rb") as f:
                     predictions: list[DetectionResult] = pickle.load(f)
 
-                if ann_path.suffix == ".npy":
+                if ann_path.suffix.lower() == ".npy":
                     annotation = np.load(str(ann_path))
                 else:
                     with open(ann_path, "rb") as f:

@@ -164,3 +164,35 @@ class TestRunInputErrors:
             )
         assert code == 1
         assert any("estimates.json" in record.getMessage() for record in caplog.records)
+
+class TestRunPipeline:
+    def test_run_end_to_end_with_prepared_detections(
+        self, tmp_path, sections, detections, constant_model, fast_config, structured_provider
+    ) -> None:
+        output_dir = tmp_path / "run_out"
+        with patch("belljar.pipeline.base.AtlasProvider", return_value=structured_provider):
+            code = main(
+                [
+                    "--config", str(fast_config),
+                    "run",
+                    "--input-dir", str(sections),
+                    "--output-dir", str(output_dir),
+                    "--model-path", str(constant_model),
+                    "--detections-dir", str(detections),
+                ]
+            )
+        assert code == 0
+
+        estimates = json.loads((output_dir / "estimates" / "estimates.json").read_text())
+        assert {a["section_name"] for a in estimates["alignments"]} == set(STEMS)
+
+        counts = (output_dir / "counts" / "count_results.csv").read_text()
+        for stem in STEMS:
+            assert stem in counts
+
+        collated = (output_dir / "results" / "collated_results.csv").read_text().splitlines()
+        assert collated[0] == "Region Acronym,Region Name,Total Count"
+        assert len(collated) > 1
+        total = sum(int(line.split(",")[-1]) for line in collated[1:])
+        assert total == 2 * len(STEMS)
+
