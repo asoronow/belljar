@@ -23,6 +23,74 @@ from belljar.types import DetectionResult, StepResult
 
 logger = logging.getLogger(__name__)
 
+# Output prefixes written by the v1 detection and alignment scripts.
+_SECTION_PREFIXES = ("Predictions_", "Annotation_")
+
+
+class SectionPairingError(ValueError):
+    """A prediction or annotation file has no partner with the same stem."""
+
+
+def _section_stem(path: Path) -> str:
+    """Section key: prefix removed, then everything from the first dot.
+
+    The v1 detector names output from the first dot of the image name while
+    the v1 aligner names from the last, so the first-dot stem is the only key
+    on which both agree.
+    """
+    name = path.name
+    for prefix in _SECTION_PREFIXES:
+        if name.startswith(prefix):
+            name = name[len(prefix) :]
+            break
+    return name.split(".")[0]
+
+
+def _files_by_stem(directory: Path, suffixes: tuple[str, ...], label: str) -> dict[str, Path]:
+    by_stem: dict[str, Path] = {}
+    for path in directory.iterdir():
+        if path.suffix.lower() not in suffixes:
+            continue
+        stem = _section_stem(path)
+        existing = by_stem.get(stem)
+        if existing is not None:
+            raise SectionPairingError(
+                f"Duplicate {label} files for section '{stem}': {existing.name} and {path.name}"
+            )
+        by_stem[stem] = path
+    return by_stem
+
+
+def pair_section_files(
+    predictions_dir: Path, annotations_dir: Path
+) -> list[tuple[str, Path, Path]]:
+    """Match prediction pickles to annotation files by section stem.
+
+    Returns (stem, prediction_path, annotation_path) tuples sorted by stem.
+
+    Raises:
+        SectionPairingError: if any file on either side has no partner; the
+            message names every unmatched stem.
+    """
+    predictions = _files_by_stem(predictions_dir, (".pkl",), "prediction")
+    annotations = _files_by_stem(annotations_dir, (".pkl", ".npy"), "annotation")
+
+    only_predictions = sorted(set(predictions) - set(annotations))
+    only_annotations = sorted(set(annotations) - set(predictions))
+    if only_predictions or only_annotations:
+        lines = ["Could not pair every section file:"]
+        if only_predictions:
+            lines.append(
+                "  prediction files with no annotation: " + ", ".join(only_predictions)
+            )
+        if only_annotations:
+            lines.append(
+                "  annotation files with no prediction: " + ", ".join(only_annotations)
+            )
+        raise SectionPairingError("\n".join(lines))
+
+    return [(stem, predictions[stem], annotations[stem]) for stem in sorted(predictions)]
+
 
 def iou(box_a: list[float], box_b: list[float]) -> float:
     """Compute Intersection over Union between two bounding boxes.
@@ -141,40 +209,21 @@ class CountStep(PipelineStep):
         for k, v in regions.items():
             acronym_to_id[v["acronym"]] = k
 
-        # Find matching files
-        pred_files = sorted(
-            [p for p in predictions_dir.iterdir() if p.suffix == ".pkl"]
-        )
-        ann_files = sorted(
-            [p for p in annotations_dir.iterdir() if p.suffix in (".pkl", ".npy")]
-        )
+        try:
+            section_pairs = pair_section_files(predictions_dir, annotations_dir)
+        except SectionPairingError as e:
+            return StepResult(success=False, errors=[str(e)])
 
-        if not pred_files:
+        if not section_pairs:
             return StepResult(success=False, errors=["No prediction files found"])
-        if not ann_files:
-            return StepResult(success=False, errors=["No annotation files found"])
 
         warnings: list[str] = []
         sums: dict[str, dict[int, dict[str, int]]] = {}
         colocalized: dict[str, dict[int, dict[int, float]]] = {}
         region_areas: dict[str, dict[str, int]] = {}
 
-        for i, pred_path in enumerate(pred_files):
-            section_name = pred_path.stem
-            progress(i, len(pred_files), f"Counting {section_name}")
-
-            # Find matching annotation
-            ann_path = None
-            for af in ann_files:
-                if af.stem.startswith(section_name) or af.stem == section_name:
-                    ann_path = af
-                    break
-            if ann_path is None and i < len(ann_files):
-                ann_path = ann_files[i]
-
-            if ann_path is None:
-                warnings.append(f"No matching annotation for {section_name}")
-                continue
+        for i, (section_name, pred_path, ann_path) in enumerate(section_pairs):
+            progress(i, len(section_pairs), f"Counting {section_name}")
 
             try:
                 with open(pred_path, "rb") as f:
@@ -240,11 +289,11 @@ class CountStep(PipelineStep):
                 logger.exception("Counting failed for %s", section_name)
 
         # Write CSV output
-        progress(len(pred_files), len(pred_files) + 1, "Writing output")
+        progress(len(section_pairs), len(section_pairs) + 1, "Writing output")
         csv_path = output_dir / "count_results.csv"
         _write_count_csv(csv_path, sums, colocalized, region_areas, regions, acronym_to_id)
 
-        progress(len(pred_files) + 1, len(pred_files) + 1, "Done")
+        progress(len(section_pairs) + 1, len(section_pairs) + 1, "Done")
 
         # Compute total counts
         total_counts = 0

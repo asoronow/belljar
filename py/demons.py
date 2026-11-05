@@ -1,3 +1,4 @@
+import logging
 import SimpleITK as sitk
 import numpy as np
 import pickle
@@ -193,17 +194,68 @@ def resize_image_to_width(image, target_width):
     return resized_image
 
 
-def resize_image_nearest_neighbor(input_image, new_size):
+logger = logging.getLogger(__name__)
+
+
+def resolve_image_dimensions(image_dimensions, reference_shape=None, boxes=None):
+    """
+    Return the (height, width) a prediction file was made at.
+
+    Older Predictions_*.pkl files store image_dimensions in either order, so
+    the pair is checked against a reference array shape (the image on disk
+    or the annotation for the same section) and the detection boxes, both of
+    which must fit inside the chosen orientation.
+
+    Parameters:
+        image_dimensions (tuple): The stored (a, b) pair.
+        reference_shape (tuple, optional): numpy shape of an array that has
+            the same orientation as the image, e.g. annotation.shape.
+        boxes (list, optional): [x1, y1, x2, y2] boxes detected in the image.
+
+    Returns:
+        tuple: (height, width).
+    """
+    first, second = int(image_dimensions[0]), int(image_dimensions[1])
+    if first == second:
+        return first, second
+
+    candidates = [(first, second), (second, first)]
+
+    if boxes:
+        max_x = max(box[2] for box in boxes)
+        max_y = max(box[3] for box in boxes)
+        fitting = [(h, w) for h, w in candidates if max_x <= w and max_y <= h]
+        if len(fitting) == 1:
+            return fitting[0]
+
+    if reference_shape is not None:
+        ref_h, ref_w = int(reference_shape[0]), int(reference_shape[1])
+        if ref_h != ref_w:
+            taller = ref_h > ref_w
+            return next((h, w) for h, w in candidates if (h > w) == taller)
+
+    logger.warning(
+        "image_dimensions %s is ambiguous; assuming (height, width)",
+        image_dimensions,
+    )
+    return first, second
+
+
+def resize_image_nearest_neighbor(input_image, *, height, width):
     """
     Resize an image using nearest-neighbor interpolation, maintaining the original data type.
 
     Parameters:
-        input_image (SimpleITK.Image): The input image to be resized.
-        new_size (tuple or list): The desired size (in pixels) as (height, width, [depth]).
+        input_image (numpy.ndarray): The input image to be resized.
+        height (int): The desired number of rows.
+        width (int): The desired number of columns.
 
     Returns:
-        SimpleITK.Image: The resized image, maintaining the original data type.
+        numpy.ndarray: The resized image, maintaining the original data type.
     """
+
+    # SimpleITK sizes are (x, y) == (width, height), the reverse of numpy shapes
+    new_size = [int(width), int(height)]
 
     # Calculate the new spacing based on old spacing and old and new sizes
     input_image = sitk.GetImageFromArray(input_image)
@@ -252,7 +304,7 @@ def register_to_atlas(tissue, section, label, structure_map_path):
 
     tissue_resized = cv2.resize(tissue, (360, 360))
     section_resized = cv2.resize(section, (360, 360))
-    label = resize_image_nearest_neighbor(label, (360, 360))
+    label = resize_image_nearest_neighbor(label, height=360, width=360)
     fixed = sitk.GetImageFromArray(tissue_resized, isVector=False)
     
     # Vectorized layer-specific intensity adjustment
@@ -308,6 +360,8 @@ def register_to_atlas(tissue, section, label, structure_map_path):
     color_label = cv2.resize(color_label, tissue.shape[:2][::-1])
     # convert color label back to rgb
     color_label = cv2.cvtColor(color_label, cv2.COLOR_BGR2RGB)
-    resampled_label = resize_image_nearest_neighbor(resampled_label, tissue.shape[:2][::-1])
+    resampled_label = resize_image_nearest_neighbor(
+        resampled_label, height=tissue.shape[0], width=tissue.shape[1]
+    )
 
     return resampled_label, resampled_atlas, color_label
