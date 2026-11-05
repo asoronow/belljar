@@ -341,7 +341,8 @@ def generate_single_sample(
     """Generate a single training sample from the atlas.
 
     Args:
-        atlas_ref: 3D atlas reference volume (uint8).
+        atlas_ref: 3D atlas reference volume (uint8, as returned by
+            AtlasProvider.reference).
         rng: Random generator.
         config: Data generation configuration.
         ap_range: AP range for label normalization.
@@ -395,17 +396,6 @@ def generate_single_sample(
     atlas_slice = np.pad(atlas_slice, 25, mode="constant", constant_values=0)
     target_size = 256  # Will use config.input_size at dataset load time
     atlas_slice = cv2.resize(atlas_slice, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
-
-    # Normalize to [0, 255] — handles uint16 atlas references (e.g. Nissl
-    # range [0, 27433]).  Without this, np.clip(0, 255) destroys >94% of
-    # brain pixels by clamping them to flat 255.
-    slice_f = atlas_slice.astype(np.float32)
-    nonzero = slice_f[slice_f > 0]
-    if nonzero.size > 0:
-        p_low, p_high = np.percentile(nonzero, [1, 99])
-        if p_high > p_low:
-            slice_f = (slice_f - p_low) / (p_high - p_low) * 255.0
-    atlas_slice = np.clip(slice_f, 0, 255).astype(np.uint8)
 
     # Domain randomization
     atlas_slice = apply_domain_randomization(atlas_slice, rng, stain_weights=config.stain_weights)
