@@ -57,13 +57,17 @@ def multimodal_registration(
         sitk.CenteredTransformInitializerFilter.GEOMETRY,
     )
 
+    # Regular-step descent bounds each update by the configured step length.
+    # Plain gradient descent estimates its own learning rate per level and
+    # overshoots the MI basin on edge images, drifting tens of pixels.
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation()
-    R.SetOptimizerAsGradientDescent(
-        learningRate=config.rigid_learning_rate,
+    R.SetOptimizerAsRegularStepGradientDescent(
+        learningRate=config.rigid_step_length,
+        minStep=1e-4,
         numberOfIterations=config.rigid_iterations,
-        convergenceMinimumValue=1e-8,
-        convergenceWindowSize=20,
+        relaxationFactor=0.5,
+        gradientMagnitudeTolerance=1e-6,
     )
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
@@ -87,11 +91,12 @@ def multimodal_registration(
 
     R2 = sitk.ImageRegistrationMethod()
     R2.SetMetricAsMattesMutualInformation()
-    R2.SetOptimizerAsGradientDescent(
-        learningRate=config.affine_learning_rate,
+    R2.SetOptimizerAsRegularStepGradientDescent(
+        learningRate=config.affine_step_length,
+        minStep=1e-4,
         numberOfIterations=config.affine_iterations,
-        convergenceMinimumValue=1e-10,
-        convergenceWindowSize=10,
+        relaxationFactor=0.5,
+        gradientMagnitudeTolerance=1e-6,
     )
     R2.SetOptimizerScalesFromPhysicalShift()
     R2.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
