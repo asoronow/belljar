@@ -19,7 +19,7 @@ from sahi.predict import get_sliced_prediction
 from skimage.exposure import equalize_adapthist
 
 from belljar.config import DetectionConfig
-from belljar.detection.screening import screen_predictions
+from belljar.detection.screening import ECCENTRICITY_FILTER_VERSION, screen_predictions
 from belljar.types import DetectionResult
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,7 @@ def detect_neurons(
         channel_index=channel_index,
         model_name=config.model_name,
         confidence_threshold=config.confidence_threshold,
+        eccentricity_filter_version=ECCENTRICITY_FILTER_VERSION,
     )
 
 
