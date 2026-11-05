@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtGui import QImage, QPixmap, QPainter, QColor
 from qtpy.QtCore import Qt, QPoint, QEvent
 from slice_atlas import add_outlines
+from section_pairing import UnpairedSectionsError, pair_sections
 
 
 def numpy_array_to_qimage(array):
@@ -131,20 +132,18 @@ class AnnotationViewer(QMainWindow):
         self.selected_region_id = None
         self.selected_region_name = "None"
         # Load images and annotations
-        self.images = sorted(
-            [
-                os.path.join(img_dir, f)
-                for f in os.listdir(img_dir)
-                if f.endswith(".png")
-            ]
-        )
-        self.annotations = sorted(
-            [
-                os.path.join(annotation_dir, f)
-                for f in os.listdir(annotation_dir)
-                if f.endswith(".pkl")
-            ]
-        )
+        try:
+            section_pairs = pair_sections(
+                img_dir,
+                annotation_dir,
+                first_suffixes=(".png",),
+                second_suffixes=(".pkl",),
+                first_label="image",
+            )
+        except UnpairedSectionsError as e:
+            sys.exit(str(e))
+        self.images = [str(image) for _, image, _ in section_pairs]
+        self.annotations = [str(annotation) for _, _, annotation in section_pairs]
 
         self.current_label = None
         with open(self.annotations[self.current_index], "rb") as f:

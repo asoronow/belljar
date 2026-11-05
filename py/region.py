@@ -1,10 +1,11 @@
-import os
+import sys
 import pickle
 import argparse
 from pathlib import Path
 import tifffile
 import numpy as np
 from demons import resize_image_nearest_neighbor
+from section_pairing import UnpairedSectionsError, pair_sections
 import cv2
 
 
@@ -58,24 +59,30 @@ if __name__ == "__main__":
 
     # Read in the intensity images
     intensityPath = args.images.strip()
-    intensityFiles = os.listdir(intensityPath)
-    intensityFiles.sort()
     is_whole = eval(args.whole.strip())
     # Read the annotation for the images
     annotationPath = args.annotations.strip()
-    annotationFiles = os.listdir(annotationPath)
-    annotationFiles = [f for f in annotationFiles if f.endswith(".pkl")]
-    annotationFiles.sort()
+    try:
+        section_pairs = pair_sections(
+            intensityPath,
+            annotationPath,
+            first_suffixes=(".tif", ".tiff"),
+            second_suffixes=(".pkl",),
+            first_label="image",
+        )
+    except UnpairedSectionsError as e:
+        sys.exit(str(e))
 
-    print(2 + len(intensityFiles), flush=True)
+    print(2 + len(section_pairs), flush=True)
     print("Setting up...", flush=True)
 
     structure_map = pickle.load(open(args.map.strip(), "rb"))
 
-    for i, iName in enumerate(intensityFiles):
+    for section_name, intensity_file, annotation_file in section_pairs:
+        iName = intensity_file.name
         # load the image
         try:
-            intensity = tifffile.imread(intensityPath + "/" + iName)
+            intensity = tifffile.imread(intensity_file)
             # get the image width and height
             height, width = intensity.shape
         except:
@@ -83,7 +90,7 @@ if __name__ == "__main__":
             continue
 
         # load the annotation
-        with open(annotationPath + "/" + annotationFiles[i], "rb") as f:
+        with open(annotation_file, "rb") as f:
             print("Processing " + iName, flush=True)
             annotation = pickle.load(f)
 

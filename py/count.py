@@ -1,12 +1,13 @@
 import argparse
 import numpy as np
-import os
+import sys
 import csv
 import cv2
 import pickle
 from pathlib import Path
 from find_neurons import DetectionResult
 from demons import resize_image_nearest_neighbor
+from section_pairing import UnpairedSectionsError, pair_sections
 
 
 def iou(boxA, boxB):
@@ -124,14 +125,16 @@ if __name__ == "__main__":
     annotation_path = Path(args.annotations.strip())
     output_path = Path(args.output.strip())
 
-    annotation_files = os.listdir(annotation_path)
-    annotation_files = [name for name in annotation_files if name.endswith("pkl")]
-    annotation_files.sort()
-    print(len(annotation_files) + 1, flush=True)
-    predictionFiles = [
-        name for name in os.listdir(prediction_path) if name.endswith("pkl")
-    ]
-    predictionFiles.sort()
+    try:
+        section_pairs = pair_sections(
+            prediction_path,
+            annotation_path,
+            first_suffixes=(".pkl",),
+            second_suffixes=(".pkl",),
+        )
+    except UnpairedSectionsError as e:
+        sys.exit(str(e))
+    print(len(section_pairs) + 1, flush=True)
     # Reading in regions
     regions = {}
     acronym_to_region = {}
@@ -143,13 +146,14 @@ if __name__ == "__main__":
     sums = {}
     colocalized = {}
     region_areas = {}
-    for i, pName in enumerate(predictionFiles):
+    for section_name, prediction_file, annotation_file in section_pairs:
+        pName = prediction_file.name
         sums[pName] = {}
         region_areas[pName] = {}
-        with open(prediction_path / pName, "rb") as predictionPkl, open(
-            annotation_path / annotation_files[i], "rb"
+        with open(prediction_file, "rb") as predictionPkl, open(
+            annotation_file, "rb"
         ) as annotationPkl:
-            print(f"Counting {annotation_files[i].split('.')[0]}...", flush=True)
+            print(f"Counting {section_name}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
