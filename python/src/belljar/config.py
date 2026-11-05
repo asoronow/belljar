@@ -17,10 +17,14 @@ class RegistrationConfig(BaseModel):
         512,
         description="Internal processing resolution (pixels). Previous default was 360.",
     )
-    rigid_iterations: int = Field(100, description="Max iterations for rigid registration")
-    rigid_learning_rate: float = 0.001
+    rigid_iterations: int = Field(200, description="Max iterations for rigid registration")
+    rigid_step_length: float = Field(
+        2.0, description="Initial optimizer step (physical units) for rigid registration"
+    )
     affine_iterations: int = Field(100, description="Max iterations for affine registration")
-    affine_learning_rate: float = 0.001
+    affine_step_length: float = Field(
+        1.0, description="Initial optimizer step (physical units) for affine registration"
+    )
     bspline_iterations: int = Field(200, description="Max iterations for B-spline registration")
     bspline_learning_rate: float = 0.0001
     bspline_grid_size: int = Field(
