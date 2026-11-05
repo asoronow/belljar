@@ -7,20 +7,21 @@ filtering to improve tissue visibility before registration/detection.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import tifffile as tiff
-from numpy.typing import NDArray
 from skimage.filters import unsharp_mask
 from skimage.morphology import disk, white_tophat
 
-from belljar.config import BelljarConfig
 from belljar.io.formats import list_images
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import SharpenParams
 from belljar.types import StepResult
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -76,50 +77,38 @@ def sharpen_image(
     original_dtype = img.dtype
 
     if equalize:
-        if img.dtype == np.uint16:
-            img_8bit = (img / 256).astype(np.uint8)
-        else:
-            img_8bit = img.astype(np.uint8)
+        img_8bit = (img / 256).astype(np.uint8) if img.dtype == np.uint16 else img.astype(np.uint8)
         clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-        img = clahe.apply(img_8bit)
-        img = enhance_contrast(img)
+        img = enhance_contrast(np.asarray(clahe.apply(img_8bit)))
 
-    img = unsharp_mask(img, radius=radius, amount=amount, preserve_range=True)
-    img = white_tophat(img, disk(tophat_radius))
+    sharpened = unsharp_mask(img, radius=radius, amount=amount, preserve_range=True)
+    result = np.asarray(white_tophat(sharpened, disk(tophat_radius)))
 
-    return img.astype(original_dtype)
+    return result.astype(original_dtype)
 
 
-class SharpenStep(PipelineStep):
+class SharpenStep(PipelineStep[SharpenParams]):
     """Sharpen tissue images for better registration and detection."""
+
+    params_class = SharpenParams
 
     @property
     def name(self) -> str:
         return "Sharpen"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
-        errors: list[str] = []
-        input_dir = kwargs.get("input_dir")
-        output_dir = kwargs.get("output_dir")
+    def validate_inputs(self, params: SharpenParams) -> list[str]:
+        if not params.input_dir.is_dir():
+            return [f"Input directory does not exist: {params.input_dir}"]
+        return []
 
-        if not input_dir:
-            errors.append("input_dir is required")
-        elif not Path(input_dir).is_dir():
-            errors.append(f"Input directory does not exist: {input_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        return errors
-
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_dir = Path(kwargs["input_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: SharpenParams) -> StepResult:
+        input_dir = params.input_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        equalize: bool = kwargs.get("equalize", False)
-        radius: float = kwargs.get("radius", 3.0)
-        amount: float = kwargs.get("amount", 2.0)
+        equalize = params.equalize
+        radius = params.radius
+        amount = params.amount
 
         files = list_images(input_dir)
         if not files:

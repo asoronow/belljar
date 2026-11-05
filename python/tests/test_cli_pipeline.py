@@ -1,19 +1,17 @@
 """Tests for the CLI, EstimateStep, and model_manager."""
 
 import json
-import pickle
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 import torch
 
 from belljar.config import BelljarConfig, EstimationConfig
-from belljar.estimation.model_manager import DEFAULT_MODEL_DIR, ensure_model
+from belljar.estimation.model_manager import ensure_model
 from belljar.pipeline.estimate import EstimateStep
-from belljar.types import StepResult
-
+from belljar.pipeline.params import EstimateParams
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -111,9 +109,11 @@ class TestModelManager:
         assert result == cached
 
     def test_gcs_download_gsutil_not_found(self):
-        with pytest.raises(FileNotFoundError, match="gsutil not found"):
-            with patch("subprocess.run", side_effect=FileNotFoundError):
-                ensure_model(gcs_uri="gs://fake-bucket/model.pt")
+        with (
+            pytest.raises(FileNotFoundError, match="gsutil not found"),
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
+            ensure_model(gcs_uri="gs://fake-bucket/model.pt")
 
 
 # ---------------------------------------------------------------------------
@@ -127,45 +127,31 @@ class TestEstimateStep:
         step = EstimateStep(config)
         assert step.name == "Estimate"
 
-    def test_validate_missing_input_dir(self):
-        config = BelljarConfig()
-        step = EstimateStep(config)
-        errors = step.validate_inputs(output_dir="/tmp/out")
-        assert any("input_dir" in e for e in errors)
-
-    def test_validate_missing_output_dir(self, tmp_path):
-        config = BelljarConfig()
-        step = EstimateStep(config)
-        errors = step.validate_inputs(input_dir=str(tmp_path))
-        assert any("output_dir" in e for e in errors)
-
     def test_validate_nonexistent_input_dir(self, tmp_path):
         config = BelljarConfig()
         step = EstimateStep(config)
-        errors = step.validate_inputs(
-            input_dir=str(tmp_path / "nope"), output_dir=str(tmp_path / "out")
-        )
+        params = EstimateParams(input_dir=tmp_path / "nope", output_dir=tmp_path / "out")
+        errors = step.validate_inputs(params)
         assert any("does not exist" in e for e in errors)
 
     def test_validate_nonexistent_model(self, tmp_path):
         config = BelljarConfig()
         step = EstimateStep(config)
-        errors = step.validate_inputs(
-            input_dir=str(tmp_path),
-            output_dir=str(tmp_path / "out"),
-            model_path=str(tmp_path / "no_model.pt"),
+        params = EstimateParams(
+            input_dir=tmp_path,
+            output_dir=tmp_path / "out",
+            model_path=tmp_path / "no_model.pt",
         )
+        errors = step.validate_inputs(params)
         assert any("Model file not found" in e for e in errors)
 
     def test_validate_success(self, tmp_path, fake_model):
         config = BelljarConfig()
         step = EstimateStep(config)
-        errors = step.validate_inputs(
-            input_dir=str(tmp_path),
-            output_dir=str(tmp_path / "out"),
-            model_path=str(fake_model),
+        params = EstimateParams(
+            input_dir=tmp_path, output_dir=tmp_path / "out", model_path=fake_model
         )
-        assert errors == []
+        assert step.validate_inputs(params) == []
 
     def test_run_no_images(self, tmp_path, fake_model):
         config = BelljarConfig()
@@ -174,9 +160,9 @@ class TestEstimateStep:
         empty_dir.mkdir()
         result = step.run(
             _noop_progress,
-            input_dir=str(empty_dir),
-            output_dir=str(tmp_path / "out"),
-            model_path=str(fake_model),
+            EstimateParams(
+                input_dir=empty_dir, output_dir=tmp_path / "out", model_path=fake_model
+            ),
         )
         assert not result.success
         assert any("No image files" in e for e in result.errors)
@@ -188,9 +174,9 @@ class TestEstimateStep:
 
         result = step.run(
             _noop_progress,
-            input_dir=str(section_images),
-            output_dir=str(output_dir),
-            model_path=str(fake_model),
+            EstimateParams(
+                input_dir=section_images, output_dir=output_dir, model_path=fake_model
+            ),
         )
 
         assert result.success
@@ -220,9 +206,9 @@ class TestEstimateStep:
 
         result = step.run(
             _noop_progress,
-            input_dir=str(section_images),
-            output_dir=str(output_dir),
-            model_path=str(fake_model),
+            EstimateParams(
+                input_dir=section_images, output_dir=output_dir, model_path=fake_model
+            ),
         )
 
         assert result.metrics["sections_estimated"] == 5
@@ -239,9 +225,9 @@ class TestEstimateStep:
 
         result = step.run(
             _noop_progress,
-            input_dir=str(section_images),
-            output_dir=str(output_dir),
-            model_path=str(fake_model),
+            EstimateParams(
+                input_dir=section_images, output_dir=output_dir, model_path=fake_model
+            ),
         )
 
         with open(result.output_path) as f:
@@ -282,10 +268,9 @@ class TestEstimateStepDenormalization:
     def _run(self, step, img_dir, out_dir, model_path, **kwargs):
         result = step.run(
             _noop_progress,
-            input_dir=str(img_dir),
-            output_dir=str(out_dir),
-            model_path=str(model_path),
-            **kwargs,
+            EstimateParams(
+                input_dir=img_dir, output_dir=out_dir, model_path=model_path, **kwargs
+            ),
         )
         assert result.success, result.errors
         with open(result.output_path) as f:
@@ -358,7 +343,7 @@ class TestConfidenceWeightedIntegration:
     def _make_predictions(self, x_angles, y_angles):
         return [
             {"x_angle": x, "y_angle": y, "z_position": float(i * 5)}
-            for i, (x, y) in enumerate(zip(x_angles, y_angles))
+            for i, (x, y) in enumerate(zip(x_angles, y_angles, strict=True))
         ]
 
     def test_high_uncertainty_adjusted_more(self):
@@ -398,7 +383,7 @@ class TestConfidenceWeightedIntegration:
         result_none = integrate_angles(preds, window_size=5, uncertainties=None)
         result_default = integrate_angles(preds, window_size=5)
 
-        for a, b in zip(result_none, result_default):
+        for a, b in zip(result_none, result_default, strict=True):
             assert a["x_angle"] == pytest.approx(b["x_angle"])
             assert a["y_angle"] == pytest.approx(b["y_angle"])
 

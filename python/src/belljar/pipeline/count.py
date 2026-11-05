@@ -10,16 +10,19 @@ from __future__ import annotations
 import csv
 import logging
 import pickle
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
 
-from belljar.config import BelljarConfig
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import CountParams
 from belljar.registration.preprocessing import resize_nearest_neighbor
 from belljar.types import DetectionResult, StepResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -157,55 +160,39 @@ def _get_parent_acronym(
     if "layer" in region_info["name"].lower():
         id_path = region_info.get("id_path", "").split("/")
         if len(id_path) >= 2:
-            parent_id = np.uint32(int(id_path[-2]))
+            parent_id = int(id_path[-2])
             if parent_id in regions:
                 return regions[parent_id]["acronym"]
     return region_info["acronym"]
 
 
-class CountStep(PipelineStep):
+class CountStep(PipelineStep[CountParams]):
     """Count detected cells per brain region."""
+
+    params_class = CountParams
 
     @property
     def name(self) -> str:
         return "Count"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
+    def validate_inputs(self, params: CountParams) -> list[str]:
         errors: list[str] = []
-        predictions_dir = kwargs.get("predictions_dir")
-        annotations_dir = kwargs.get("annotations_dir")
-        output_dir = kwargs.get("output_dir")
-        structure_map = kwargs.get("structure_map")
-
-        if not predictions_dir:
-            errors.append("predictions_dir is required")
-        elif not Path(predictions_dir).is_dir():
-            errors.append(f"Predictions directory does not exist: {predictions_dir}")
-
-        if not annotations_dir:
-            errors.append("annotations_dir is required")
-        elif not Path(annotations_dir).is_dir():
-            errors.append(f"Annotations directory does not exist: {annotations_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        if not structure_map:
-            errors.append("structure_map is required")
-
+        if not params.predictions_dir.is_dir():
+            errors.append(f"Predictions directory does not exist: {params.predictions_dir}")
+        if not params.annotations_dir.is_dir():
+            errors.append(f"Annotations directory does not exist: {params.annotations_dir}")
         return errors
 
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        predictions_dir = Path(kwargs["predictions_dir"])
-        annotations_dir = Path(kwargs["annotations_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: CountParams) -> StepResult:
+        predictions_dir = params.predictions_dir
+        annotations_dir = params.annotations_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        regions: dict = kwargs["structure_map"]
-        include_layers: bool = kwargs.get("include_layers", False)
+        regions = self.atlas_provider.structure_map
+        include_layers = params.include_layers
 
-        # Build reverse lookup
-        acronym_to_id: dict[str, Any] = {}
+        acronym_to_id: dict[str, int] = {}
         for k, v in regions.items():
             acronym_to_id[v["acronym"]] = k
 
@@ -241,10 +228,11 @@ class CountStep(PipelineStep):
                 # Compute area per region
                 region_areas[section_name] = {}
                 unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
-                for uid, count in zip(unique_ids, counts):
-                    if uid not in regions:
+                for uid, count in zip(unique_ids, counts, strict=True):
+                    region_id = int(uid)
+                    if region_id not in regions:
                         continue
-                    acronym = _get_parent_acronym(regions[uid], regions, include_layers)
+                    acronym = _get_parent_acronym(regions[region_id], regions, include_layers)
                     region_areas[section_name][acronym] = (
                         region_areas[section_name].get(acronym, 0) + int(count)
                     )
@@ -266,7 +254,7 @@ class CountStep(PipelineStep):
                         cy = min(cy, annotation_rescaled.shape[0] - 1)
                         cx = min(cx, annotation_rescaled.shape[1] - 1)
 
-                        atlas_id = annotation_rescaled[cy, cx]
+                        atlas_id = int(annotation_rescaled[cy, cx])
                         if atlas_id not in regions:
                             continue
 
@@ -317,8 +305,8 @@ def _write_count_csv(
     sums: dict[str, dict[int, dict[str, int]]],
     colocalized: dict[str, dict[int, dict[int, float]]],
     region_areas: dict[str, dict[str, int]],
-    regions: dict,
-    acronym_to_id: dict[str, Any],
+    regions: dict[int, dict[str, Any]],
+    acronym_to_id: dict[str, int],
 ) -> None:
     """Write count results to a CSV file."""
     with open(path, "w", newline="") as f:
@@ -339,10 +327,10 @@ def _write_count_csv(
 
             for acronym in sorted(all_acronyms):
                 region_id = acronym_to_id.get(acronym)
-                region_name = regions[region_id]["name"] if region_id and region_id in regions else "Unknown"
+                region_name = regions[region_id]["name"] if region_id in regions else "Unknown"
                 area = region_areas.get(section_name, {}).get(acronym, 0)
 
-                row = [acronym, region_name, area]
+                row: list[Any] = [acronym, region_name, area]
                 for ch in range(num_channels):
                     count = channels[ch].get(acronym, 0)
                     row.append(count)
@@ -356,7 +344,7 @@ def _write_count_csv(
         writer.writerow(["Region Acronym", "Region Name", "Count"])
         for acronym in sorted(running_counts):
             region_id = acronym_to_id.get(acronym)
-            region_name = regions[region_id]["name"] if region_id and region_id in regions else "Unknown"
+            region_name = regions[region_id]["name"] if region_id in regions else "Unknown"
             writer.writerow([acronym, region_name, running_counts[acronym]])
 
         writer.writerow([])
@@ -367,7 +355,7 @@ def _write_count_csv(
             num_ch = len(section_coloc)
             writer.writerow([section_name] + [f"Channel #{c}" for c in range(num_ch)])
             for c1 in range(num_ch):
-                row = [f"Channel #{c1}"]
+                row: list[Any] = [f"Channel #{c1}"]
                 for c2 in range(num_ch):
                     row.append(section_coloc.get(c1, {}).get(c2, 0))
                 writer.writerow(row)

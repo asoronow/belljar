@@ -80,6 +80,9 @@ select = [
 [tool.ruff.lint.isort]
 known-first-party = ["belljar"]
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
