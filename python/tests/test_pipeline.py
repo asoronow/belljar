@@ -245,6 +245,21 @@ class TestSharpenStep:
         assert sorted(p.name for p in output_dir.iterdir()) == ["a.tif", "b.tif"]
         assert tiff.imread(output_dir / "b.tif").dtype == np.uint16
 
+    def test_colliding_output_stems_fail_before_processing(
+        self, config: BelljarConfig, temp_dirs: tuple[Path, Path]
+    ) -> None:
+        input_dir, output_dir = temp_dirs
+        tiff.imwrite(input_dir / "a.tif", np.zeros((8, 8), dtype=np.uint8))
+        tiff.imwrite(input_dir / "a.tiff", np.zeros((8, 8), dtype=np.uint8))
+
+        step = SharpenStep(config)
+        params = SharpenParams(input_dir=input_dir, output_dir=output_dir)
+        result = step.run(_noop_progress, params)
+
+        assert not result.success
+        assert any("a.tif" in e and "a.tiff" in e for e in result.errors)
+        assert list(output_dir.iterdir()) == []
+
     def test_enhance_contrast_preserves_shape(self) -> None:
         img = np.random.randint(50, 200, (30, 30), dtype=np.uint8)
         result = enhance_contrast(img, saturation_level=0.05)
