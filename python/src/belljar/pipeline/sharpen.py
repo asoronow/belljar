@@ -15,7 +15,7 @@ import tifffile as tiff
 from skimage.filters import unsharp_mask
 from skimage.morphology import disk, white_tophat
 
-from belljar.io.formats import list_images
+from belljar.io.formats import check_unique_stems, list_images, section_stem
 from belljar.pipeline.base import PipelineStep, ProgressCallback
 from belljar.pipeline.params import SharpenParams
 from belljar.types import StepResult
@@ -116,6 +116,10 @@ class SharpenStep(PipelineStep[SharpenParams]):
                 success=False,
                 errors=["No supported image files found in input directory"],
             )
+        try:
+            check_unique_stems(files)
+        except ValueError as e:
+            return StepResult(success=False, errors=[str(e)])
 
         warnings: list[str] = []
         processed = 0
@@ -125,8 +129,7 @@ class SharpenStep(PipelineStep[SharpenParams]):
             try:
                 img = tiff.imread(str(file_path))
                 result = sharpen_image(img, equalize=equalize, radius=radius, amount=amount)
-                out_name = f"{file_path.stem}{file_path.suffix}"
-                cv2.imwrite(str(output_dir / out_name), result)
+                tiff.imwrite(output_dir / f"{section_stem(file_path)}.tif", result)
                 processed += 1
             except Exception as e:
                 warnings.append(f"Failed to process {file_path.name}: {e}")
