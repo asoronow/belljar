@@ -7,13 +7,15 @@ statistical, and eccentricity-based filtering of detections.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
-from numpy.typing import NDArray
 from skimage.filters import threshold_otsu
 from skimage.measure import label, regionprops
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
