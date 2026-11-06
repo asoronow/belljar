@@ -1,7 +1,14 @@
 """Tests for pairing prediction and annotation files by section stem."""
 
 import pytest
-from section_pairing import UnpairedSectionsError, pair_sections, section_stem
+from section_pairing import (
+    UnpairedSectionsError,
+    check_unique_stems,
+    is_tiff,
+    list_tiffs,
+    pair_sections,
+    section_stem,
+)
 
 
 def _make_files(tmp_path, prefix, stems, suffix):
@@ -109,3 +116,42 @@ def test_suffix_matching_ignores_case(tmp_path):
     )
 
     assert [(stem, i.name, a.name) for stem, i, a in pairs] == [("A", "A.TIF", "Annotation_A.PKL")]
+
+
+def test_old_double_dot_sharpen_output_keys_to_its_stem(tmp_path):
+    img_dir = _make_files(tmp_path, "", ["foo."], ".tif")
+    ann_dir = _make_files(tmp_path, "Annotation_", ["foo"], ".pkl")
+
+    pairs = pair_sections(img_dir, ann_dir, first_suffixes=(".tif",), second_suffixes=(".pkl",))
+
+    assert [(stem, i.name) for stem, i, _ in pairs] == [("foo", "foo..tif")]
+
+
+@pytest.mark.parametrize("name", ["a.tif", "a.tiff", "a.TIF", "a.TIFF", "2704_TH_10x.tiff"])
+def test_is_tiff_accepts_every_extension_spelling(name):
+    assert is_tiff(name)
+
+
+@pytest.mark.parametrize("name", ["a.png", "a.tif.txt", "notes", ".tif"])
+def test_is_tiff_rejects_other_names(name):
+    assert not is_tiff(name)
+
+
+def test_list_tiffs_returns_names_in_natural_order_skipping_other_files(tmp_path):
+    for name in ["s10.TIFF", "s2.tif", "s1.tiff", "notes.txt", ".hidden.tif"]:
+        (tmp_path / name).write_bytes(b"")
+
+    assert list_tiffs(tmp_path) == ["s1.tiff", "s2.tif", "s10.TIFF"]
+
+
+def test_check_unique_stems_names_every_colliding_input():
+    with pytest.raises(ValueError) as excinfo:
+        check_unique_stems(["a.1.tif", "b.tif", "a.2.tif", "a.tiff"])
+
+    message = str(excinfo.value)
+    assert "a.1.tif" in message and "a.2.tif" in message and "a.tiff" in message
+    assert "b.tif" not in message
+
+
+def test_check_unique_stems_accepts_distinct_stems():
+    check_unique_stems(["a.tif", "b.ome.tif", "c.TIFF"])

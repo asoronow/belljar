@@ -1,11 +1,13 @@
-from tkinter import filedialog, simpledialog
-import tifffile as tf
+import argparse
 import os
 import sys
 import tkinter as tk
+from tkinter import filedialog, simpledialog
+
 import cv2
 import numpy as np
-import argparse
+import tifffile as tf
+from section_pairing import list_tiffs
 
 
 def adjust_gamma(image, gamma=1.0):
@@ -54,7 +56,7 @@ if __name__ == "__main__":
         filterSize = int(args.filter.strip())
 
     os.chdir(inputDirectory)
-    files = [f for f in os.listdir(".") if f.lower().endswith((".tif", ".tiff"))]
+    files = list_tiffs(".")
     # Pass number of files to electron
     print(len(files), flush=True)
     for file in files:
