@@ -11,7 +11,6 @@ from section_pairing import (
     load_annotation,
     pair_sections,
 )
-import cv2
 
 
 def reconstruct_region(intensity_data):
@@ -37,7 +36,7 @@ def reconstruct_region(intensity_data):
     return blank
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(
         description="Calculate the average intensity of a region in normalized coordinates"
     )
@@ -57,16 +56,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "-w",
         "--whole",
-        help="Set True to process a whole brain slice (Default is False)",
-        default=False,
+        help="process a whole brain slice instead of a hemisphere",
+        action="store_true",
     )
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
 
     # Read in the intensity images
-    intensityPath = args.images.strip()
-    is_whole = eval(args.whole.strip())
+    intensityPath = args.images
+    is_whole = args.whole
     # Read the annotation for the images
-    annotationPath = args.annotations.strip()
+    annotationPath = args.annotations
     try:
         section_pairs = pair_sections(
             intensityPath,
@@ -81,7 +84,7 @@ if __name__ == "__main__":
     print(2 + len(section_pairs), flush=True)
     print("Setting up...", flush=True)
 
-    structure_map = pickle.load(open(args.map.strip(), "rb"))
+    structure_map = pickle.load(open(args.map, "rb"))
 
     for section_name, intensity_file, annotation_file in section_pairs:
         iName = intensity_file.name
@@ -166,7 +169,7 @@ if __name__ == "__main__":
             # cv2.imwrite(
             #     str(
             #         Path(
-            #             args.output.strip()
+            #             args.output
             #             + "/"
             #             + f"{name}_{region_name}_debug"
             #             + ".png"
@@ -177,7 +180,7 @@ if __name__ == "__main__":
 
             # split file name
             outputPath = Path(
-                args.output.strip() + "/" + f"{name}_{region_name}" + ".pkl"
+                args.output + "/" + f"{name}_{region_name}" + ".pkl"
             )
             
             with open(outputPath, "wb") as f:

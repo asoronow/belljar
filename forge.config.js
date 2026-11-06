@@ -6,6 +6,7 @@ module.exports = {
 		icon: "assets/icons/icon",
 		ignore: [
 			"src",
+			"__tests__",
 			"tsconfig.json",
 			"yarn.lock",
 			".env",

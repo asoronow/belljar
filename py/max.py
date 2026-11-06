@@ -2,11 +2,11 @@ from tkinter import filedialog
 import os
 import sys
 import tifffile as tiff
-from skimage.filters import unsharp_mask
 import tkinter as tk
 import numpy as np
 import argparse
 import cv2
+from section_pairing import natural_key
 
 def process_file(file, outputDirectory, topHat=False, dendrite=False):
     # Update current file
@@ -25,7 +25,7 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         sys.exit(f"Failed to process {file}: {e}")
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(description="Process z-stack images")
     parser.add_argument(
         "-o",
@@ -45,21 +45,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "-t", "--tophat", help="apply tophat filter when true", default=False
     )
-    args = parser.parse_args()
+    return parser
 
-    if args.graphical == True:
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+
+    if args.graphical is True:
         root = tk.Tk()
         root.withdraw()
 
         inputDirectory = filedialog.askdirectory(title="Select input directory")
         outputDirectory = filedialog.askdirectory(title="Select output directory")
     else:
-        inputDirectory = args.input.strip()
-        outputDirectory = args.output.strip()
+        inputDirectory = args.input
+        outputDirectory = args.output
 
     os.chdir(inputDirectory)
     files = [f for f in os.listdir(".") if f.lower().endswith((".tif", ".tiff"))]
-    files.sort()
+    files.sort(key=natural_key)
     if len(files) == 0:
         print(1, flush=True)
         print("No files found in input directory", flush=True)

@@ -8,6 +8,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { promisify } = require("util");
 const { PythonShell } = require("python-shell");
@@ -20,6 +21,7 @@ const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
 const serverFetch = require("node-fetch");
+const launch_1 = require("./launch");
 var appDir = app.getAppPath();
 var win = null;
 var logWin = null;
@@ -53,12 +55,15 @@ var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 const pyScriptsPath = path.join(appDir, "/py");
 const CURRENT_VERSION_TAG = getVersion();
 const GITHUB_API_RELEASES = "https://api.github.com/repos/asoronow/belljar/releases/latest";
+// Runs after the window is up and never blocks launch: an unreachable
+// network only produces a log line.
 function checkForUpdates() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const response = yield serverFetch(GITHUB_API_RELEASES);
             if (!response.ok) {
-                throw new Error(`GitHub API response status: ${response.status}`);
+                console.log(`Update check skipped: GitHub API status ${response.status}`);
+                return;
             }
             const data = yield response.json();
             const latestVersionTag = data.tag_name;
@@ -82,8 +87,7 @@ function checkForUpdates() {
             }
         }
         catch (error) {
-            console.error("Failed to check for updates:", error);
-            dialog.showErrorBox("Update Check Failed", "There was an error checking for updates. Please try again later.");
+            console.log("Update check skipped:", error);
         }
     });
 }
@@ -119,7 +123,18 @@ function downloadFile(url, target, win) {
             }
         };
         const dummy = new stream.PassThrough();
+        const failed = (error) => {
+            file.close();
+            fs.rm(target, { force: true }, () => reject(error));
+        };
         const request = https.get(url, (response) => {
+            if (response.statusCode !== 200) {
+                response.resume();
+                failed(new Error(`Download of ${url} failed: HTTP ${response.statusCode}`));
+                return;
+            }
+            response.on("error", failed);
+            response.on("aborted", () => failed(new Error(`Download of ${url} was aborted`)));
             // create a dummy stream so we can update the user on progress
             var receivedBytes = 0;
             var totalBytes = parseInt(response.headers["content-length"]);
@@ -142,6 +157,7 @@ function downloadFile(url, target, win) {
                 resolve(true);
             });
         });
+        request.on("error", failed);
     });
 }
 // Delete a file safely
@@ -157,7 +173,6 @@ function getVersion() {
     return packageJson.version;
 }
 function setupPython(win) {
-    const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
     const linuxURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz`;
     const winURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz`;
     const osxURL = `${bucketParentPath}/cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz`;
@@ -248,180 +263,52 @@ function setupPython(win) {
         }
     });
 }
-// Download the required tar files from the bucket
-function downloadResources(win, fresh) {
-    // Download the tar files into the homeDir and extract them to their respective folders
-    const current_versions = {
-        nrrd: "v91",
-        models: "v952",
-        embeddings: "v6",
-    };
-    return new Promise((resolve, reject) => {
-        const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
-        const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-        const modelsLink = `${bucketParentPath}/models-v10.tar.gz`;
-        const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
-        const requiredDirs = ["models", "embeddings", "nrrd"];
-        if (!fresh) {
-            var downloading = [];
-            var total = 0;
-            // check the manifest.json and compare versions
-            // if the versions are different, delete the dir and download
-            const manifestPath = path.join(homeDir, "manifest.json");
-            // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
-            if (!fs.existsSync(manifestPath)) {
-                // Create manifest from current versions
-                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
-                // Delete existing
-                downloading.push("models");
-                downloading.push("embeddings");
-                downloading.push("nrrd");
-            }
-            const manifest = require(manifestPath);
-            // check if each directory exists and its not empty
-            for (let i = 0; i < requiredDirs.length; i++) {
-                const dir = requiredDirs[i];
-                if (!fs.existsSync(path.join(homeDir, dir)) ||
-                    fs.readdirSync(path.join(homeDir, dir)).length === 0) {
-                    // make sure we are not already downloading this dir
-                    if (downloading.indexOf(dir) === -1) {
-                        downloading.push(dir);
-                    }
-                }
-            }
-            for (const [key, value] of Object.entries(current_versions)) {
-                if (manifest[key] !== value) {
-                    downloading.push(key);
-                }
-            }
-            if (downloading.indexOf("models") === -1) {
-                // Check in the models dir if chaosdruid.pt exists do nothing, otherwise delete the dir and download
-                if (!fs.existsSync(path.join(homeDir, "models/chaosdruid.pt"))) {
-                    downloading.push("models");
-                    // Delete existing
-                    if (fs.existsSync(path.join(homeDir, "models"))) {
-                        fs.rm(path.join(homeDir, "models"), { recursive: true });
-                    }
-                }
-            }
-            // Delete and update manifest
-            if (downloading.length > 0) {
-                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
-            }
-            downloading.reduce((promiseChain, dir, i) => {
-                return promiseChain
-                    .then(() => {
-                    win.webContents.send("updateStatus", `Redownloading ${dir}...this may take a while`);
-                    if (fs.existsSync(path.join(homeDir, dir))) {
-                        fs.rmSync(path.join(homeDir, dir), { recursive: true });
-                    }
-                    let downloadPath = "";
-                    switch (dir) {
-                        case "models":
-                            downloadPath = modelsLink;
-                            break;
-                        case "embeddings":
-                            downloadPath = embeddingsLink;
-                            break;
-                        case "nrrd":
-                            downloadPath = nrrdLink;
-                            break;
-                        default:
-                            break;
-                    }
-                    return downloadFile(downloadPath, path.join(homeDir, `${dir}.tar.gz`), win);
-                })
-                    .then(() => {
-                    return tar.x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(homeDir, `${dir}.tar.gz`),
-                    });
-                })
-                    .then(() => {
-                    return deleteFile(path.join(homeDir, `${dir}.tar.gz`));
-                })
-                    .then(() => {
-                    win.webContents.send("updateStatus", `Downloaded ${dir}`);
-                    total++;
-                    if (downloading.length === total) {
-                        resolve(true);
-                    }
-                });
-            }, Promise.resolve());
-            if (downloading.length === 0) {
-                resolve(true);
-            }
+const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
+const manifestPath = path.join(homeDir, "manifest.json");
+// A resource directory counts as present only when it is non-empty and, for
+// models, holds the detector weights that an interrupted extraction leaves out.
+function resourcePresent(key) {
+    const dir = path.join(homeDir, key);
+    if (!fs.existsSync(dir) || fs.readdirSync(dir).length === 0) {
+        return false;
+    }
+    if (key === "models") {
+        return fs.existsSync(path.join(dir, "chaosdruid.pt"));
+    }
+    return true;
+}
+// Downloads every resource whose directory is missing or whose manifest
+// version differs from RESOURCES. The manifest entry for a key is written
+// only after that key's archive has been downloaded, extracted and removed,
+// so an interrupted download is retried on the next launch.
+function downloadResources(win) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const manifest = readJsonFile(manifestPath);
+        const present = {};
+        for (const key of Object.keys(launch_1.RESOURCES)) {
+            present[key] = resourcePresent(key);
         }
-        else {
-            // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
-            // Check if these directories exist, if they do, we don't need to download any files
-            let allDirsExist = true;
-            requiredDirs.forEach((dir) => {
-                if (!fs.existsSync(path.join(homeDir, dir))) {
-                    allDirsExist = false;
-                }
+        for (const key of (0, launch_1.resourcesToDownload)(manifest, launch_1.RESOURCES, present)) {
+            const resource = launch_1.RESOURCES[key];
+            const archivePath = path.join(homeDir, `${key}.tar.gz`);
+            win.webContents.send("updateStatus", `Downloading ${key}...this may take a while`);
+            yield fs.promises.rm(path.join(homeDir, key), {
+                recursive: true,
+                force: true,
             });
-            // Creat the manifest
-            fs.writeFileSync(path.join(homeDir, "manifest.json"), JSON.stringify(current_versions, null, 2));
-            if (!allDirsExist) {
-                // Something is missing, delete everything and download again
-                requiredDirs.forEach((dir) => {
-                    if (fs.existsSync(path.join(homeDir, dir))) {
-                        fs.rmSync(path.join(homeDir, dir), { recursive: true });
-                    }
-                });
-                // Download the embeddings
-                downloadFile(embeddingsLink, path.join(homeDir, "embeddings.tar.gz"), win).then(() => {
-                    // Extract the embeddings
-                    tar
-                        .x({
-                        cwd: homeDir,
-                        preservePaths: true,
-                        file: path.join(homeDir, "embeddings.tar.gz"),
-                    })
-                        .then(() => {
-                        // Delete the tar file
-                        deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
-                            // Download the models
-                            downloadFile(modelsLink, path.join(homeDir, "models.tar.gz"), win).then(() => {
-                                // Extract the models
-                                tar
-                                    .x({
-                                    cwd: homeDir,
-                                    preservePaths: true,
-                                    file: path.join(homeDir, "models.tar.gz"),
-                                })
-                                    .then(() => {
-                                    // Delete the tar file
-                                    deleteFile(path.join(homeDir, "models.tar.gz")).then(() => {
-                                        // Download the nrrd
-                                        downloadFile(nrrdLink, path.join(homeDir, "nrrd.tar.gz"), win).then(() => {
-                                            // Extract the nrrd
-                                            tar
-                                                .x({
-                                                cwd: homeDir,
-                                                preservePaths: true,
-                                                file: path.join(homeDir, "nrrd.tar.gz"),
-                                            })
-                                                .then(() => {
-                                                // Delete the tar file
-                                                deleteFile(path.join(homeDir, "nrrd.tar.gz")).then(() => {
-                                                    resolve(true);
-                                                });
-                                            });
-                                        });
-                                    });
-                                });
-                            });
-                        });
-                    });
-                });
+            yield downloadFile(`${bucketParentPath}/${resource.filename}`, archivePath, win);
+            yield tar.x({ cwd: homeDir, preservePaths: true, file: archivePath });
+            yield deleteFile(archivePath);
+            manifest[key] = resource.version;
+            try {
+                fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
             }
-            else {
-                resolve(true);
+            catch (error) {
+                console.log(`Could not record ${key} in the manifest:`, error);
             }
+            win.webContents.send("updateStatus", `Downloaded ${key}`);
         }
+        return true;
     });
 }
 // Creates the venv and installs the dependencies
@@ -429,7 +316,7 @@ function setupEnvironment(win) {
     if (!fs.existsSync(envPath)) {
         // We have not created the venv yet, so we probably don't have the models, etc. either
         win.webContents.send("updateStatus", "Preparing to download require files...");
-        downloadResources(win, true)
+        downloadResources(win)
             .then(() => {
             win.webContents.send("updateStatus", "Installing venv...");
             return installVenv();
@@ -446,6 +333,7 @@ function setupEnvironment(win) {
         })
             .then(({ stdout, stderr }) => {
             console.log(stdout);
+            recordInstalledRequirements();
             win.webContents.send("updateStatus", "Setup complete!");
             win.loadFile("pages/index.html");
         })
@@ -480,35 +368,58 @@ function setupEnvironment(win) {
         });
     }
 }
-// Install the latest dependencies, could have changed after an update
+function readJsonFile(filePath) {
+    if (!fs.existsSync(filePath)) {
+        return {};
+    }
+    return (0, launch_1.parseJsonObject)(fs.readFileSync(filePath, "utf8"));
+}
+const requirementsPath = path.join(appDir, "py/requirements.txt");
+const statePath = path.join(homeDir, "state.json");
+function recordInstalledRequirements() {
+    try {
+        const requirementsHash = (0, launch_1.hashRequirements)(fs.readFileSync(requirementsPath));
+        const state = readJsonFile(statePath);
+        fs.writeFileSync(statePath, JSON.stringify(Object.assign(Object.assign({}, state), { requirementsHash }), null, 2));
+    }
+    catch (error) {
+        console.log("Could not record the installed requirements:", error);
+    }
+}
+// Reinstalls the python packages only when py/requirements.txt has changed
+// since the last successful install, recorded in ~/.belljar/state.json.
 function updatePythonDependencies(win) {
-    return new Promise((resolve, reject) => {
+    return __awaiter(this, void 0, void 0, function* () {
+        const requirementsHash = (0, launch_1.hashRequirements)(fs.readFileSync(requirementsPath));
+        const state = readJsonFile(statePath);
+        if (!(0, launch_1.requirementsNeedInstall)(requirementsHash, state)) {
+            return true;
+        }
         win.webContents.send("updateStatus", "Updating packages...");
-        // Run pip install -r requirements.txt --no-cache-dir to update the packages
-        let reqsPath = path.join(appDir, "py/requirements.txt");
-        exec(`${pyCommand} -m pip install -r "${reqsPath}" --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
-            .then(({ stdout, stderr }) => {
+        try {
+            const { stdout } = yield exec(`${pyCommand} -m pip install -r "${requirementsPath}" --no-cache-dir  --use-pep517`, { cwd: envPythonPath });
             console.log(stdout);
-            win.webContents.send("updateStatus", "Update complete!");
-            resolve(true);
-        })
-            .catch((error) => {
+        }
+        catch (error) {
             console.log(error);
-            createLogFile(error);
+            createLogFile(String(error));
             createLogFile("Failed to update python dependencies");
             createLogFile(appDir);
-            reject(error);
-        });
+            if ((0, launch_1.hasInstalledRequirements)(state)) {
+                console.log("Continuing with the previously installed python packages");
+                return true;
+            }
+            throw error;
+        }
+        recordInstalledRequirements();
+        win.webContents.send("updateStatus", "Update complete!");
+        return true;
     });
 }
 // Ensure all required directories exist and if not, download them
 function fixMissingDirectories(win) {
-    return new Promise((resolve, reject) => {
-        win.webContents.send("updateStatus", "Checking for updatess...");
-        downloadResources(win, false).then(() => {
-            resolve(true);
-        });
-    });
+    win.webContents.send("updateStatus", "Checking for updates...");
+    return downloadResources(win);
 }
 // Makes the local user writable folder
 function checkLocalDir() {
@@ -567,8 +478,8 @@ app.on("ready", () => {
             }
         }
     });
-    checkForUpdates();
     win.webContents.once("did-finish-load", () => {
+        void checkForUpdates();
         // Make a directory to house enviornment, settings, etc.yarn
         checkLocalDir();
         // Setup python for running the pipeline
@@ -581,18 +492,17 @@ app.on("ready", () => {
             }
             else {
                 // Otherwise, we can just update the dependencies
-                updatePythonDependencies(win).then(() => {
-                    // Check for new patch
+                return updatePythonDependencies(win).then(() => {
                     // Check if any directories are missing
-                    fixMissingDirectories(win).then(() => {
+                    return fixMissingDirectories(win).then(() => {
                         win.loadFile("pages/index.html");
                     });
                 });
             }
         })
             .catch((error) => {
-            // Python install failed
             console.log(error);
+            win.webContents.send("updateStatus", `Setup failed: ${error}`);
         });
     });
 });
@@ -667,13 +577,12 @@ ipcMain.on("runMax", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-o ${data[1]}`,
-            `-i ${data[0]}`,
-            `-d ${data[2]}`,
-            `-t ${data[3]}`,
-            "-g False",
-        ],
+        args: (0, launch_1.maxArgs)({
+            input: data[0],
+            output: data[1],
+            dendrite: data[2],
+            tophat: data[3],
+        }),
     };
     let pyshell = new PythonShell("max.py", options);
     var total = 0;
@@ -712,7 +621,11 @@ ipcMain.on("runAdjust", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-i ${data[0]}`, `-s ${structPath}`, `-a ${data[1]}`],
+        args: (0, launch_1.adjustArgs)({
+            images: data[0],
+            annotations: data[1],
+            structures: structPath,
+        }),
     };
     let pyshell = new PythonShell("adjust.py", options);
     var total = 0;
@@ -756,16 +669,16 @@ ipcMain.on("runAlign", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-o ${data[1]}`,
-            `-i ${data[0]}`,
-            `-w ${data[2]}`,
-            `-a ${data[3]}`,
-            `-m ${modelPath}`,
-            `-n ${nrrdPath}`,
-            `-c ${mapPath}`,
-            `-l ${data[4]}`,
-        ],
+        args: (0, launch_1.alignArgs)({
+            input: data[0],
+            output: data[1],
+            whole: data[2],
+            spacing: data[3],
+            legacy: data[4],
+            model: modelPath,
+            nrrd: nrrdPath,
+            map: mapPath,
+        }),
     };
     let pyshell = new PythonShell("map.py", options);
     var total = 0;
@@ -807,13 +720,13 @@ ipcMain.on("runIntensity", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-i ${data[0]}`,
-            `-o ${data[1]}`,
-            `-a ${data[2]}`,
-            `-w ${data[3]}`,
-            `-m ${structPath}`,
-        ],
+        args: (0, launch_1.intensityArgs)({
+            images: data[0],
+            output: data[1],
+            annotations: data[2],
+            map: structPath,
+            whole: data[3],
+        }),
     };
     let pyshell = new PythonShell("region.py", options);
     var total = 0;
@@ -851,20 +764,17 @@ ipcMain.on("runIntensity", function (event, data) {
 // Counting
 ipcMain.on("runCount", function (event, data) {
     var structPath = path.join(appDir, "csv/structure_map.pkl");
-    let custom_args = [
-        `-p ${data[0]}`,
-        `-a ${data[1]}`,
-        `-o ${data[2]}`,
-        `-m ${structPath}`,
-    ];
-    if (data[3]) {
-        custom_args.push(`--layers`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom_args,
+        args: (0, launch_1.countArgs)({
+            predictions: data[0],
+            annotations: data[1],
+            output: data[2],
+            structures: structPath,
+            layers: data[3],
+        }),
     };
     let pyshell = new PythonShell("count.py", options);
     var total = 0;
@@ -905,13 +815,12 @@ ipcMain.on("runCollate", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            String.raw `-o ${data[1]}`,
-            String.raw `-i ${data[0]}`,
-            `-r ${data[2]}`,
-            String.raw `-s ${path.join(appDir, "csv/structure_map.pkl")}`,
-            "-g False",
-        ],
+        args: (0, launch_1.collateArgs)({
+            input: data[0],
+            output: data[1],
+            regions: data[2],
+            structures: path.join(appDir, "csv/structure_map.pkl"),
+        }),
     };
     let pyshell = new PythonShell("collate.py", options);
     pyshell.end((err, code, signal) => {
@@ -927,20 +836,17 @@ ipcMain.on("runCollate", function (event, data) {
 });
 // Collate
 ipcMain.on("runSharpen", function (event, data) {
-    let custom = [
-        String.raw `-o ${data[1]}`,
-        String.raw `-i ${data[0]}`,
-        `-r ${data[2]}`,
-        `-a ${data[3]}`,
-    ];
-    if (data[4]) {
-        custom.push(`--equalize`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom,
+        args: (0, launch_1.sharpenArgs)({
+            input: data[0],
+            output: data[1],
+            radius: data[2],
+            amount: data[3],
+            equalize: data[4],
+        }),
     };
     let pyshell = new PythonShell("sharpen.py", options);
     var total = 0;
@@ -986,24 +892,21 @@ ipcMain.on("runDetection", function (event, data) {
     if (data[4].length > 0) {
         modelPath = data[4];
     }
-    let custom_args = [
-        `-i ${data[0]}`,
-        `-o ${data[1]}`,
-        `-c ${data[2]}`,
-        `-t ${data[3]}`,
-        `-a ${data[7]}`,
-        `-s ${sam_model_path}`,
-        `-e ${data[8]}`,
-        `-m ${modelPath}`,
-    ];
-    if (data[5]) {
-        custom_args.push(`--multichannel`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom_args,
+        args: (0, launch_1.detectionArgs)({
+            input: data[0],
+            output: data[1],
+            confidence: data[2],
+            tile: data[3],
+            area: data[7],
+            sam: sam_model_path,
+            eccentricity: data[8],
+            model: modelPath,
+            multichannel: data[5],
+        }),
     };
     let pyshell = new PythonShell("find_neurons.py", options);
     var total = 0;
