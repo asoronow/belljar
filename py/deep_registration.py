@@ -14,9 +14,9 @@ import os
 import shutil
 import wandb
 import matplotlib.pyplot as plt
-import os
 import torch.multiprocessing as mp
 import torch.distributed as dist
+from section_pairing import natural_key
 class AttentionBlock(nn.Module):
     def __init__(self, F_g, F_l, F_int):
         super(AttentionBlock, self).__init__()
@@ -224,8 +224,8 @@ def train(rank, world_size, args):
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
 
-    originals = sorted(originals_path.glob("*.png"))
-    targets = sorted(targets_path.glob("*.png"))
+    originals = sorted(originals_path.glob("*.png"), key=natural_key)
+    targets = sorted(targets_path.glob("*.png"), key=natural_key)
 
     transform = transforms.Compose(
         [
@@ -344,8 +344,8 @@ def fine_tune_model(args):
     originals_path = Path(originals_path).expanduser()
     targets_path = Path(targets_path).expanduser()
 
-    originals = sorted(originals_path.glob("*.png"))
-    targets = sorted(targets_path.glob("*.png"))
+    originals = sorted(originals_path.glob("*.png"), key=natural_key)
+    targets = sorted(targets_path.glob("*.png"), key=natural_key)
 
     transform = transforms.Compose([
         transforms.ToPILImage(),
@@ -448,8 +448,8 @@ def fine_tune_model(args):
 def test(args):
     originals_path = Path(args.originals_path).expanduser()
     targets_path = Path(args.targets_path).expanduser()
-    originals = sorted(originals_path.glob("*.png"))
-    targets = sorted(targets_path.glob("*.png"))
+    originals = sorted(originals_path.glob("*.png"), key=natural_key)
+    targets = sorted(targets_path.glob("*.png"), key=natural_key)
 
     transform = transforms.Compose(
         [

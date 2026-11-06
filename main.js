@@ -577,13 +577,12 @@ ipcMain.on("runMax", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-o ${data[1]}`,
-            `-i ${data[0]}`,
-            `-d ${data[2]}`,
-            `-t ${data[3]}`,
-            "-g False",
-        ],
+        args: (0, launch_1.maxArgs)({
+            input: data[0],
+            output: data[1],
+            dendrite: data[2],
+            tophat: data[3],
+        }),
     };
     let pyshell = new PythonShell("max.py", options);
     var total = 0;
@@ -622,7 +621,11 @@ ipcMain.on("runAdjust", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [`-i ${data[0]}`, `-s ${structPath}`, `-a ${data[1]}`],
+        args: (0, launch_1.adjustArgs)({
+            images: data[0],
+            annotations: data[1],
+            structures: structPath,
+        }),
     };
     let pyshell = new PythonShell("adjust.py", options);
     var total = 0;
@@ -666,16 +669,16 @@ ipcMain.on("runAlign", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-o ${data[1]}`,
-            `-i ${data[0]}`,
-            `-w ${data[2]}`,
-            `-a ${data[3]}`,
-            `-m ${modelPath}`,
-            `-n ${nrrdPath}`,
-            `-c ${mapPath}`,
-            `-l ${data[4]}`,
-        ],
+        args: (0, launch_1.alignArgs)({
+            input: data[0],
+            output: data[1],
+            whole: data[2],
+            spacing: data[3],
+            legacy: data[4],
+            model: modelPath,
+            nrrd: nrrdPath,
+            map: mapPath,
+        }),
     };
     let pyshell = new PythonShell("map.py", options);
     var total = 0;
@@ -717,13 +720,13 @@ ipcMain.on("runIntensity", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            `-i ${data[0]}`,
-            `-o ${data[1]}`,
-            `-a ${data[2]}`,
-            `-w ${data[3]}`,
-            `-m ${structPath}`,
-        ],
+        args: (0, launch_1.intensityArgs)({
+            images: data[0],
+            output: data[1],
+            annotations: data[2],
+            map: structPath,
+            whole: data[3],
+        }),
     };
     let pyshell = new PythonShell("region.py", options);
     var total = 0;
@@ -761,20 +764,17 @@ ipcMain.on("runIntensity", function (event, data) {
 // Counting
 ipcMain.on("runCount", function (event, data) {
     var structPath = path.join(appDir, "csv/structure_map.pkl");
-    let custom_args = [
-        `-p ${data[0]}`,
-        `-a ${data[1]}`,
-        `-o ${data[2]}`,
-        `-m ${structPath}`,
-    ];
-    if (data[3]) {
-        custom_args.push(`--layers`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom_args,
+        args: (0, launch_1.countArgs)({
+            predictions: data[0],
+            annotations: data[1],
+            output: data[2],
+            structures: structPath,
+            layers: data[3],
+        }),
     };
     let pyshell = new PythonShell("count.py", options);
     var total = 0;
@@ -815,13 +815,12 @@ ipcMain.on("runCollate", function (event, data) {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: [
-            String.raw `-o ${data[1]}`,
-            String.raw `-i ${data[0]}`,
-            `-r ${data[2]}`,
-            String.raw `-s ${path.join(appDir, "csv/structure_map.pkl")}`,
-            "-g False",
-        ],
+        args: (0, launch_1.collateArgs)({
+            input: data[0],
+            output: data[1],
+            regions: data[2],
+            structures: path.join(appDir, "csv/structure_map.pkl"),
+        }),
     };
     let pyshell = new PythonShell("collate.py", options);
     pyshell.end((err, code, signal) => {
@@ -837,20 +836,17 @@ ipcMain.on("runCollate", function (event, data) {
 });
 // Collate
 ipcMain.on("runSharpen", function (event, data) {
-    let custom = [
-        String.raw `-o ${data[1]}`,
-        String.raw `-i ${data[0]}`,
-        `-r ${data[2]}`,
-        `-a ${data[3]}`,
-    ];
-    if (data[4]) {
-        custom.push(`--equalize`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom,
+        args: (0, launch_1.sharpenArgs)({
+            input: data[0],
+            output: data[1],
+            radius: data[2],
+            amount: data[3],
+            equalize: data[4],
+        }),
     };
     let pyshell = new PythonShell("sharpen.py", options);
     var total = 0;
@@ -896,24 +892,21 @@ ipcMain.on("runDetection", function (event, data) {
     if (data[4].length > 0) {
         modelPath = data[4];
     }
-    let custom_args = [
-        `-i ${data[0]}`,
-        `-o ${data[1]}`,
-        `-c ${data[2]}`,
-        `-t ${data[3]}`,
-        `-a ${data[7]}`,
-        `-s ${sam_model_path}`,
-        `-e ${data[8]}`,
-        `-m ${modelPath}`,
-    ];
-    if (data[5]) {
-        custom_args.push(`--multichannel`);
-    }
     let options = {
         mode: "text",
         pythonPath: path.join(envPythonPath, pyCommand),
         scriptPath: pyScriptsPath,
-        args: custom_args,
+        args: (0, launch_1.detectionArgs)({
+            input: data[0],
+            output: data[1],
+            confidence: data[2],
+            tile: data[3],
+            area: data[7],
+            sam: sam_model_path,
+            eccentricity: data[8],
+            model: modelPath,
+            multichannel: data[5],
+        }),
     };
     let pyshell = new PythonShell("find_neurons.py", options);
     var total = 0;

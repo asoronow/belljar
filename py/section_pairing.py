@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,17 @@ SECTION_PREFIXES = ("Predictions_", "Annotation_")
 
 class UnpairedSectionsError(Exception):
     """Raised when a file in one directory has no partner in the other."""
+
+
+def natural_key(name):
+    """
+    Sort key that orders embedded digit runs numerically, so s1, s2, s10
+    sort in section order. Accepts a str or a path-like.
+    """
+    text = os.fspath(name)
+    parts = re.split(r"([0-9]+)", text)
+    key = [int(part) if part.isascii() and part.isdigit() else part.lower() for part in parts]
+    return (key, text.lower())
 
 
 def section_stem(filename):
@@ -57,15 +69,15 @@ def pair_sections(
     """
     Match files in two directories by section stem.
 
-    Returns a list of (stem, first_path, second_path) sorted by stem. Raises
+    Returns a list of (stem, first_path, second_path) in natural stem order. Raises
     UnpairedSectionsError naming every stem that lacks a partner in the other
     directory.
     """
     first = _list_by_stem(first_dir, first_suffixes, first_label)
     second = _list_by_stem(second_dir, second_suffixes, second_label)
 
-    only_first = sorted(set(first) - set(second))
-    only_second = sorted(set(second) - set(first))
+    only_first = sorted(set(first) - set(second), key=natural_key)
+    only_second = sorted(set(second) - set(first), key=natural_key)
     if only_first or only_second:
         lines = ["Could not pair every section file:"]
         if only_first:
@@ -80,11 +92,34 @@ def pair_sections(
             )
         raise UnpairedSectionsError("\n".join(lines))
 
-    return [(stem, first[stem], second[stem]) for stem in sorted(first)]
+    return [
+        (stem, first[stem], second[stem]) for stem in sorted(first, key=natural_key)
+    ]
 
 
 # map.py wrote Annotation_<stem>.pkl; the v2 align step writes Annotation_<stem>.npy.
 ANNOTATION_SUFFIXES = (".pkl", ".npy")
+
+
+class _DetectionUnpickler(pickle.Unpickler):
+    """
+    find_neurons.py runs as __main__, so its pickles name the class
+    __main__.DetectionResult; resolve that to the importable class so any
+    script can load them.
+    """
+
+    def find_class(self, module, name):
+        if module == "__main__" and name == "DetectionResult":
+            from find_neurons import DetectionResult
+
+            return DetectionResult
+        return super().find_class(module, name)
+
+
+def load_detection_result(path):
+    """Load the list of DetectionResult objects find_neurons.py wrote for one section."""
+    with open(path, "rb") as f:
+        return _DetectionUnpickler(f).load()
 
 
 def load_annotation(path):

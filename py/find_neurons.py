@@ -12,6 +12,7 @@ from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 import tifffile as tiff
 import torch
+from section_pairing import natural_key
 
 
 # Bumped whenever the shape screening semantics change, so results produced
@@ -143,10 +144,10 @@ def build_parser():
 if __name__ == "__main__":
     args = build_parser().parse_args()
 
-    input_dir = Path(args.input.strip())
-    output_dir = Path(args.output.strip())
+    input_dir = Path(args.input)
+    output_dir = Path(args.output)
     tile_size = int(args.tile)
-    model_path = args.model.strip()
+    model_path = args.model
 
     # add mps device if available
     if torch.cuda.is_available():
@@ -160,7 +161,7 @@ if __name__ == "__main__":
     endings = ["png", "jpg", "jpeg", "tif", "tiff"]
     files = os.listdir(input_dir)
     files = [f for f in files if f.split(".")[-1].lower() in endings]
-    files.sort()
+    files.sort(key=natural_key)
     print(5 + len(files) * 2, flush=True)  # update users on steps
     print(f"Using device: {device}", flush=True)
     print(f"Using model: {model_path}", flush=True)
@@ -234,10 +235,10 @@ if __name__ == "__main__":
 
                 predicted_objects = screen_predictions(
                     result.object_prediction_list, 
-                    float(args.area.strip()),
+                    float(args.area),
                     eccentricity_threshold=args.eccentricity,
                     image=chan_img,
-                    sam_model_path=Path(args.sam.strip()).expanduser(),
+                    sam_model_path=Path(args.sam).expanduser(),
                     )
                 bboxes = [obj.bbox.to_xyxy() for obj in predicted_objects]
                 scores = [obj.score.value for obj in predicted_objects]
@@ -274,9 +275,9 @@ if __name__ == "__main__":
             )
 
             predicted_objects = screen_predictions(result.object_prediction_list, 
-                                                   float(args.area.strip()), 
+                                                   float(args.area), 
                                                    image=img, 
-                                                   sam_model_path=Path(args.sam.strip()).expanduser(), 
+                                                   sam_model_path=Path(args.sam).expanduser(), 
                                                    eccentricity_threshold=args.eccentricity
                                                    )
 

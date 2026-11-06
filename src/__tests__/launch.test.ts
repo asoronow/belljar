@@ -2,11 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   RESOURCES,
+  adjustArgs,
+  alignArgs,
+  collateArgs,
+  countArgs,
+  detectionArgs,
   hasInstalledRequirements,
   hashRequirements,
+  intensityArgs,
+  maxArgs,
+  naturalCompare,
   parseJsonObject,
   requirementsNeedInstall,
   resourcesToDownload,
+  sharpenArgs,
 } from "../launch";
 
 const HASH = hashRequirements("numpy<2.0.0\n");
@@ -67,5 +76,75 @@ test("resourcesToDownload downloads keys whose directory is missing even when th
   assert.deepEqual(
     resourcesToDownload({ nrrd: "v91", models: "v952" }, table, { nrrd: true, models: false }),
     ["models"]
+  );
+});
+
+test("naturalCompare orders embedded numbers numerically", () => {
+  const names = ["s10.tif", "s2.tif", "s1.tif", "s100.tif"];
+  assert.deepEqual([...names].sort(naturalCompare), ["s1.tif", "s2.tif", "s10.tif", "s100.tif"]);
+});
+
+const IN = "/data/my data ";
+const OUT = "/out/my results ";
+
+test("maxArgs keeps flag and value as separate tokens and preserves trailing spaces", () => {
+  assert.deepEqual(maxArgs({ input: IN, output: OUT, dendrite: false, tophat: false }), [
+    "-o", OUT, "-i", IN, "-d", "False", "-t", "False", "-g", "False",
+  ]);
+});
+
+test("adjustArgs", () => {
+  assert.deepEqual(adjustArgs({ images: IN, annotations: OUT, structures: "/s.pkl" }), [
+    "-i", IN, "-s", "/s.pkl", "-a", OUT,
+  ]);
+});
+
+test("alignArgs normalises booleans to the strings map.py expects", () => {
+  assert.deepEqual(
+    alignArgs({ input: IN, output: OUT, whole: "True", spacing: 10, legacy: "False", model: "/m.pt", nrrd: "/n", map: "/c.pkl" }),
+    ["-o", OUT, "-i", IN, "-w", "True", "-a", "10", "-m", "/m.pt", "-n", "/n", "-c", "/c.pkl", "-l", "False"]
+  );
+  assert.deepEqual(
+    alignArgs({ input: IN, output: OUT, whole: true, spacing: 0, legacy: false, model: "/m.pt", nrrd: "/n", map: "/c.pkl" }).slice(4, 6),
+    ["-w", "True"]
+  );
+});
+
+test("intensityArgs passes --whole only when the renderer selected a whole slice", () => {
+  const base = { images: IN, output: OUT, annotations: "/ann", map: "/m.pkl" };
+  assert.deepEqual(intensityArgs({ ...base, whole: "True" }), [
+    "-i", IN, "-o", OUT, "-a", "/ann", "-m", "/m.pkl", "--whole",
+  ]);
+  assert.deepEqual(intensityArgs({ ...base, whole: "False" }), [
+    "-i", IN, "-o", OUT, "-a", "/ann", "-m", "/m.pkl",
+  ]);
+  assert.deepEqual(intensityArgs({ ...base, whole: true }).slice(-1), ["--whole"]);
+});
+
+test("countArgs appends --layers only when requested", () => {
+  const base = { predictions: IN, annotations: "/ann", output: OUT, structures: "/s.pkl" };
+  assert.deepEqual(countArgs({ ...base, layers: true }), [
+    "-p", IN, "-a", "/ann", "-o", OUT, "-m", "/s.pkl", "--layers",
+  ]);
+  assert.deepEqual(countArgs({ ...base, layers: false }).includes("--layers"), false);
+});
+
+test("collateArgs", () => {
+  assert.deepEqual(collateArgs({ input: IN, output: OUT, regions: "a b", structures: "/s.pkl" }), [
+    "-o", OUT, "-i", IN, "-r", "a b", "-s", "/s.pkl", "-g", "False",
+  ]);
+});
+
+test("sharpenArgs stringifies numbers and appends --equalize only when set", () => {
+  assert.deepEqual(sharpenArgs({ input: IN, output: OUT, radius: 3, amount: 2.5, equalize: "equalize" }), [
+    "-o", OUT, "-i", IN, "-r", "3", "-a", "2.5", "--equalize",
+  ]);
+  assert.deepEqual(sharpenArgs({ input: IN, output: OUT, radius: 3, amount: 2, equalize: undefined }).includes("--equalize"), false);
+});
+
+test("detectionArgs", () => {
+  assert.deepEqual(
+    detectionArgs({ input: IN, output: OUT, confidence: 0.5, tile: 640, area: 200, sam: "/sam.pth", eccentricity: 0.95, model: "/m.pt", multichannel: true }),
+    ["-i", IN, "-o", OUT, "-c", "0.5", "-t", "640", "-a", "200", "-s", "/sam.pth", "-e", "0.95", "-m", "/m.pt", "--multichannel"]
   );
 });
