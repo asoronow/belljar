@@ -16,21 +16,26 @@ Usage (CLI):
 from __future__ import annotations
 
 import logging
-import math
 import subprocess
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader, WeightedRandomSampler, random_split
 from torchvision import transforms
 
-from belljar.config import EstimationConfig, TrainingConfig
 from belljar.estimation.dataset import AngledAtlasDataset
 from belljar.estimation.predictor import SliceEstimator
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from belljar.config import EstimationConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -399,7 +404,7 @@ def train(
 
     # -- AMP scaler ------------------------------------------------------------
     use_amp = config.mixed_precision and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    scaler = GradScaler("cuda", enabled=use_amp)
     amp_dtype = torch.float16 if use_amp else torch.float32
 
     # -- wandb (optional) ------------------------------------------------------
@@ -434,7 +439,7 @@ def train(
 
             optimizer.zero_grad(set_to_none=True)
 
-            with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
                 loss = _compute_loss(
                     preds, labels,
@@ -542,7 +547,9 @@ def train(
                 persistent_workers=config.num_workers > 0,
             )
             n_hard = sum(1 for w in sample_weights if w > 1.0)
-            logger.info("Hard negative mining: %d/%d samples upweighted", n_hard, len(sample_weights))
+            logger.info(
+                "Hard negative mining: %d/%d samples upweighted", n_hard, len(sample_weights)
+            )
 
         # -- Early stopping ----------------------------------------------------
         if patience_counter >= config.early_stopping_patience:
@@ -604,7 +611,7 @@ def _validate(
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
-            with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                 preds = model(images)
                 loss = _compute_loss(
                     preds, labels,

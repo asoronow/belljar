@@ -10,14 +10,19 @@ from __future__ import annotations
 import logging
 import pickle
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import torch
-from numpy.typing import NDArray
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +71,7 @@ class AngledAtlasDataset(Dataset):
     def __init__(
         self,
         data_path: Path,
-        transform: transforms.Compose | None = None,
+        transform: Callable[[NDArray], torch.Tensor] | None = None,
         output_format: str = "anchoring",
         ap_range: tuple[float, float] = (0.0, 1324.0),
         angle_range: tuple[float, float] = (-10.0, 10.0),
@@ -111,7 +116,7 @@ class AngledAtlasDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         if torch.is_tensor(idx):
-            idx = idx.item()
+            idx = int(idx.item())
 
         filename = self.file_list[idx]
         img_path = self.data_path / filename
@@ -122,8 +127,7 @@ class AngledAtlasDataset(Dataset):
 
         image = _apply_preprocessing(image, self.preprocessing)
 
-        if self.transform:
-            image = self.transform(image)
+        tensor = self.transform(image) if self.transform else torch.from_numpy(image)
 
         stem = Path(filename).stem
         label_data = self.metadata.get(stem, {})
@@ -143,7 +147,7 @@ class AngledAtlasDataset(Dataset):
             y_angle = float(label_data.get("y_angle", 0))
             label = self._normalize_legacy(pos, x_angle, y_angle)
 
-        return image, label
+        return tensor, label
 
 
 class TissueDataset(Dataset):
@@ -156,7 +160,7 @@ class TissueDataset(Dataset):
     def __init__(
         self,
         data_path: Path,
-        transform: transforms.Compose | None = None,
+        transform: Callable[[NDArray], torch.Tensor] | None = None,
         target_size: tuple[int, int] = (256, 256),
         preprocessing: str = "clahe",
     ) -> None:
@@ -175,7 +179,7 @@ class TissueDataset(Dataset):
 
     def __getitem__(self, idx: int) -> torch.Tensor:
         if torch.is_tensor(idx):
-            idx = idx.item()
+            idx = int(idx.item())
 
         img_path = self.data_path / self.file_list[idx]
         image = Image.open(img_path).convert("L")
