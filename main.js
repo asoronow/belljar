@@ -8,6 +8,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { promisify } = require("util");
 const { PythonShell } = require("python-shell");
@@ -20,6 +21,7 @@ const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
 const serverFetch = require("node-fetch");
+const launch_1 = require("./launch");
 var appDir = app.getAppPath();
 var win = null;
 var logWin = null;
@@ -53,12 +55,15 @@ var pyCommand = process.platform === "win32" ? "python.exe" : "./python3";
 const pyScriptsPath = path.join(appDir, "/py");
 const CURRENT_VERSION_TAG = getVersion();
 const GITHUB_API_RELEASES = "https://api.github.com/repos/asoronow/belljar/releases/latest";
+// Runs after the window is up and never blocks launch: an unreachable
+// network only produces a log line.
 function checkForUpdates() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const response = yield serverFetch(GITHUB_API_RELEASES);
             if (!response.ok) {
-                throw new Error(`GitHub API response status: ${response.status}`);
+                console.log(`Update check skipped: GitHub API status ${response.status}`);
+                return;
             }
             const data = yield response.json();
             const latestVersionTag = data.tag_name;
@@ -82,8 +87,7 @@ function checkForUpdates() {
             }
         }
         catch (error) {
-            console.error("Failed to check for updates:", error);
-            dialog.showErrorBox("Update Check Failed", "There was an error checking for updates. Please try again later.");
+            console.log("Update check skipped:", error);
         }
     });
 }
@@ -251,7 +255,7 @@ function setupPython(win) {
 // Download the required tar files from the bucket
 function downloadResources(win, fresh) {
     // Download the tar files into the homeDir and extract them to their respective folders
-    const current_versions = {
+    const currnet_versions = {
         nrrd: "v91",
         models: "v952",
         embeddings: "v6",
@@ -271,7 +275,7 @@ function downloadResources(win, fresh) {
             // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
             if (!fs.existsSync(manifestPath)) {
                 // Create manifest from current versions
-                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
+                fs.writeFileSync(manifestPath, JSON.stringify(currnet_versions, null, 2));
                 // Delete existing
                 downloading.push("models");
                 downloading.push("embeddings");
@@ -289,7 +293,7 @@ function downloadResources(win, fresh) {
                     }
                 }
             }
-            for (const [key, value] of Object.entries(current_versions)) {
+            for (const [key, value] of Object.entries(currnet_versions)) {
                 if (manifest[key] !== value) {
                     downloading.push(key);
                 }
@@ -306,7 +310,7 @@ function downloadResources(win, fresh) {
             }
             // Delete and update manifest
             if (downloading.length > 0) {
-                fs.writeFileSync(manifestPath, JSON.stringify(current_versions, null, 2));
+                fs.writeFileSync(manifestPath, JSON.stringify(currnet_versions, null, 2));
             }
             downloading.reduce((promiseChain, dir, i) => {
                 return promiseChain
@@ -363,7 +367,7 @@ function downloadResources(win, fresh) {
                 }
             });
             // Creat the manifest
-            fs.writeFileSync(path.join(homeDir, "manifest.json"), JSON.stringify(current_versions, null, 2));
+            fs.writeFileSync(path.join(homeDir, "manifest.json"), JSON.stringify(currnet_versions, null, 2));
             if (!allDirsExist) {
                 // Something is missing, delete everything and download again
                 requiredDirs.forEach((dir) => {
@@ -446,6 +450,7 @@ function setupEnvironment(win) {
         })
             .then(({ stdout, stderr }) => {
             console.log(stdout);
+            recordInstalledRequirements();
             win.webContents.send("updateStatus", "Setup complete!");
             win.loadFile("pages/index.html");
         })
@@ -480,25 +485,52 @@ function setupEnvironment(win) {
         });
     }
 }
-// Install the latest dependencies, could have changed after an update
+function readJsonFile(filePath) {
+    if (!fs.existsSync(filePath)) {
+        return {};
+    }
+    return (0, launch_1.parseJsonObject)(fs.readFileSync(filePath, "utf8"));
+}
+const requirementsPath = path.join(appDir, "py/requirements.txt");
+const statePath = path.join(homeDir, "state.json");
+function recordInstalledRequirements() {
+    try {
+        const requirementsHash = (0, launch_1.hashRequirements)(fs.readFileSync(requirementsPath));
+        const state = readJsonFile(statePath);
+        fs.writeFileSync(statePath, JSON.stringify(Object.assign(Object.assign({}, state), { requirementsHash }), null, 2));
+    }
+    catch (error) {
+        console.log("Could not record the installed requirements:", error);
+    }
+}
+// Reinstalls the python packages only when py/requirements.txt has changed
+// since the last successful install, recorded in ~/.belljar/state.json.
 function updatePythonDependencies(win) {
-    return new Promise((resolve, reject) => {
+    return __awaiter(this, void 0, void 0, function* () {
+        const requirementsHash = (0, launch_1.hashRequirements)(fs.readFileSync(requirementsPath));
+        const state = readJsonFile(statePath);
+        if (!(0, launch_1.requirementsNeedInstall)(requirementsHash, state)) {
+            return true;
+        }
         win.webContents.send("updateStatus", "Updating packages...");
-        // Run pip install -r requirements.txt --no-cache-dir to update the packages
-        let reqsPath = path.join(appDir, "py/requirements.txt");
-        exec(`${pyCommand} -m pip install -r "${reqsPath}" --no-cache-dir  --use-pep517`, { cwd: envPythonPath })
-            .then(({ stdout, stderr }) => {
+        try {
+            const { stdout } = yield exec(`${pyCommand} -m pip install -r "${requirementsPath}" --no-cache-dir  --use-pep517`, { cwd: envPythonPath });
             console.log(stdout);
-            win.webContents.send("updateStatus", "Update complete!");
-            resolve(true);
-        })
-            .catch((error) => {
+        }
+        catch (error) {
             console.log(error);
-            createLogFile(error);
+            createLogFile(String(error));
             createLogFile("Failed to update python dependencies");
             createLogFile(appDir);
-            reject(error);
-        });
+            if ((0, launch_1.hasInstalledRequirements)(state)) {
+                console.log("Continuing with the previously installed python packages");
+                return true;
+            }
+            throw error;
+        }
+        recordInstalledRequirements();
+        win.webContents.send("updateStatus", "Update complete!");
+        return true;
     });
 }
 // Ensure all required directories exist and if not, download them
@@ -567,8 +599,8 @@ app.on("ready", () => {
             }
         }
     });
-    checkForUpdates();
     win.webContents.once("did-finish-load", () => {
+        void checkForUpdates();
         // Make a directory to house enviornment, settings, etc.yarn
         checkLocalDir();
         // Setup python for running the pipeline
@@ -581,18 +613,17 @@ app.on("ready", () => {
             }
             else {
                 // Otherwise, we can just update the dependencies
-                updatePythonDependencies(win).then(() => {
-                    // Check for new patch
+                return updatePythonDependencies(win).then(() => {
                     // Check if any directories are missing
-                    fixMissingDirectories(win).then(() => {
+                    return fixMissingDirectories(win).then(() => {
                         win.loadFile("pages/index.html");
                     });
                 });
             }
         })
             .catch((error) => {
-            // Python install failed
             console.log(error);
+            win.webContents.send("updateStatus", `Setup failed: ${error}`);
         });
     });
 });
