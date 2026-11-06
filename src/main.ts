@@ -11,10 +11,12 @@ const https = require("https");
 const semver = require("semver");
 const serverFetch = require("node-fetch");
 import {
+  RESOURCES,
   hasInstalledRequirements,
   hashRequirements,
   parseJsonObject,
   requirementsNeedInstall,
+  resourcesToDownload,
 } from "./launch";
 
 var appDir = app.getAppPath();
@@ -129,7 +131,20 @@ function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
       }
     };
     const dummy = new stream.PassThrough();
+    const failed = (error: Error) => {
+      file.close();
+      fs.rm(target, { force: true }, () => reject(error));
+    };
     const request = https.get(url, (response: any) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        failed(new Error(`Download of ${url} failed: HTTP ${response.statusCode}`));
+        return;
+      }
+      response.on("error", failed);
+      response.on("aborted", () =>
+        failed(new Error(`Download of ${url} was aborted`))
+      );
       // create a dummy stream so we can update the user on progress
       var receivedBytes = 0;
       var totalBytes = parseInt(response.headers["content-length"]);
@@ -156,6 +171,7 @@ function downloadFile(url: string, target: string, win: typeof BrowserWindow) {
         resolve(true);
       });
     });
+    request.on("error", failed);
   });
 }
 
@@ -174,7 +190,6 @@ function getVersion() {
 }
 
 function setupPython(win: typeof BrowserWindow) {
-  const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
   const linuxURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-unknown-linux-gnu-install_only.tar.gz`;
   const winURL = `${bucketParentPath}/cpython-3.10.13+20230826-x86_64-pc-windows-msvc-shared-install_only.tar.gz`;
   const osxURL = `${bucketParentPath}/cpython-3.10.13+20230826-aarch64-apple-darwin-install_only.tar.gz`;
@@ -303,229 +318,61 @@ function setupPython(win: typeof BrowserWindow) {
   });
 }
 
-// Download the required tar files from the bucket
-function downloadResources(win: typeof BrowserWindow, fresh: boolean) {
-  // Download the tar files into the homeDir and extract them to their respective folders
-  const currnet_versions = {
-    nrrd: "v91",
-    models: "v952",
-    embeddings: "v6",
-  };
+const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
+const manifestPath = path.join(homeDir, "manifest.json");
 
-  return new Promise((resolve, reject) => {
-    const bucketParentPath = "https://storage.googleapis.com/belljar_updates";
-    const embeddingsLink = `${bucketParentPath}/embeddings-v6.tar.gz`;
-    const modelsLink = `${bucketParentPath}/models-v10.tar.gz`;
-    const nrrdLink = `${bucketParentPath}/nrrd-v91.tar.gz`;
-    const requiredDirs = ["models", "embeddings", "nrrd"];
+// A resource directory counts as present only when it is non-empty and, for
+// models, holds the detector weights that an interrupted extraction leaves out.
+function resourcePresent(key: string): boolean {
+  const dir = path.join(homeDir, key);
+  if (!fs.existsSync(dir) || fs.readdirSync(dir).length === 0) {
+    return false;
+  }
+  if (key === "models") {
+    return fs.existsSync(path.join(dir, "chaosdruid.pt"));
+  }
+  return true;
+}
 
-    if (!fresh) {
-      var downloading: Array<string> = [];
-      var total = 0;
+// Downloads every resource whose directory is missing or whose manifest
+// version differs from RESOURCES. The manifest entry for a key is written
+// only after that key's archive has been downloaded, extracted and removed,
+// so an interrupted download is retried on the next launch.
+async function downloadResources(win: typeof BrowserWindow) {
+  const manifest = readJsonFile(manifestPath);
+  const present: Record<string, boolean> = {};
+  for (const key of Object.keys(RESOURCES)) {
+    present[key] = resourcePresent(key);
+  }
 
-      // check the manifest.json and compare versions
-      // if the versions are different, delete the dir and download
-      const manifestPath = path.join(homeDir, "manifest.json");
-      // Make sure the manifest exists and if not lets make one and then delte all these dirs and redownload
-      if (!fs.existsSync(manifestPath)) {
-        // Create manifest from current versions
-        fs.writeFileSync(
-          manifestPath,
-          JSON.stringify(currnet_versions, null, 2)
-        );
-        // Delete existing
-        downloading.push("models");
-        downloading.push("embeddings");
-        downloading.push("nrrd");
-      }
-      const manifest = require(manifestPath);
+  for (const key of resourcesToDownload(manifest, RESOURCES, present)) {
+    const resource = RESOURCES[key];
+    const archivePath = path.join(homeDir, `${key}.tar.gz`);
+    win.webContents.send(
+      "updateStatus",
+      `Downloading ${key}...this may take a while`
+    );
+    await fs.promises.rm(path.join(homeDir, key), {
+      recursive: true,
+      force: true,
+    });
+    await downloadFile(
+      `${bucketParentPath}/${resource.filename}`,
+      archivePath,
+      win
+    );
+    await tar.x({ cwd: homeDir, preservePaths: true, file: archivePath });
+    await deleteFile(archivePath);
 
-      // check if each directory exists and its not empty
-      for (let i = 0; i < requiredDirs.length; i++) {
-        const dir = requiredDirs[i];
-        if (
-          !fs.existsSync(path.join(homeDir, dir)) ||
-          fs.readdirSync(path.join(homeDir, dir)).length === 0
-        ) {
-          // make sure we are not already downloading this dir
-          if (downloading.indexOf(dir) === -1) {
-            downloading.push(dir);
-          }
-        }
-      }
-
-      for (const [key, value] of Object.entries(currnet_versions)) {
-        if (manifest[key] !== value) {
-          downloading.push(key);
-        }
-      }
-
-      if (downloading.indexOf("models") === -1) {
-        // Check in the models dir if chaosdruid.pt exists do nothing, otherwise delete the dir and download
-        if (!fs.existsSync(path.join(homeDir, "models/chaosdruid.pt"))) {
-          downloading.push("models");
-          // Delete existing
-          if (fs.existsSync(path.join(homeDir, "models"))) {
-            fs.rm(path.join(homeDir, "models"), { recursive: true });
-          }
-        }
-      }
-
-      // Delete and update manifest
-      if (downloading.length > 0) {
-        fs.writeFileSync(
-          manifestPath,
-          JSON.stringify(currnet_versions, null, 2)
-        );
-      }
-
-      downloading.reduce((promiseChain, dir, i) => {
-        return promiseChain
-          .then(() => {
-            win.webContents.send(
-              "updateStatus",
-              `Redownloading ${dir}...this may take a while`
-            );
-
-            if (fs.existsSync(path.join(homeDir, dir))) {
-              fs.rmSync(path.join(homeDir, dir), { recursive: true });
-            }
-
-            let downloadPath = "";
-            switch (dir) {
-              case "models":
-                downloadPath = modelsLink;
-                break;
-              case "embeddings":
-                downloadPath = embeddingsLink;
-                break;
-              case "nrrd":
-                downloadPath = nrrdLink;
-                break;
-              default:
-                break;
-            }
-
-            return downloadFile(
-              downloadPath,
-              path.join(homeDir, `${dir}.tar.gz`),
-              win
-            );
-          })
-          .then(() => {
-            return tar.x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(homeDir, `${dir}.tar.gz`),
-            });
-          })
-          .then(() => {
-            return deleteFile(path.join(homeDir, `${dir}.tar.gz`));
-          })
-          .then(() => {
-            win.webContents.send("updateStatus", `Downloaded ${dir}`);
-            total++;
-            if (downloading.length === total) {
-              resolve(true);
-            }
-          });
-      }, Promise.resolve());
-
-      if (downloading.length === 0) {
-        resolve(true);
-      }
-    } else {
-      // Since we are doing a fresh install, we need to ensure no remnants of the old install are left or partially downloaded
-      // Check if these directories exist, if they do, we don't need to download any files
-      let allDirsExist = true;
-      requiredDirs.forEach((dir) => {
-        if (!fs.existsSync(path.join(homeDir, dir))) {
-          allDirsExist = false;
-        }
-      });
-
-      // Creat the manifest
-      fs.writeFileSync(
-        path.join(homeDir, "manifest.json"),
-        JSON.stringify(currnet_versions, null, 2)
-      );
-
-      if (!allDirsExist) {
-        // Something is missing, delete everything and download again
-        requiredDirs.forEach((dir) => {
-          if (fs.existsSync(path.join(homeDir, dir))) {
-            fs.rmSync(path.join(homeDir, dir), { recursive: true });
-          }
-        });
-
-        // Download the embeddings
-        downloadFile(
-          embeddingsLink,
-          path.join(homeDir, "embeddings.tar.gz"),
-          win
-        ).then(() => {
-          // Extract the embeddings
-          tar
-            .x({
-              cwd: homeDir,
-              preservePaths: true,
-              file: path.join(homeDir, "embeddings.tar.gz"),
-            })
-            .then(() => {
-              // Delete the tar file
-              deleteFile(path.join(homeDir, "embeddings.tar.gz")).then(() => {
-                // Download the models
-                downloadFile(
-                  modelsLink,
-                  path.join(homeDir, "models.tar.gz"),
-                  win
-                ).then(() => {
-                  // Extract the models
-                  tar
-                    .x({
-                      cwd: homeDir,
-                      preservePaths: true,
-                      file: path.join(homeDir, "models.tar.gz"),
-                    })
-                    .then(() => {
-                      // Delete the tar file
-                      deleteFile(path.join(homeDir, "models.tar.gz")).then(
-                        () => {
-                          // Download the nrrd
-                          downloadFile(
-                            nrrdLink,
-                            path.join(homeDir, "nrrd.tar.gz"),
-                            win
-                          ).then(() => {
-                            // Extract the nrrd
-                            tar
-
-                              .x({
-                                cwd: homeDir,
-                                preservePaths: true,
-                                file: path.join(homeDir, "nrrd.tar.gz"),
-                              })
-                              .then(() => {
-                                // Delete the tar file
-                                deleteFile(
-                                  path.join(homeDir, "nrrd.tar.gz")
-                                ).then(() => {
-                                  resolve(true);
-                                });
-                              });
-                          });
-                        }
-                      );
-                    });
-                });
-              });
-            });
-        });
-      } else {
-        resolve(true);
-      }
+    manifest[key] = resource.version;
+    try {
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    } catch (error) {
+      console.log(`Could not record ${key} in the manifest:`, error);
     }
-  });
+    win.webContents.send("updateStatus", `Downloaded ${key}`);
+  }
+  return true;
 }
 
 // Creates the venv and installs the dependencies
@@ -538,7 +385,7 @@ function setupEnvironment(win: typeof BrowserWindow) {
       "Preparing to download require files..."
     );
 
-    downloadResources(win, true)
+    downloadResources(win)
       .then(() => {
         win.webContents.send("updateStatus", "Installing venv...");
         return installVenv();
@@ -653,12 +500,8 @@ async function updatePythonDependencies(win: typeof BrowserWindow) {
 
 // Ensure all required directories exist and if not, download them
 function fixMissingDirectories(win: typeof BrowserWindow) {
-  return new Promise((resolve, reject) => {
-    win.webContents.send("updateStatus", "Checking for updatess...");
-    downloadResources(win, false).then(() => {
-      resolve(true);
-    });
-  });
+  win.webContents.send("updateStatus", "Checking for updates...");
+  return downloadResources(win);
 }
 
 // Makes the local user writable folder
