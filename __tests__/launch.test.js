@@ -31,3 +31,25 @@ const HASH = (0, launch_1.hashRequirements)("numpy<2.0.0\n");
     strict_1.default.deepEqual((0, launch_1.parseJsonObject)("not json"), {});
     strict_1.default.deepEqual((0, launch_1.parseJsonObject)("[1, 2]"), {});
 });
+(0, node_test_1.test)("resource table pairs each manifest version with the archive that holds it", () => {
+    strict_1.default.equal(launch_1.RESOURCES.nrrd.filename, "nrrd-v91.tar.gz");
+    strict_1.default.equal(launch_1.RESOURCES.models.filename, "models-v10.tar.gz");
+    strict_1.default.equal(launch_1.RESOURCES.embeddings.filename, "embeddings-v6.tar.gz");
+});
+const table = {
+    nrrd: { version: "v91", filename: "nrrd-v91.tar.gz" },
+    models: { version: "v952", filename: "models-v10.tar.gz" },
+};
+const allPresent = { nrrd: true, models: true };
+(0, node_test_1.test)("resourcesToDownload downloads nothing when manifest matches and dirs are present", () => {
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)({ nrrd: "v91", models: "v952" }, table, allPresent), []);
+});
+(0, node_test_1.test)("resourcesToDownload downloads keys whose manifest version differs or is absent", () => {
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)({ nrrd: "v90", models: "v952" }, table, allPresent), ["nrrd"]);
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)({ nrrd: "v91" }, table, allPresent), ["models"]);
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)({}, table, allPresent), ["nrrd", "models"]);
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)(undefined, table, allPresent), ["nrrd", "models"]);
+});
+(0, node_test_1.test)("resourcesToDownload downloads keys whose directory is missing even when the manifest is current", () => {
+    strict_1.default.deepEqual((0, launch_1.resourcesToDownload)({ nrrd: "v91", models: "v952" }, table, { nrrd: true, models: false }), ["models"]);
+});
