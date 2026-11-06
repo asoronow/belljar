@@ -7,20 +7,26 @@ and proper type hints.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import tifffile as tiff
 import torch
-from numpy.typing import NDArray
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 from skimage.exposure import equalize_adapthist
 
-from belljar.config import DetectionConfig
 from belljar.detection.screening import ECCENTRICITY_FILTER_VERSION, screen_predictions
 from belljar.types import DetectionResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from numpy.typing import NDArray
+    from sahi.models.base import DetectionModel
+
+    from belljar.config import DetectionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +72,7 @@ def load_image(file_path: Path) -> tuple[NDArray, str]:
 
 def detect_neurons(
     image: NDArray,
-    model: AutoDetectionModel,
+    model: DetectionModel,
     config: DetectionConfig,
     channel_index: int = 0,
 ) -> DetectionResult:
@@ -118,7 +124,7 @@ def detect_neurons(
 def create_detection_model(
     model_path: str | Path,
     config: DetectionConfig,
-) -> AutoDetectionModel:
+) -> DetectionModel:
     """Create and configure a SAHI detection model.
 
     Args:
@@ -126,7 +132,7 @@ def create_detection_model(
         config: Detection configuration.
 
     Returns:
-        Configured AutoDetectionModel ready for inference.
+        Configured detection model ready for inference.
     """
     if torch.cuda.is_available():
         device = "cuda:0"

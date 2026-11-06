@@ -20,18 +20,22 @@ backward compatibility with v1 alignment format.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from numpy.typing import NDArray
 from torchvision import models, transforms
 
-from belljar.config import EstimationConfig
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from numpy.typing import NDArray
+
+    from belljar.config import EstimationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +229,6 @@ class LegacySliceEstimator(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         # Replicate the original architecture
-        from belljar.estimation._legacy_blocks import ResidualBlock
-
         self.conv1 = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=7, stride=2),
             nn.BatchNorm2d(64),
@@ -269,7 +271,7 @@ def _get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def _get_transforms(config: EstimationConfig) -> transforms.Compose:
+def _get_transforms(config: EstimationConfig) -> Callable[[NDArray], torch.Tensor]:
     """Build the image transforms for inference."""
     return transforms.Compose([
         transforms.ToTensor(),

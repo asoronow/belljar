@@ -9,11 +9,11 @@ Pipeline: Rigid (Euler2D) -> Affine -> B-spline (deformable)
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import SimpleITK as sitk
-from numpy.typing import NDArray
 
 from belljar.config import RegistrationConfig
 from belljar.registration.metrics import compute_registration_quality
@@ -23,7 +23,11 @@ from belljar.registration.preprocessing import (
     preprocess_for_registration,
     resize_nearest_neighbor,
 )
-from belljar.types import RegistrationMetrics
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from belljar.types import RegistrationMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +231,7 @@ def register_to_atlas(
     resampled_atlas_array = sitk.GetArrayFromImage(resampled_atlas)
 
     # Resize back to original tissue dimensions
-    original_size = tissue.shape[:2][::-1]  # (width, height)
+    original_size = (tissue.shape[1], tissue.shape[0])  # (width, height)
     resampled_atlas_array = cv2.resize(resampled_atlas_array, original_size)
     color_label = cv2.resize(color_label, original_size)
     color_label = cv2.cvtColor(color_label, cv2.COLOR_BGR2RGB)
