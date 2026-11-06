@@ -37,7 +37,7 @@ def max_project(img, axes, file):
     )
 
 
-def process_file(file, outputDirectory, topHat=False, dendrite=False):
+def process_file(file, outputDirectory):
     try:
         print(f"Processing {file}", flush=True)
         with tiff.TiffFile(file) as handle:
@@ -63,12 +63,6 @@ def build_parser():
     )
     parser.add_argument(
         "-g", "--graphical", help="provides prompts when true", default=True
-    )
-    parser.add_argument(
-        "-d", "--dendrite", help="remove dendrites when true", default=False
-    )
-    parser.add_argument(
-        "-t", "--tophat", help="apply tophat filter when true", default=False
     )
     return parser
 
@@ -102,6 +96,6 @@ if __name__ == "__main__":
     # Pass number of files to electron
     print(len(files), flush=True)
     for file in files:
-        process_file(file, outputDirectory, args.tophat, args.dendrite)
+        process_file(file, outputDirectory)
 
     print("Done!")
