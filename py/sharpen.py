@@ -1,14 +1,16 @@
-import cv2
-from pathlib import Path
-import numpy as np
-from skimage.filters import unsharp_mask
-from skimage.morphology import white_tophat, disk
 import argparse
-import tifffile as tiff
 import concurrent.futures
-from functools import partial
 import sys
-from section_pairing import natural_key
+from functools import partial
+from pathlib import Path
+
+import cv2
+import numpy as np
+import tifffile as tiff
+from section_pairing import check_unique_stems, list_tiffs
+from skimage.filters import unsharp_mask
+from skimage.morphology import disk, white_tophat
+
 
 def enhance_contrast(image, saturation_level=0.05):
     """
@@ -64,11 +66,9 @@ def process_file(file, output_path, args, radius, amount):
         # Convert the image back to its original data type
         img = img.astype(original_dtype)
 
-        # Get filename stem
-        stem = Path(file).stem
-        extension = Path(file).suffix
-        # Save the processed image
-        cv2.imwrite(f"{output_path}/{stem}.{extension}", img)
+        # Section key: the name up to the first dot, as max.py and find_neurons.py use.
+        stem = Path(file).name.split(".")[0]
+        tiff.imwrite(f"{output_path}/{stem}.tif", img)
     except (OSError, ValueError, cv2.error) as e:
         raise RuntimeError(f"Failed to process {file}: {e}") from e
 
@@ -99,11 +99,11 @@ if __name__ == "__main__":
     output_path = Path(args.output)
     amount = float(args.amount)
     radius = float(args.radius)
-    valid_extensions = [".tif", ".tiff"]
-    input_files = [
-        file for file in input_path.iterdir() if file.suffix in valid_extensions
-    ]
-    input_files.sort(key=natural_key)
+    input_files = [input_path / name for name in list_tiffs(input_path)]
+    try:
+        check_unique_stems(input_files)
+    except ValueError as e:
+        sys.exit(str(e))
     print(f"{len(input_files)}", flush=True)
 
     # Use ProcessPoolExecutor to parallelize file processing

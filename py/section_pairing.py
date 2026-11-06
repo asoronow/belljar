@@ -8,6 +8,8 @@ import numpy as np
 # Output prefixes written by find_neurons.py and map.py respectively.
 SECTION_PREFIXES = ("Predictions_", "Annotation_")
 
+TIFF_SUFFIXES = (".tif", ".tiff")
+
 
 class UnpairedSectionsError(Exception):
     """Raised when a file in one directory has no partner in the other."""
@@ -22,6 +24,38 @@ def natural_key(name):
     parts = re.split(r"([0-9]+)", text)
     key = [int(part) if part.isascii() and part.isdigit() else part.lower() for part in parts]
     return (key, text.lower())
+
+
+def is_tiff(name):
+    """True for any spelling of a .tif/.tiff file name, e.g. foo.TIFF."""
+    return Path(name).suffix.lower() in TIFF_SUFFIXES
+
+
+def list_tiffs(directory):
+    """Names of the non-hidden tiff files in a directory, in natural section order."""
+    names = [
+        name
+        for name in os.listdir(directory)
+        if not name.startswith(".") and is_tiff(name)
+    ]
+    names.sort(key=natural_key)
+    return names
+
+
+def check_unique_stems(names):
+    """
+    Raise ValueError when two input names share a section stem, since both would
+    be written to the same <stem>.tif and the second would silently replace the first.
+    """
+    by_stem = {}
+    for name in names:
+        by_stem.setdefault(section_stem(name), []).append(Path(name).name)
+    collisions = {stem: group for stem, group in by_stem.items() if len(group) > 1}
+    if collisions:
+        lines = ["Input files would overwrite each other's output:"]
+        for stem in sorted(collisions, key=natural_key):
+            lines.append(f"  {stem}.tif <- " + ", ".join(collisions[stem]))
+        raise ValueError("\n".join(lines))
 
 
 def section_stem(filename):

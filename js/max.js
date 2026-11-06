@@ -5,8 +5,6 @@ var outdir = document.getElementById("outdir");
 var loadbar = document.getElementById("loadbar");
 var loadmessage = document.getElementById("loadmessage");
 var back = document.getElementById("back");
-var dendrites = document.getElementById("dendrites");
-var cells = document.getElementById("cells");
 
 run.addEventListener("click", function () {
 	if (indir && outdir && indir.value && outdir.value) {
@@ -16,7 +14,7 @@ run.addEventListener("click", function () {
 		back.innerHTML = "Cancel";
 		run.innerHTML = "<i class='fas fa-spinner fa-spin'></i>";
 
-		ipc.send("runMax", [indir.value, outdir.value, false, false]);
+		ipc.send("runMax", [indir.value, outdir.value]);
 	}
 });
 

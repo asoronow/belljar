@@ -54,13 +54,7 @@ function pythonBool(value) {
     return isTrue(value) ? "True" : "False";
 }
 function maxArgs(o) {
-    return [
-        "-o", o.output,
-        "-i", o.input,
-        "-d", pythonBool(o.dendrite),
-        "-t", pythonBool(o.tophat),
-        "-g", "False",
-    ];
+    return ["-o", o.output, "-i", o.input, "-g", "False"];
 }
 exports.maxArgs = maxArgs;
 function adjustArgs(o) {

@@ -88,9 +88,7 @@ const IN = "/data/my data ";
 const OUT = "/out/my results ";
 
 test("maxArgs keeps flag and value as separate tokens and preserves trailing spaces", () => {
-  assert.deepEqual(maxArgs({ input: IN, output: OUT, dendrite: false, tophat: false }), [
-    "-o", OUT, "-i", IN, "-d", "False", "-t", "False", "-g", "False",
-  ]);
+  assert.deepEqual(maxArgs({ input: IN, output: OUT }), ["-o", OUT, "-i", IN, "-g", "False"]);
 });
 
 test("adjustArgs", () => {
