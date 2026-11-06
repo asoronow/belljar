@@ -10,6 +10,12 @@ const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
 const serverFetch = require("node-fetch");
+import {
+  hasInstalledRequirements,
+  hashRequirements,
+  parseJsonObject,
+  requirementsNeedInstall,
+} from "./launch";
 
 var appDir = app.getAppPath();
 
@@ -50,11 +56,14 @@ const CURRENT_VERSION_TAG = getVersion();
 const GITHUB_API_RELEASES =
   "https://api.github.com/repos/asoronow/belljar/releases/latest";
 
+// Runs after the window is up and never blocks launch: an unreachable
+// network only produces a log line.
 async function checkForUpdates() {
   try {
     const response = await serverFetch(GITHUB_API_RELEASES);
     if (!response.ok) {
-      throw new Error(`GitHub API response status: ${response.status}`);
+      console.log(`Update check skipped: GitHub API status ${response.status}`);
+      return;
     }
 
     const data = await response.json();
@@ -81,11 +90,7 @@ async function checkForUpdates() {
       console.log("No updates available.");
     }
   } catch (error) {
-    console.error("Failed to check for updates:", error);
-    dialog.showErrorBox(
-      "Update Check Failed",
-      "There was an error checking for updates. Please try again later."
-    );
+    console.log("Update check skipped:", error);
   }
 }
 
@@ -550,6 +555,7 @@ function setupEnvironment(win: typeof BrowserWindow) {
       })
       .then(({ stdout, stderr }) => {
         console.log(stdout);
+        recordInstalledRequirements();
         win.webContents.send("updateStatus", "Setup complete!");
         win.loadFile("pages/index.html");
       })
@@ -588,29 +594,61 @@ function setupEnvironment(win: typeof BrowserWindow) {
   }
 }
 
-// Install the latest dependencies, could have changed after an update
-function updatePythonDependencies(win: typeof BrowserWindow) {
-  return new Promise((resolve, reject) => {
-    win.webContents.send("updateStatus", "Updating packages...");
-    // Run pip install -r requirements.txt --no-cache-dir to update the packages
-    let reqsPath = path.join(appDir, "py/requirements.txt");
-    exec(
-      `${pyCommand} -m pip install -r "${reqsPath}" --no-cache-dir  --use-pep517`,
+function readJsonFile(filePath: string): Record<string, unknown> {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+  return parseJsonObject(fs.readFileSync(filePath, "utf8"));
+}
+
+const requirementsPath = path.join(appDir, "py/requirements.txt");
+const statePath = path.join(homeDir, "state.json");
+
+function recordInstalledRequirements() {
+  try {
+    const requirementsHash = hashRequirements(fs.readFileSync(requirementsPath));
+    const state = readJsonFile(statePath);
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...state, requirementsHash }, null, 2)
+    );
+  } catch (error) {
+    console.log("Could not record the installed requirements:", error);
+  }
+}
+
+// Reinstalls the python packages only when py/requirements.txt has changed
+// since the last successful install, recorded in ~/.belljar/state.json.
+async function updatePythonDependencies(win: typeof BrowserWindow) {
+  const requirementsHash = hashRequirements(fs.readFileSync(requirementsPath));
+  const state = readJsonFile(statePath);
+
+  if (!requirementsNeedInstall(requirementsHash, state)) {
+    return true;
+  }
+
+  win.webContents.send("updateStatus", "Updating packages...");
+  try {
+    const { stdout } = await exec(
+      `${pyCommand} -m pip install -r "${requirementsPath}" --no-cache-dir  --use-pep517`,
       { cwd: envPythonPath }
-    )
-      .then(({ stdout, stderr }: { stdout: string; stderr: string }) => {
-        console.log(stdout);
-        win.webContents.send("updateStatus", "Update complete!");
-        resolve(true);
-      })
-      .catch((error: any) => {
-        console.log(error);
-        createLogFile(error);
-        createLogFile("Failed to update python dependencies");
-        createLogFile(appDir);
-        reject(error);
-      });
-  });
+    );
+    console.log(stdout);
+  } catch (error) {
+    console.log(error);
+    createLogFile(String(error));
+    createLogFile("Failed to update python dependencies");
+    createLogFile(appDir);
+    if (hasInstalledRequirements(state)) {
+      console.log("Continuing with the previously installed python packages");
+      return true;
+    }
+    throw error;
+  }
+
+  recordInstalledRequirements();
+  win.webContents.send("updateStatus", "Update complete!");
+  return true;
 }
 
 // Ensure all required directories exist and if not, download them
@@ -687,9 +725,8 @@ app.on("ready", () => {
     }
   });
 
-  checkForUpdates();
-
   win.webContents.once("did-finish-load", () => {
+    void checkForUpdates();
     // Make a directory to house enviornment, settings, etc.yarn
     checkLocalDir();
     // Setup python for running the pipeline
@@ -701,18 +738,17 @@ app.on("ready", () => {
           setupEnvironment(win);
         } else {
           // Otherwise, we can just update the dependencies
-          updatePythonDependencies(win).then(() => {
-            // Check for new patch
+          return updatePythonDependencies(win).then(() => {
             // Check if any directories are missing
-            fixMissingDirectories(win).then(() => {
+            return fixMissingDirectories(win).then(() => {
               win.loadFile("pages/index.html");
             });
           });
         }
       })
       .catch((error) => {
-        // Python install failed
         console.log(error);
+        win.webContents.send("updateStatus", `Setup failed: ${error}`);
       });
   });
 });
