@@ -60,9 +60,7 @@ const allPresent = { nrrd: true, models: true };
 const IN = "/data/my data ";
 const OUT = "/out/my results ";
 (0, node_test_1.test)("maxArgs keeps flag and value as separate tokens and preserves trailing spaces", () => {
-    strict_1.default.deepEqual((0, launch_1.maxArgs)({ input: IN, output: OUT, dendrite: false, tophat: false }), [
-        "-o", OUT, "-i", IN, "-d", "False", "-t", "False", "-g", "False",
-    ]);
+    strict_1.default.deepEqual((0, launch_1.maxArgs)({ input: IN, output: OUT }), ["-o", OUT, "-i", IN, "-g", "False"]);
 });
 (0, node_test_1.test)("adjustArgs", () => {
     strict_1.default.deepEqual((0, launch_1.adjustArgs)({ images: IN, annotations: OUT, structures: "/s.pkl" }), [

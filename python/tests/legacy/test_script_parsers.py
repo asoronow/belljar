@@ -11,7 +11,7 @@ OUTPUT_PATH = "/out/my results "
 SCRIPT_CASES = [
     pytest.param(
         "max",
-        ["-i", TRAILING_SPACE_PATH, "-o", OUTPUT_PATH, "-d", "false", "-t", "false", "-g", "False"],
+        ["-i", TRAILING_SPACE_PATH, "-o", OUTPUT_PATH, "-g", "False"],
         "input",
         "output",
         id="max",

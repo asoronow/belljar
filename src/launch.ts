@@ -69,19 +69,8 @@ function pythonBool(value: unknown): string {
   return isTrue(value) ? "True" : "False";
 }
 
-export function maxArgs(o: {
-  input: string;
-  output: string;
-  dendrite: unknown;
-  tophat: unknown;
-}): string[] {
-  return [
-    "-o", o.output,
-    "-i", o.input,
-    "-d", pythonBool(o.dendrite),
-    "-t", pythonBool(o.tophat),
-    "-g", "False",
-  ];
+export function maxArgs(o: { input: string; output: string }): string[] {
+  return ["-o", o.output, "-i", o.input, "-g", "False"];
 }
 
 export function adjustArgs(o: {
