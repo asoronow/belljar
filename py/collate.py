@@ -2,7 +2,7 @@
 import csv
 from tkinter import ttk
 from tkinter import filedialog
-from tkinter import *
+from tkinter import END
 from pathlib import Path
 from belljarGUI import Page, GuiController
 import argparse
@@ -115,8 +115,8 @@ def collateCount(objectsFile, safeRegions, resultFile):
         next(objectReader)  # Skip Line 1
         for row in objectReader:
             section = row[0]
-            if objects.get(section) != None:
-                if objects[section].get(row[6]) != None:
+            if objects.get(section) is not None:
+                if objects[section].get(row[6]) is not None:
                     objects[section][row[6]] += 1
                 else:
                     objects[section][row[6]] = 1
@@ -125,7 +125,7 @@ def collateCount(objectsFile, safeRegions, resultFile):
 
     # Reading in regions
     regions = {}
-    with open(args.structures.strip(), "rb") as f:
+    with open(args.structures, "rb") as f:
         regions = pickle.load(f)
     # Now count things up
     sums = {}
@@ -136,19 +136,19 @@ def collateCount(objectsFile, safeRegions, resultFile):
             parent = regions[region]["parent"]
             total += count
             if "layer" in regions[region]["name"].lower():
-                if parent != None:
-                    if sums.get(parent) != None:
+                if parent is not None:
+                    if sums.get(parent) is not None:
                         sums[parent] += count
                     else:
                         sums[parent] = count
             else:
-                if sums.get(region) != None:
+                if sums.get(region) is not None:
                     sums[region] += count
                 else:
                     sums[region] = count
 
     # Write the results
-    outputPath = Path(args.output.strip())
+    outputPath = Path(args.output)
     with open(outputPath / "count_results.csv", "w", newline="") as resultFile:
         print("Writing output...", flush=True)
         lines = []
@@ -169,8 +169,8 @@ def collateCount(objectsFile, safeRegions, resultFile):
         print("Done!", flush=True)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process z-stack images")
+def build_parser():
+    parser = argparse.ArgumentParser(description="Collate region counts")
     parser.add_argument(
         "-o",
         "--output",
@@ -187,10 +187,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "-g", "--graphical", help="provides prompts when true", default=True
     )
+    return parser
 
-    args = parser.parse_args()
 
-    if args.graphical == True:
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+
+    if args.graphical is True:
         globals = {
             "objectsFile": "",
             "resultsFile": "",
@@ -207,4 +210,4 @@ if __name__ == "__main__":
         app.mainloop()
     else:
         print("2", flush=True)
-        collateCount(args.input.strip(), args.structures.strip(), args.output.strip())
+        collateCount(args.input, args.structures, args.output)

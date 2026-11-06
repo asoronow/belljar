@@ -2,12 +2,11 @@ import argparse
 import numpy as np
 import sys
 import csv
-import cv2
 import pickle
 from pathlib import Path
-from find_neurons import DetectionResult
 from demons import resize_image_nearest_neighbor, resolve_image_dimensions
 from section_pairing import (
+    load_detection_result,
     ANNOTATION_SUFFIXES,
     UnpairedSectionsError,
     load_annotation,
@@ -90,7 +89,7 @@ def percent_colocalized(boxes1, boxes2, threshold=0.5):
     return (colocalized_count / len(boxes1)) * 100
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(
         description="Integrate cell positions with alignments to count an experiment"
     )
@@ -125,10 +124,14 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
     )
-    args = parser.parse_args()
-    prediction_path = Path(args.predictions.strip())
-    annotation_path = Path(args.annotations.strip())
-    output_path = Path(args.output.strip())
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+    prediction_path = Path(args.predictions)
+    annotation_path = Path(args.annotations)
+    output_path = Path(args.output)
 
     try:
         section_pairs = pair_sections(
@@ -143,7 +146,7 @@ if __name__ == "__main__":
     # Reading in regions
     regions = {}
     acronym_to_region = {}
-    with open(args.structures.strip(), "rb") as f:
+    with open(args.structures, "rb") as f:
         regions = pickle.load(f)
         for k, v in regions.items():
             acronym_to_region[v["acronym"]] = k
@@ -155,38 +158,36 @@ if __name__ == "__main__":
         pName = prediction_file.name
         sums[pName] = {}
         region_areas[pName] = {}
-        with open(prediction_file, "rb") as predictionPkl:
-            print(f"Counting {section_name}...", flush=True)
-            predictions = pickle.load(predictionPkl)
-            predictions = [p for p in predictions]
-            annotation = load_annotation(annotation_file)
-            predicted_height, predicted_width = resolve_image_dimensions(
-                predictions[0].image_dimensions,
-                reference_shape=annotation.shape,
-                boxes=[box for p in predictions for box in p.boxes],
-            )
+        print(f"Counting {section_name}...", flush=True)
+        predictions = list(load_detection_result(prediction_file))
+        annotation = load_annotation(annotation_file)
+        predicted_height, predicted_width = resolve_image_dimensions(
+            predictions[0].image_dimensions,
+            reference_shape=annotation.shape,
+            boxes=[box for p in predictions for box in p.boxes],
+        )
 
-            # Count the area of each region in the annotation
-            annotation_rescaled = resize_image_nearest_neighbor(
-                annotation, height=predicted_height, width=predicted_width
-            )
+        # Count the area of each region in the annotation
+        annotation_rescaled = resize_image_nearest_neighbor(
+            annotation, height=predicted_height, width=predicted_width
+        )
 
-            unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
-            for unique_id, count in zip(unique_ids, counts):
-                name = regions[unique_id]["acronym"]
-                id_path = regions[unique_id]["id_path"].split("/")
-                if len(id_path) >= 2:
-                    parent_id = np.uint32(id_path[-2])
-                else:
-                    parent_id = unique_id
+        unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
+        for unique_id, count in zip(unique_ids, counts):
+            name = regions[unique_id]["acronym"]
+            id_path = regions[unique_id]["id_path"].split("/")
+            if len(id_path) >= 2:
+                parent_id = np.uint32(id_path[-2])
+            else:
+                parent_id = unique_id
 
-                parent_name = regions[parent_id]["acronym"]
-                region_areas[pName][name] = count
+            parent_name = regions[parent_id]["acronym"]
+            region_areas[pName][name] = count
 
-                if not region_areas[pName].get(parent_name, False):
-                    region_areas[pName][parent_name] = count
-                else:
-                    region_areas[pName][parent_name] += count
+            if not region_areas[pName].get(parent_name, False):
+                region_areas[pName][parent_name] = count
+            else:
+                region_areas[pName][parent_name] += count
 
         # Initialize counts based on args.layers
         sums[pName] = {}

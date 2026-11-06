@@ -8,6 +8,7 @@ import tifffile as tiff
 import concurrent.futures
 from functools import partial
 import sys
+from section_pairing import natural_key
 
 def enhance_contrast(image, saturation_level=0.05):
     """
@@ -71,7 +72,7 @@ def process_file(file, output_path, args, radius, amount):
     except (OSError, ValueError, cv2.error) as e:
         raise RuntimeError(f"Failed to process {file}: {e}") from e
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(description="Process z-stack images")
     parser.add_argument(
         "-o",
@@ -88,18 +89,21 @@ if __name__ == "__main__":
         help="equalize histogram",
         action="store_true",
     )
+    return parser
 
-    args = parser.parse_args()
 
-    input_path = Path(args.input.strip())
-    output_path = Path(args.output.strip())
-    amount = float(args.amount.strip())
-    radius = float(args.radius.strip())
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+    amount = float(args.amount)
+    radius = float(args.radius)
     valid_extensions = [".tif", ".tiff"]
     input_files = [
         file for file in input_path.iterdir() if file.suffix in valid_extensions
     ]
-    input_files.sort()
+    input_files.sort(key=natural_key)
     print(f"{len(input_files)}", flush=True)
 
     # Use ProcessPoolExecutor to parallelize file processing

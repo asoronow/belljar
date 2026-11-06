@@ -53,3 +53,141 @@ export function resourcesToDownload(
     (key) => !dirsPresent[key] || recorded[key] !== table[key].version
   );
 }
+
+export function naturalCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+export function isTrue(value: unknown): boolean {
+  return (
+    value === true ||
+    (typeof value === "string" && value.trim().toLowerCase() === "true")
+  );
+}
+
+function pythonBool(value: unknown): string {
+  return isTrue(value) ? "True" : "False";
+}
+
+export function maxArgs(o: {
+  input: string;
+  output: string;
+  dendrite: unknown;
+  tophat: unknown;
+}): string[] {
+  return [
+    "-o", o.output,
+    "-i", o.input,
+    "-d", pythonBool(o.dendrite),
+    "-t", pythonBool(o.tophat),
+    "-g", "False",
+  ];
+}
+
+export function adjustArgs(o: {
+  images: string;
+  annotations: string;
+  structures: string;
+}): string[] {
+  return ["-i", o.images, "-s", o.structures, "-a", o.annotations];
+}
+
+export function alignArgs(o: {
+  input: string;
+  output: string;
+  whole: unknown;
+  spacing: unknown;
+  legacy: unknown;
+  model: string;
+  nrrd: string;
+  map: string;
+}): string[] {
+  return [
+    "-o", o.output,
+    "-i", o.input,
+    "-w", pythonBool(o.whole),
+    "-a", String(o.spacing),
+    "-m", o.model,
+    "-n", o.nrrd,
+    "-c", o.map,
+    "-l", pythonBool(o.legacy),
+  ];
+}
+
+export function intensityArgs(o: {
+  images: string;
+  output: string;
+  annotations: string;
+  map: string;
+  whole: unknown;
+}): string[] {
+  const args = ["-i", o.images, "-o", o.output, "-a", o.annotations, "-m", o.map];
+  if (isTrue(o.whole)) {
+    args.push("--whole");
+  }
+  return args;
+}
+
+export function countArgs(o: {
+  predictions: string;
+  annotations: string;
+  output: string;
+  structures: string;
+  layers: unknown;
+}): string[] {
+  const args = ["-p", o.predictions, "-a", o.annotations, "-o", o.output, "-m", o.structures];
+  if (o.layers) {
+    args.push("--layers");
+  }
+  return args;
+}
+
+export function collateArgs(o: {
+  input: string;
+  output: string;
+  regions: string;
+  structures: string;
+}): string[] {
+  return ["-o", o.output, "-i", o.input, "-r", o.regions, "-s", o.structures, "-g", "False"];
+}
+
+export function sharpenArgs(o: {
+  input: string;
+  output: string;
+  radius: unknown;
+  amount: unknown;
+  equalize: unknown;
+}): string[] {
+  const args = ["-o", o.output, "-i", o.input, "-r", String(o.radius), "-a", String(o.amount)];
+  if (o.equalize) {
+    args.push("--equalize");
+  }
+  return args;
+}
+
+export function detectionArgs(o: {
+  input: string;
+  output: string;
+  confidence: unknown;
+  tile: unknown;
+  area: unknown;
+  sam: string;
+  eccentricity: unknown;
+  model: string;
+  multichannel: unknown;
+}): string[] {
+  const args = [
+    "-i", o.input,
+    "-o", o.output,
+    "-c", String(o.confidence),
+    "-t", String(o.tile),
+    "-a", String(o.area),
+    "-s", o.sam,
+    "-e", String(o.eccentricity),
+    "-m", o.model,
+  ];
+  if (o.multichannel) {
+    args.push("--multichannel");
+  }
+  return args;
+}

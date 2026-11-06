@@ -9,7 +9,6 @@ from alignment_io import AlignmentLoadError, load_alignment as load_saved_alignm
 from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
-import SimpleITK as sitk
 import torch
 from torchvision import transforms
 import napari
@@ -37,6 +36,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from section_pairing import natural_key
 
 
 class ImageEraser(QMainWindow):
@@ -264,7 +264,7 @@ class AtlasSlice:
             tissue,
             self.image,
             self.label,
-            args.map.strip(),
+            args.map,
         )
 
         return warped_labels, warped_atlas, color_label
@@ -484,7 +484,7 @@ class AlignmentController:
             and not name.startswith(".")
             and name.endswith(tuple(img_ext))
         ]
-        self.file_list.sort()
+        self.file_list.sort(key=natural_key)
         self.num_slices = len(self.file_list)
         print(4 + self.num_slices, flush=True)
         print("Scanned input path for images...", flush=True)
@@ -1005,7 +1005,7 @@ class AlignmentController:
         napari.run()
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(description="Map sections to atlas space")
     parser.add_argument(
         "-o",
@@ -1025,16 +1025,20 @@ if __name__ == "__main__":
     )
     parser.add_argument("-l", "--legacy", help="use legacy atlas", default=False)
     parser.add_argument("-c", "--map", help="map file", default="../csv/class_map.pkl")
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
 
     align_controller = AlignmentController(
-        nrrd_path=args.nrrd.strip(),
-        input_path=args.input.strip(),
-        output_path=args.output.strip(),
-        structures_path=args.map.strip(),
-        model_path=args.model.strip(),
-        sam_path=args.sam.strip(),
+        nrrd_path=args.nrrd,
+        input_path=args.input,
+        output_path=args.output,
+        structures_path=args.map,
+        model_path=args.model,
+        sam_path=args.sam,
         spacing=args.spacing if args.spacing else None,
-        is_whole=args.whole.strip().lower() == "true",
-        use_legacy=args.legacy.strip().lower() == "true",
+        is_whole=str(args.whole).lower() == "true",
+        use_legacy=str(args.legacy).lower() == "true",
     )
