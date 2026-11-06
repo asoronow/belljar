@@ -6,10 +6,14 @@ proper 3D rotation matrices via scipy.spatial.transform.Rotation.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
-from numpy.typing import NDArray
 from scipy.ndimage import map_coordinates
 from scipy.spatial.transform import Rotation
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def slice_3d_volume(

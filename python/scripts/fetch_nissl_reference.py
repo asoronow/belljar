@@ -39,7 +39,8 @@ def find_atlas_dir() -> Path:
             return p
     raise FileNotFoundError(
         "Could not find BrainGlobe allen_mouse_10um atlas. "
-        "Run: python -c \"from brainglobe_atlasapi import BrainGlobeAtlas; BrainGlobeAtlas('allen_mouse_10um')\" "
+        "Run: python -c \"from brainglobe_atlasapi import BrainGlobeAtlas; "
+        "BrainGlobeAtlas('allen_mouse_10um')\" "
         "to download it first, or pass --atlas-dir explicitly."
     )
 

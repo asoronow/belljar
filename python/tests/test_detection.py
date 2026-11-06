@@ -1,9 +1,6 @@
 """Tests for detection post-processing / screening."""
 
-from unittest.mock import MagicMock
 
-import numpy as np
-import pytest
 
 from belljar.detection.screening import screen_predictions, xyxy_to_area
 

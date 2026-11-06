@@ -20,10 +20,14 @@ import pickle
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
