@@ -3,27 +3,27 @@
 import pickle
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import cv2
 import numpy as np
 import pytest
 import torch
 
-from belljar.config import AtlasConfig, DataGenerationConfig, EstimationConfig
 from belljar.atlas.provider import AtlasProvider
+from belljar.config import AtlasConfig, DataGenerationConfig, EstimationConfig
 from belljar.estimation.data_generation import (
-    clahe_normalize,
-    compute_anchoring_from_rotation,
-    apply_domain_randomization,
+    STAIN_PROFILES,
     _elastic_deform,
     _worker_generate_batch,
+    apply_domain_randomization,
+    clahe_normalize,
+    compute_anchoring_from_rotation,
     generate_single_sample,
     simulate_stain,
-    STAIN_PROFILES,
 )
-from belljar.estimation.dataset import AngledAtlasDataset, TissueDataset
-from belljar.estimation.predictor import anchoring_to_legacy, _preprocess_image
+from belljar.estimation.dataset import AngledAtlasDataset
+from belljar.estimation.predictor import _preprocess_image, anchoring_to_legacy
 
 
 @pytest.fixture
@@ -160,7 +160,6 @@ class TestDomainRandomization:
         assert not np.array_equal(r1, r2)
 
     def test_no_nans_or_infs(self) -> None:
-        rng = np.random.default_rng(42)
         img = np.random.randint(0, 255, (64, 64), dtype=np.uint8)
         for seed in range(20):
             result = apply_domain_randomization(img, np.random.default_rng(seed))
@@ -204,8 +203,9 @@ class TestGenerateSingleSample:
         expected_keys = {"pos", "x_angle", "y_angle", "z_angle", "anchoring", "is_hemi"}
         assert expected_keys.issubset(metadata.keys())
 
-    def test_angles_within_range(self, small_volume: np.ndarray, config: DataGenerationConfig) -> None:
-        rng = np.random.default_rng(42)
+    def test_angles_within_range(
+        self, small_volume: np.ndarray, config: DataGenerationConfig
+    ) -> None:
         for seed in range(10):
             _, _, meta = generate_single_sample(small_volume, np.random.default_rng(seed), config)
             assert config.x_angle_range[0] <= meta["x_angle"] <= config.x_angle_range[1]
@@ -213,7 +213,6 @@ class TestGenerateSingleSample:
             assert config.z_angle_range[0] <= meta["z_angle"] <= config.z_angle_range[1]
 
     def test_pos_within_range(self, small_volume: np.ndarray, config: DataGenerationConfig) -> None:
-        rng = np.random.default_rng(42)
         for seed in range(10):
             _, _, meta = generate_single_sample(small_volume, np.random.default_rng(seed), config)
             assert config.z_range[0] <= meta["pos"] <= config.z_range[1]
@@ -287,7 +286,11 @@ class TestDatasetWithNewMetadata:
             img = np.random.randint(0, 255, (64, 64), dtype=np.uint8)
             cv2.imwrite(str(data_path / "sample_001.png"), img)
 
-            metadata = {"sample_001": {"pos": 100.0, "x_angle": 0.0, "y_angle": 0.0, "anchoring": [0.5]*9}}
+            metadata = {
+                "sample_001": {
+                    "pos": 100.0, "x_angle": 0.0, "y_angle": 0.0, "anchoring": [0.5] * 9
+                }
+            }
             with open(data_path / "metadata.pkl", "wb") as f:
                 pickle.dump(metadata, f)
 
@@ -301,6 +304,24 @@ class TestDatasetWithNewMetadata:
             img_none, _ = ds_none[0]
             # CLAHE output should differ from raw
             assert not torch.allclose(img_clahe, img_none)
+
+    def test_no_transform_returns_tensor(self) -> None:
+        """Without a transform the image is returned as a tensor with raw pixel values."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_path = Path(tmpdir)
+            img = np.random.randint(0, 255, (64, 64), dtype=np.uint8)
+            cv2.imwrite(str(data_path / "sample_001.png"), img)
+
+            metadata = {"sample_001": {"pos": 100.0, "x_angle": 0.0, "y_angle": 0.0}}
+            with open(data_path / "metadata.pkl", "wb") as f:
+                pickle.dump(metadata, f)
+
+            ds = AngledAtlasDataset(data_path, preprocessing="none")
+            image, label = ds[0]
+            assert isinstance(image, torch.Tensor)
+            assert image.dtype == torch.uint8
+            assert np.array_equal(image.numpy(), img)
+            assert isinstance(label, torch.Tensor)
 
 
 class TestPreprocessImageConfigurable:

@@ -7,23 +7,25 @@ augmentations. Replaces the legacy Sobel + DANN approach.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pickle
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import cv2
 import numpy as np
-from numpy.typing import NDArray
-from scipy.ndimage import map_coordinates
 from scipy.spatial.transform import Rotation
 
 from belljar.atlas.slicer import slice_3d_volume
 from belljar.config import DataGenerationConfig
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -244,11 +246,15 @@ def _elastic_deform(
     dy = cv2.resize(dy_coarse, (w, h), interpolation=cv2.INTER_CUBIC)
 
     # Create sampling grid
-    y_grid, x_grid = np.meshgrid(np.arange(h, dtype=np.float32), np.arange(w, dtype=np.float32), indexing="ij")
+    y_grid, x_grid = np.meshgrid(
+        np.arange(h, dtype=np.float32), np.arange(w, dtype=np.float32), indexing="ij"
+    )
     map_x = (x_grid + dx).astype(np.float32)
     map_y = (y_grid + dy).astype(np.float32)
 
-    return cv2.remap(image, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    return cv2.remap(
+        image, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -365,8 +371,9 @@ def generate_single_sample(
     atlas_slice = slice_3d_volume(atlas_ref, z_pos, x_angle, y_angle, z_angle, order=1)
 
     # Compute anchoring label
+    volume_shape = (int(atlas_ref.shape[0]), int(atlas_ref.shape[1]), int(atlas_ref.shape[2]))
     anchoring = compute_anchoring_from_rotation(
-        float(z_pos), x_angle, y_angle, z_angle, atlas_ref.shape, ap_range
+        float(z_pos), x_angle, y_angle, z_angle, volume_shape, ap_range
     )
 
     # Hemisphere masking (50% chance)
@@ -385,17 +392,19 @@ def generate_single_sample(
     rotation_angle = rng.uniform(*config.augmentation_rotation_range)
     scale = rng.uniform(*config.augmentation_scale_range)
     rot_mat = cv2.getRotationMatrix2D(center, rotation_angle, scale)
-    atlas_slice = cv2.warpAffine(atlas_slice, rot_mat, (w, h), borderValue=0)
+    atlas_slice = cv2.warpAffine(atlas_slice, rot_mat, (w, h))
 
     shear = rng.uniform(*config.augmentation_shear_range)
     if abs(shear) > 0.01:
-        shear_mat = np.float32([[1, 0, 0], [shear, 1, 0]])
-        atlas_slice = cv2.warpAffine(atlas_slice, shear_mat, (w, h), borderValue=0)
+        shear_mat = np.array([[1, 0, 0], [shear, 1, 0]], dtype=np.float32)
+        atlas_slice = cv2.warpAffine(atlas_slice, shear_mat, (w, h))
 
     # Pad and resize
     atlas_slice = np.pad(atlas_slice, 25, mode="constant", constant_values=0)
     target_size = 256  # Will use config.input_size at dataset load time
-    atlas_slice = cv2.resize(atlas_slice, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
+    atlas_slice = cv2.resize(
+        atlas_slice, (target_size, target_size), interpolation=cv2.INTER_LINEAR
+    )
 
     # Domain randomization
     atlas_slice = apply_domain_randomization(atlas_slice, rng, stain_weights=config.stain_weights)
@@ -453,7 +462,7 @@ def _worker_generate_batch(
     if isinstance(memmap_path, list):
         atlas_refs = [
             np.memmap(p, dtype=d, mode="r", shape=atlas_shape)
-            for p, d in zip(memmap_path, atlas_dtype)
+            for p, d in zip(memmap_path, atlas_dtype, strict=True)
         ]
         ref_names = reference_names or [f"ref_{i}" for i in range(len(atlas_refs))]
     else:
@@ -539,7 +548,9 @@ def generate_dataset(
         atlas_ref = provider.reference
 
         if atlas_shape is None:
-            atlas_shape = atlas_ref.shape
+            atlas_shape = (
+                int(atlas_ref.shape[0]), int(atlas_ref.shape[1]), int(atlas_ref.shape[2])
+            )
             if ap_range is None:
                 ap_range = (0.0, float(atlas_ref.shape[0]))
 
@@ -612,10 +623,8 @@ def generate_dataset(
     finally:
         # Clean up temp memmap files
         for mm_path in memmap_paths:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(mm_path)
-            except OSError:
-                pass
 
     # Save metadata
     with open(output_dir / "metadata.pkl", "wb") as f:

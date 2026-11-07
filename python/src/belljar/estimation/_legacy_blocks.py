@@ -6,6 +6,7 @@ existing trained weights can be loaded.
 
 from __future__ import annotations
 
+import torch
 import torch.nn as nn
 
 
@@ -42,9 +43,7 @@ class ResidualBlock(nn.Module):
                 nn.BatchNorm2d(out_channels),
             )
 
-    def forward(self, x: "torch.Tensor") -> "torch.Tensor":  # noqa: F821
-        import torch
-
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = self.shortcut(x)
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.relu(self.bn2(self.conv2(out)))

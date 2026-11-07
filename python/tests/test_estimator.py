@@ -1,20 +1,19 @@
 """Tests for slice position estimator modules."""
 
 import numpy as np
-import pytest
 import torch
 
 from belljar.config import EstimationConfig
-from belljar.estimation.predictor import (
-    SliceEstimator,
-    anchoring_to_legacy,
-    legacy_to_anchoring,
-    _preprocess_image,
-)
 from belljar.estimation.postprocess import (
+    denormalize_predictions,
     integrate_angles,
     regularize_spacing,
-    denormalize_predictions,
+)
+from belljar.estimation.predictor import (
+    SliceEstimator,
+    _preprocess_image,
+    anchoring_to_legacy,
+    legacy_to_anchoring,
 )
 
 

@@ -72,11 +72,11 @@ def _download_from_gcs(gcs_uri: str) -> Path:
         )
         logger.info("Download complete: %s", dest)
         return dest
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         raise FileNotFoundError(
             "gsutil not found. Install the Google Cloud SDK to download models from GCS."
-        )
+        ) from e
     except subprocess.CalledProcessError as e:
         raise FileNotFoundError(
             f"Failed to download model from {gcs_uri}: {e.stderr.strip()}"
-        )
+        ) from e

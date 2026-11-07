@@ -9,10 +9,12 @@ so averaging/smoothing angles across sections improves accuracy.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +135,6 @@ def regularize_spacing(
         return regularize_spacing_ransac(
             predictions, section_spacing_um, atlas_resolution_um
         )
-
-    expected_step = section_spacing_um / atlas_resolution_um
 
     z_positions = np.array([p["z_position"] for p in predictions])
 
