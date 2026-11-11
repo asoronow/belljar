@@ -102,3 +102,19 @@ const OUT = "/out/my results ";
 (0, node_test_1.test)("detectionArgs", () => {
     strict_1.default.deepEqual((0, launch_1.detectionArgs)({ input: IN, output: OUT, confidence: 0.5, tile: 640, area: 200, sam: "/sam.pth", eccentricity: 0.95, model: "/m.pt", multichannel: true }), ["-i", IN, "-o", OUT, "-c", "0.5", "-t", "640", "-a", "200", "-s", "/sam.pth", "-e", "0.95", "-m", "/m.pt", "--multichannel"]);
 });
+(0, node_test_1.test)("environmentAction installs from scratch when python or the env is absent", () => {
+    strict_1.default.equal((0, launch_1.environmentAction)({ pythonExists: false, envDirExists: false, envInterpreterResolves: false }), "fresh-install");
+    strict_1.default.equal((0, launch_1.environmentAction)({ pythonExists: false, envDirExists: true, envInterpreterResolves: false }), "fresh-install");
+    strict_1.default.equal((0, launch_1.environmentAction)({ pythonExists: true, envDirExists: false, envInterpreterResolves: false }), "fresh-install");
+});
+(0, node_test_1.test)("environmentAction rebuilds an env whose interpreter no longer resolves", () => {
+    strict_1.default.equal((0, launch_1.environmentAction)({ pythonExists: true, envDirExists: true, envInterpreterResolves: false }), "rebuild-env");
+});
+(0, node_test_1.test)("environmentAction leaves a working env alone", () => {
+    strict_1.default.equal((0, launch_1.environmentAction)({ pythonExists: true, envDirExists: true, envInterpreterResolves: true }), "ok");
+});
+(0, node_test_1.test)("brokenEnvName is a sortable name without characters Windows rejects", () => {
+    const name = (0, launch_1.brokenEnvName)(new Date("2026-11-11T19:04:05.678Z"));
+    strict_1.default.equal(name, "benv.broken-20261111T190405Z");
+    strict_1.default.doesNotMatch(name, /[:\\/]/);
+});
