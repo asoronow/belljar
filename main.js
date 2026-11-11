@@ -519,16 +519,21 @@ ipcMain.on("getVersion", (event) => {
     event.sender.send("version", getVersion());
 });
 // Handlers
+// Electron opens every dialog in Downloads unless given a defaultPath, so the
+// folder of the last selection is carried over to the next dialog.
+let lastDialogDir;
 // Directories
 ipcMain.on("openDialog", function (event, data) {
     let window = BrowserWindow.getFocusedWindow();
     dialog
         .showOpenDialog(window, {
         properties: ["openDirectory"],
+        defaultPath: lastDialogDir,
     })
         .then((result) => {
         // Check for a valid result
         if (!result.canceled) {
+            lastDialogDir = path.dirname(result.filePaths[0]);
             // console.log(result.filePaths)
             // Send back the dir and whether this is input or output
             event.sender.send("returnPath", [result.filePaths[0], data]);
@@ -544,10 +549,12 @@ ipcMain.on("openFileDialog", function (event, data) {
     dialog
         .showOpenDialog(window, {
         properties: ["openFile"],
+        defaultPath: lastDialogDir,
     })
         .then((result) => {
         // Check for a valid result
         if (!result.canceled) {
+            lastDialogDir = path.dirname(result.filePaths[0]);
             // console.log(result.filePaths)
             // Send back the dir and whether this is input or output
             event.sender.send("returnPath", [result.filePaths[0], data]);
