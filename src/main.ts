@@ -9,7 +9,6 @@ const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
-const serverFetch = require("node-fetch");
 import {
   RESOURCES,
   adjustArgs,
@@ -70,7 +69,7 @@ const GITHUB_API_RELEASES =
 // network only produces a log line.
 async function checkForUpdates() {
   try {
-    const response = await serverFetch(GITHUB_API_RELEASES);
+    const response = await fetch(GITHUB_API_RELEASES);
     if (!response.ok) {
       console.log(`Update check skipped: GitHub API status ${response.status}`);
       return;
