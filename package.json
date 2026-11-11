@@ -12,7 +12,7 @@
   },
   "scripts": {
     "compile": "tsc",
-    "test": "tsc && node --test __tests__/",
+    "test": "tsc && node --test \"__tests__/**/*.test.js\"",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make:osx64": "electron-forge make --platform=darwin --arch=x64",
