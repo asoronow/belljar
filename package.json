@@ -8,7 +8,7 @@
   "license": "MIT",
   "private": false,
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "compile": "tsc",
@@ -29,12 +29,12 @@
     "tar": "^7.5.23"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^6.0.3",
-    "@electron-forge/maker-deb": "^6.0.3",
-    "@electron-forge/maker-dmg": "^6.2.1",
-    "@electron-forge/maker-rpm": "^6.0.3",
-    "@electron-forge/maker-squirrel": "^6.3.0",
-    "@electron-forge/maker-zip": "^6.0.3",
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-deb": "^8.0.1",
+    "@electron-forge/maker-dmg": "^8.0.1",
+    "@electron-forge/maker-rpm": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-zip": "^8.0.1",
     "@types/node": "^24.19.2",
     "@typescript-eslint/eslint-plugin": "^4.29.0",
     "@typescript-eslint/parser": "^4.29.0",
@@ -43,6 +43,12 @@
     "eslint": "^7.32.0",
     "prettier": "^2.7.1",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "@electron/asar@^4": {
+      "glob": "^14.0.5",
+      "minimatch": "^11.0.8"
+    }
   },
   "build": {
     "appId": "com.belljar.app",
