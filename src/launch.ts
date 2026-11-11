@@ -27,6 +27,27 @@ export function hasInstalledRequirements(state: unknown): boolean {
   return isJsonObject(state) && typeof state.requirementsHash === "string";
 }
 
+export type EnvironmentAction = "fresh-install" | "rebuild-env" | "ok";
+
+// A venv links back to the interpreter it was created from, so its directory
+// can outlive a usable python: the env is only trusted when its own
+// interpreter still resolves.
+export function environmentAction(probe: {
+  pythonExists: boolean;
+  envDirExists: boolean;
+  envInterpreterResolves: boolean;
+}): EnvironmentAction {
+  if (!probe.pythonExists || !probe.envDirExists) {
+    return "fresh-install";
+  }
+  return probe.envInterpreterResolves ? "ok" : "rebuild-env";
+}
+
+export function brokenEnvName(now: Date): string {
+  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  return `benv.broken-${stamp}`;
+}
+
 export interface Resource {
   version: string;
   filename: string;

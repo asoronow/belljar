@@ -6,6 +6,8 @@ exports.parseJsonObject = parseJsonObject;
 exports.hashRequirements = hashRequirements;
 exports.requirementsNeedInstall = requirementsNeedInstall;
 exports.hasInstalledRequirements = hasInstalledRequirements;
+exports.environmentAction = environmentAction;
+exports.brokenEnvName = brokenEnvName;
 exports.resourcesToDownload = resourcesToDownload;
 exports.naturalCompare = naturalCompare;
 exports.isTrue = isTrue;
@@ -38,6 +40,19 @@ function requirementsNeedInstall(hash, state) {
 }
 function hasInstalledRequirements(state) {
     return isJsonObject(state) && typeof state.requirementsHash === "string";
+}
+// A venv links back to the interpreter it was created from, so its directory
+// can outlive a usable python: the env is only trusted when its own
+// interpreter still resolves.
+function environmentAction(probe) {
+    if (!probe.pythonExists || !probe.envDirExists) {
+        return "fresh-install";
+    }
+    return probe.envInterpreterResolves ? "ok" : "rebuild-env";
+}
+function brokenEnvName(now) {
+    const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+    return `benv.broken-${stamp}`;
 }
 // The models manifest string predates the archive naming scheme: every
 // install that already wrote "v952" holds the files from models-v10.tar.gz,

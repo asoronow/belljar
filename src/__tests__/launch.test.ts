@@ -6,7 +6,9 @@ import {
   alignArgs,
   collateArgs,
   countArgs,
+  brokenEnvName,
   detectionArgs,
+  environmentAction,
   hasInstalledRequirements,
   hashRequirements,
   intensityArgs,
@@ -145,4 +147,39 @@ test("detectionArgs", () => {
     detectionArgs({ input: IN, output: OUT, confidence: 0.5, tile: 640, area: 200, sam: "/sam.pth", eccentricity: 0.95, model: "/m.pt", multichannel: true }),
     ["-i", IN, "-o", OUT, "-c", "0.5", "-t", "640", "-a", "200", "-s", "/sam.pth", "-e", "0.95", "-m", "/m.pt", "--multichannel"]
   );
+});
+
+test("environmentAction installs from scratch when python or the env is absent", () => {
+  assert.equal(
+    environmentAction({ pythonExists: false, envDirExists: false, envInterpreterResolves: false }),
+    "fresh-install"
+  );
+  assert.equal(
+    environmentAction({ pythonExists: false, envDirExists: true, envInterpreterResolves: false }),
+    "fresh-install"
+  );
+  assert.equal(
+    environmentAction({ pythonExists: true, envDirExists: false, envInterpreterResolves: false }),
+    "fresh-install"
+  );
+});
+
+test("environmentAction rebuilds an env whose interpreter no longer resolves", () => {
+  assert.equal(
+    environmentAction({ pythonExists: true, envDirExists: true, envInterpreterResolves: false }),
+    "rebuild-env"
+  );
+});
+
+test("environmentAction leaves a working env alone", () => {
+  assert.equal(
+    environmentAction({ pythonExists: true, envDirExists: true, envInterpreterResolves: true }),
+    "ok"
+  );
+});
+
+test("brokenEnvName is a sortable name without characters Windows rejects", () => {
+  const name = brokenEnvName(new Date("2026-11-11T19:04:05.678Z"));
+  assert.equal(name, "benv.broken-20261111T190405Z");
+  assert.doesNotMatch(name, /[:\\/]/);
 });

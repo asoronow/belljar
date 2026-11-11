@@ -13,9 +13,11 @@ import {
   RESOURCES,
   adjustArgs,
   alignArgs,
+  brokenEnvName,
   collateArgs,
   countArgs,
   detectionArgs,
+  environmentAction,
   hasInstalledRequirements,
   hashRequirements,
   intensityArgs,
@@ -382,6 +384,76 @@ async function downloadResources(win: typeof BrowserWindow) {
   return true;
 }
 
+// Install venv package
+async function installVenv() {
+  const { stdout, stderr } = await exec(
+    `${pyCommand} -m pip install --user virtualenv`,
+    { cwd: pythonPath }
+  );
+  return { stdout, stderr };
+}
+
+// Create venv
+async function createVenv() {
+  const envDir = process.platform === "win32" ? "../benv" : "../../benv";
+  const { stdout, stderr } = await exec(`${pyCommand} -m venv ${envDir}`, {
+    cwd: pythonPath,
+  });
+  return { stdout, stderr };
+}
+
+function isExecutable(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The broken env is renamed rather than deleted so nothing a user installed
+// into it is lost.
+function setAsideEnvironment() {
+  const target = path.join(homeDir, brokenEnvName(new Date()));
+  fs.renameSync(envPath, target);
+  console.log(`Moved the unusable python environment to ${target}`);
+}
+
+function forgetInstalledRequirements() {
+  const { requirementsHash, ...state } = readJsonFile(statePath);
+  if (requirementsHash !== undefined) {
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  }
+}
+
+// Runs before anything invokes the env interpreter. An env whose interpreter
+// is gone is moved aside; when the bundled python is still there the env is
+// recreated from it and the recorded requirements hash is dropped so the
+// packages are installed again, otherwise the fresh install rebuilds both.
+async function repairEnvironment(win: typeof BrowserWindow) {
+  const envDirExists = fs.existsSync(envPath);
+  const envInterpreterResolves = isExecutable(path.join(envPythonPath, pyCommand));
+  const action = environmentAction({
+    pythonExists: isExecutable(path.join(pythonPath, pyCommand)),
+    envDirExists,
+    envInterpreterResolves,
+  });
+  if (action === "ok") {
+    return;
+  }
+  if (envDirExists && !envInterpreterResolves) {
+    win.webContents.send("updateStatus", "Rebuilding Python environment...");
+    setAsideEnvironment();
+    forgetInstalledRequirements();
+  }
+  if (action === "rebuild-env") {
+    const installed = await installVenv();
+    console.log(installed.stdout);
+    const created = await createVenv();
+    console.log(created.stdout);
+  }
+}
+
 // Creates the venv and installs the dependencies
 function setupEnvironment(win: typeof BrowserWindow) {
   if (!fs.existsSync(envPath)) {
@@ -417,24 +489,6 @@ function setupEnvironment(win: typeof BrowserWindow) {
         console.log("An error occurred during setup:", error);
         win.webContents.send("updateStatus", "An error occurred during setup.");
       });
-  }
-
-  // Install venv package
-  async function installVenv() {
-    const { stdout, stderr } = await exec(
-      `${pyCommand} -m pip install --user virtualenv`,
-      { cwd: pythonPath }
-    );
-    return { stdout, stderr };
-  }
-
-  // Create venv
-  async function createVenv() {
-    const envDir = process.platform === "win32" ? "../benv" : "../../benv";
-    const { stdout, stderr } = await exec(`${pyCommand} -m venv ${envDir}`, {
-      cwd: pythonPath,
-    });
-    return { stdout, stderr };
   }
 
   // Install pip packages
@@ -580,7 +634,8 @@ app.on("ready", () => {
     // Make a directory to house enviornment, settings, etc.yarn
     checkLocalDir();
     // Setup python for running the pipeline
-    setupPython(win)
+    repairEnvironment(win)
+      .then(() => setupPython(win))
       .then((installed) => {
         // If we just installed python, we need to continue the complete
         // setup of the enviornment
