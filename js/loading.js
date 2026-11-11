@@ -19,6 +19,9 @@ ipc.on("version", function (event, response) {
 	version.innerHTML = response;
 });
 
-guide.addEventListener("click", function () {
-	ipc.send("openGuide");
-});
+// index.html has the guide button; loading.html shares this script without it.
+if (guide) {
+	guide.addEventListener("click", function () {
+		ipc.send("openGuide");
+	});
+}
