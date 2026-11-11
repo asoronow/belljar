@@ -20,7 +20,6 @@ const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
-const serverFetch = require("node-fetch");
 const launch_1 = require("./launch");
 var appDir = app.getAppPath();
 var win = null;
@@ -60,7 +59,7 @@ const GITHUB_API_RELEASES = "https://api.github.com/repos/asoronow/belljar/relea
 function checkForUpdates() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const response = yield serverFetch(GITHUB_API_RELEASES);
+            const response = yield fetch(GITHUB_API_RELEASES);
             if (!response.ok) {
                 console.log(`Update check skipped: GitHub API status ${response.status}`);
                 return;
