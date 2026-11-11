@@ -5,7 +5,8 @@ opencv_python
 Pillow
 pynrrd
 scikit_learn
-scipy
+scipy<1.15; python_version < "3.11"
+scipy; python_version >= "3.11"
 imagecodecs
 scikit-image
 tifffile
