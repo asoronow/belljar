@@ -7,46 +7,36 @@ a single 2D image per file.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
 import tifffile as tiff
 
-from belljar.config import BelljarConfig
 from belljar.io.formats import list_images
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import MaxProjectionParams
 from belljar.types import StepResult
 
 logger = logging.getLogger(__name__)
 
 
-class MaxProjectionStep(PipelineStep):
+class MaxProjectionStep(PipelineStep[MaxProjectionParams]):
     """Collapse z-stack images via max-intensity projection."""
+
+    params_class = MaxProjectionParams
 
     @property
     def name(self) -> str:
         return "Max Projection"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
-        errors: list[str] = []
-        input_dir = kwargs.get("input_dir")
-        output_dir = kwargs.get("output_dir")
+    def validate_inputs(self, params: MaxProjectionParams) -> list[str]:
+        if not params.input_dir.is_dir():
+            return [f"Input directory does not exist: {params.input_dir}"]
+        return []
 
-        if not input_dir:
-            errors.append("input_dir is required")
-        elif not Path(input_dir).is_dir():
-            errors.append(f"Input directory does not exist: {input_dir}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        return errors
-
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_dir = Path(kwargs["input_dir"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: MaxProjectionParams) -> StepResult:
+        input_dir = params.input_dir
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         files = list_images(input_dir)

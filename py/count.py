@@ -7,7 +7,12 @@ import pickle
 from pathlib import Path
 from find_neurons import DetectionResult
 from demons import resize_image_nearest_neighbor, resolve_image_dimensions
-from section_pairing import UnpairedSectionsError, pair_sections
+from section_pairing import (
+    ANNOTATION_SUFFIXES,
+    UnpairedSectionsError,
+    load_annotation,
+    pair_sections,
+)
 
 
 def iou(boxA, boxB):
@@ -130,7 +135,7 @@ if __name__ == "__main__":
             prediction_path,
             annotation_path,
             first_suffixes=(".pkl",),
-            second_suffixes=(".pkl",),
+            second_suffixes=ANNOTATION_SUFFIXES,
         )
     except UnpairedSectionsError as e:
         sys.exit(str(e))
@@ -150,13 +155,11 @@ if __name__ == "__main__":
         pName = prediction_file.name
         sums[pName] = {}
         region_areas[pName] = {}
-        with open(prediction_file, "rb") as predictionPkl, open(
-            annotation_file, "rb"
-        ) as annotationPkl:
+        with open(prediction_file, "rb") as predictionPkl:
             print(f"Counting {section_name}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
-            annotation = pickle.load(annotationPkl)
+            annotation = load_annotation(annotation_file)
             predicted_height, predicted_width = resolve_image_dimensions(
                 predictions[0].image_dimensions,
                 reference_shape=annotation.shape,

@@ -8,21 +8,21 @@ from __future__ import annotations
 
 import csv
 import logging
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
-from belljar.config import BelljarConfig
 from belljar.pipeline.base import PipelineStep, ProgressCallback
+from belljar.pipeline.params import CollateParams
 from belljar.types import StepResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 def collate_counts(
     input_csv: Path,
-    structure_map: dict,
+    structure_map: dict[int, dict[str, Any]],
     output_path: Path,
     include_layers: bool = False,
 ) -> dict[str, int]:
@@ -84,7 +84,7 @@ def collate_counts(
                     # Roll up to parent
                     id_path = structure_map[region_id].get("id_path", "").split("/")
                     if len(id_path) >= 2:
-                        parent_id = np.uint32(int(id_path[-2]))
+                        parent_id = int(id_path[-2])
                         if parent_id in structure_map:
                             acronym = structure_map[parent_id]["acronym"]
 
@@ -97,54 +97,40 @@ def collate_counts(
         writer.writerow(["Region Acronym", "Region Name", "Total Count"])
 
         # Build reverse lookup
-        acronym_to_id: dict[str, Any] = {}
+        acronym_to_id: dict[str, int] = {}
         for k, v in structure_map.items():
             acronym_to_id[v["acronym"]] = k
 
         for acronym in sorted(totals):
             region_id = acronym_to_id.get(acronym)
             region_name = (
-                structure_map[region_id]["name"]
-                if region_id and region_id in structure_map
-                else "Unknown"
+                structure_map[region_id]["name"] if region_id in structure_map else "Unknown"
             )
             writer.writerow([acronym, region_name, totals[acronym]])
 
     return totals
 
 
-class CollateStep(PipelineStep):
+class CollateStep(PipelineStep[CollateParams]):
     """Collate counting results across sections into a summary."""
+
+    params_class = CollateParams
 
     @property
     def name(self) -> str:
         return "Collate"
 
-    def validate_inputs(self, **kwargs: Any) -> list[str]:
-        errors: list[str] = []
-        input_csv = kwargs.get("input_csv")
-        output_dir = kwargs.get("output_dir")
-        structure_map = kwargs.get("structure_map")
+    def validate_inputs(self, params: CollateParams) -> list[str]:
+        if not params.input_csv.is_file():
+            return [f"Input CSV does not exist: {params.input_csv}"]
+        return []
 
-        if not input_csv:
-            errors.append("input_csv is required")
-        elif not Path(input_csv).is_file():
-            errors.append(f"Input CSV does not exist: {input_csv}")
-
-        if not output_dir:
-            errors.append("output_dir is required")
-
-        if not structure_map:
-            errors.append("structure_map is required")
-
-        return errors
-
-    def run(self, progress: ProgressCallback, **kwargs: Any) -> StepResult:
-        input_csv = Path(kwargs["input_csv"])
-        output_dir = Path(kwargs["output_dir"])
+    def run(self, progress: ProgressCallback, params: CollateParams) -> StepResult:
+        input_csv = params.input_csv
+        output_dir = params.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        structure_map: dict = kwargs["structure_map"]
-        include_layers: bool = kwargs.get("include_layers", False)
+        structure_map = self.atlas_provider.structure_map
+        include_layers = params.include_layers
 
         progress(0, 2, "Collating results")
 
