@@ -680,12 +680,7 @@ ipcMain.on("runMax", function (event: any, data: any[]) {
     mode: "text",
     pythonPath: path.join(envPythonPath, pyCommand),
     scriptPath: pyScriptsPath,
-    args: maxArgs({
-      input: data[0],
-      output: data[1],
-      dendrite: data[2],
-      tophat: data[3],
-    }),
+    args: maxArgs({ input: data[0], output: data[1] }),
   };
 
   let pyshell = new PythonShell("max.py", options);
