@@ -33,7 +33,9 @@ logger = logging.getLogger("belljar.datagen")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate belljar training data (synthetic atlas slices with anchoring labels).",
+        description=(
+            "Generate belljar training data (synthetic atlas slices with anchoring labels)."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -151,8 +153,8 @@ def _ensure_nissl_installed(atlas_name: str) -> None:
         logger.info("Downloaded: %.0f MB", nrrd_mb)
 
         # Convert NRRD -> TIFF with orientation matching
-        import SimpleITK as sitk
         import numpy as np
+        import SimpleITK as sitk
         import tifffile
 
         img = sitk.ReadImage(str(nrrd_path))
@@ -160,7 +162,9 @@ def _ensure_nissl_installed(atlas_name: str) -> None:
         logger.info("NRRD shape: %s, dtype: %s", arr.shape, arr.dtype)
 
         if arr.shape != expected_shape:
-            logger.info("Shape mismatch: got %s, expected %s. Reorienting...", arr.shape, expected_shape)
+            logger.info(
+                "Shape mismatch: got %s, expected %s. Reorienting...", arr.shape, expected_shape
+            )
             for axes in [(0, 1, 2), (2, 1, 0), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1)]:
                 candidate = np.transpose(arr, axes)
                 if candidate.shape == expected_shape:
@@ -172,7 +176,8 @@ def _ensure_nissl_installed(atlas_name: str) -> None:
                 arr = sitk.GetArrayFromImage(img_reoriented)
                 if arr.shape != expected_shape:
                     logger.warning(
-                        "After reorientation, shape is %s (expected %s). May need manual inspection.",
+                        "After reorientation, shape is %s (expected %s). "
+                        "May need manual inspection.",
                         arr.shape, expected_shape,
                     )
 
@@ -293,7 +298,9 @@ def main() -> int:
     try:
         ensure_atlas(args.atlas_name, reference_name=args.reference)
     except Exception as e:
-        logger.error("Failed to load atlas '%s' (reference=%s): %s", args.atlas_name, args.reference, e)
+        logger.error(
+            "Failed to load atlas '%s' (reference=%s): %s", args.atlas_name, args.reference, e
+        )
         return 1
 
     # Step 2: Generate dataset

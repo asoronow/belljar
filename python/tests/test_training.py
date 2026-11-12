@@ -477,6 +477,7 @@ class TestHardNegativeMining:
     def test_compute_sample_weights_shape(self, small_training_data):
         """_compute_sample_weights should return weights for every sample."""
         from torchvision import transforms
+
         from belljar.estimation.dataset import AngledAtlasDataset
 
         tx = transforms.Compose([transforms.ToTensor()])
@@ -485,12 +486,15 @@ class TestHardNegativeMining:
         model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
         model.eval()
 
-        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+        weights = _compute_sample_weights(
+            model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16
+        )
         assert len(weights) == len(dataset)
 
     def test_hard_samples_get_higher_weight(self, small_training_data):
         """Top fraction samples should have weight 3.0, rest should have 1.0."""
         from torchvision import transforms
+
         from belljar.estimation.dataset import AngledAtlasDataset
 
         tx = transforms.Compose([transforms.ToTensor()])
@@ -499,7 +503,9 @@ class TestHardNegativeMining:
         model = SliceEstimator(num_outputs=9, dropout_rate=0.2, orthogonalize=True)
         model.eval()
 
-        weights = _compute_sample_weights(model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16)
+        weights = _compute_sample_weights(
+            model, dataset, _TEST_DEVICE, top_fraction=0.2, batch_size=16
+        )
 
         # Should have exactly two weight values: 1.0 and 3.0
         unique_weights = set(weights)

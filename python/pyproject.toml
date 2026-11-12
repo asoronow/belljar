@@ -10,7 +10,7 @@ license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Alec Soronow" }]
 dependencies = [
-    "brainglobe-atlasapi>=2.0",
+    "brainglobe-atlasapi>=2.3.1,<3",
     "matplotlib",
     "numpy<2.0.0",
     "opencv-python",
@@ -41,7 +41,7 @@ dev = [
     "pyright",
 ]
 datagen = [
-    "brainglobe-atlasapi>=2.0",
+    "brainglobe-atlasapi>=2.3.1,<3",
     "numpy<2.0.0",
     "opencv-python-headless",
     "Pillow",

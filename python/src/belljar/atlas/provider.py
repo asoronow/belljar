@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast, get_args
+
+from brainglobe_atlasapi.atlas_name import AtlasName
 
 from belljar.atlas.intensity import rescale_reference
 
@@ -18,6 +20,18 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
+
+KNOWN_ATLAS_NAMES: tuple[str, ...] = get_args(AtlasName)
+
+
+def known_atlas_name(name: str) -> AtlasName:
+    """Narrow a configured atlas name to one BrainGlobe can serve."""
+    if name not in KNOWN_ATLAS_NAMES:
+        raise ValueError(
+            f"Unknown atlas {name!r}; BrainGlobe knows {len(KNOWN_ATLAS_NAMES)} atlases "
+            f"such as {', '.join(KNOWN_ATLAS_NAMES[:3])}"
+        )
+    return cast("AtlasName", name)
 
 
 class AtlasProvider:
@@ -49,7 +63,7 @@ class AtlasProvider:
             from brainglobe_atlasapi import BrainGlobeAtlas
 
             logger.info("Loading atlas: %s", self.atlas_name)
-            self._atlas = BrainGlobeAtlas(self.atlas_name)
+            self._atlas = BrainGlobeAtlas(known_atlas_name(self.atlas_name))
             logger.info(
                 "Atlas loaded: %s (shape=%s, resolution=%sum)",
                 self.atlas_name,

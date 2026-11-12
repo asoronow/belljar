@@ -46,7 +46,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--epochs", type=int, default=50, help="Max training epochs (default: 50).")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size (default: 128).")
-    parser.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate (default: 1e-3).")
+    parser.add_argument(
+        "--lr", type=float, default=1e-3, help="Initial learning rate (default: 1e-3)."
+    )
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay.")
     parser.add_argument("--warmup-epochs", type=int, default=5, help="Linear warmup epochs.")
     parser.add_argument("--num-workers", type=int, default=4, help="DataLoader workers.")
@@ -59,7 +61,9 @@ def parse_args() -> argparse.Namespace:
         "--gcs-bucket", type=str, default=None,
         help="GCS bucket URI for checkpoint upload (e.g. gs://my-bucket/checkpoints).",
     )
-    parser.add_argument("--wandb-project", type=str, default="belljar-estimator", help="W&B project.")
+    parser.add_argument(
+        "--wandb-project", type=str, default="belljar-estimator", help="W&B project."
+    )
     parser.add_argument("--wandb-entity", type=str, default=None, help="W&B entity/team.")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed.")
     parser.add_argument(

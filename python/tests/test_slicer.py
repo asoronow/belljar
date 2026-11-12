@@ -1,7 +1,6 @@
 """Tests for atlas slicing with full 3D rotation."""
 
 import numpy as np
-import pytest
 
 from belljar.atlas.slicer import slice_3d_volume, slice_atlas_and_annotation
 

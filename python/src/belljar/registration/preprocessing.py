@@ -6,11 +6,15 @@ matching utilities used before running registration.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import cv2
 import numpy as np
 import SimpleITK as sitk
-from numpy.typing import NDArray
 from skimage.filters import sobel
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def preprocess_for_registration(image: sitk.Image) -> sitk.Image:
@@ -120,7 +124,9 @@ def resize_nearest_neighbor(image: NDArray, new_size: tuple[int, int]) -> NDArra
     original_spacing = sitk_image.GetSpacing()
     new_spacing = [
         float(orig_space) * float(orig_size) / float(new_dim)
-        for orig_space, orig_size, new_dim in zip(original_spacing, original_size, new_size)
+        for orig_space, orig_size, new_dim in zip(
+            original_spacing, original_size, new_size, strict=True
+        )
     ]
 
     resampler = sitk.ResampleImageFilter()
