@@ -1,12 +1,13 @@
 import argparse
 import numpy as np
-import os
+import sys
 import csv
 import cv2
 import pickle
 from pathlib import Path
 from find_neurons import DetectionResult
-from demons import resize_image_nearest_neighbor
+from demons import resize_image_nearest_neighbor, resolve_image_dimensions
+from section_pairing import UnpairedSectionsError, pair_sections
 
 
 def iou(boxA, boxB):
@@ -124,14 +125,16 @@ if __name__ == "__main__":
     annotation_path = Path(args.annotations.strip())
     output_path = Path(args.output.strip())
 
-    annotation_files = os.listdir(annotation_path)
-    annotation_files = [name for name in annotation_files if name.endswith("pkl")]
-    annotation_files.sort()
-    print(len(annotation_files) + 1, flush=True)
-    predictionFiles = [
-        name for name in os.listdir(prediction_path) if name.endswith("pkl")
-    ]
-    predictionFiles.sort()
+    try:
+        section_pairs = pair_sections(
+            prediction_path,
+            annotation_path,
+            first_suffixes=(".pkl",),
+            second_suffixes=(".pkl",),
+        )
+    except UnpairedSectionsError as e:
+        sys.exit(str(e))
+    print(len(section_pairs) + 1, flush=True)
     # Reading in regions
     regions = {}
     acronym_to_region = {}
@@ -143,21 +146,26 @@ if __name__ == "__main__":
     sums = {}
     colocalized = {}
     region_areas = {}
-    for i, pName in enumerate(predictionFiles):
+    for section_name, prediction_file, annotation_file in section_pairs:
+        pName = prediction_file.name
         sums[pName] = {}
         region_areas[pName] = {}
-        with open(prediction_path / pName, "rb") as predictionPkl, open(
-            annotation_path / annotation_files[i], "rb"
+        with open(prediction_file, "rb") as predictionPkl, open(
+            annotation_file, "rb"
         ) as annotationPkl:
-            print(f"Counting {annotation_files[i].split('.')[0]}...", flush=True)
+            print(f"Counting {section_name}...", flush=True)
             predictions = pickle.load(predictionPkl)
             predictions = [p for p in predictions]
             annotation = pickle.load(annotationPkl)
-            predicted_size = predictions[0].image_dimensions
+            predicted_height, predicted_width = resolve_image_dimensions(
+                predictions[0].image_dimensions,
+                reference_shape=annotation.shape,
+                boxes=[box for p in predictions for box in p.boxes],
+            )
 
             # Count the area of each region in the annotation
             annotation_rescaled = resize_image_nearest_neighbor(
-                annotation, predicted_size
+                annotation, height=predicted_height, width=predicted_width
             )
 
             unique_ids, counts = np.unique(annotation_rescaled, return_counts=True)
@@ -218,11 +226,10 @@ if __name__ == "__main__":
                 try:
                     atlas_id = annotation_rescaled[yPos, xPos]
                 except IndexError:
-                    # Resize was in the wrong order
-                    annotation_rescaled = resize_image_nearest_neighbor(
-                        annotation, predicted_size[::-1]
+                    raise IndexError(
+                        f"Box {box} in section '{section_name}' lies outside "
+                        f"the {predicted_height}x{predicted_width} annotation"
                     )
-                    atlas_id = annotation_rescaled[yPos, xPos]
 
                 region_info = regions[atlas_id]
                 acronym = region_info["acronym"]
