@@ -8,6 +8,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { promisify } = require("util");
@@ -20,7 +31,6 @@ const exec = promisify(require("child_process").exec);
 const stream = require("stream");
 const https = require("https");
 const semver = require("semver");
-const serverFetch = require("node-fetch");
 const launch_1 = require("./launch");
 var appDir = app.getAppPath();
 var win = null;
@@ -60,7 +70,7 @@ const GITHUB_API_RELEASES = "https://api.github.com/repos/asoronow/belljar/relea
 function checkForUpdates() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const response = yield serverFetch(GITHUB_API_RELEASES);
+            const response = yield fetch(GITHUB_API_RELEASES);
             if (!response.ok) {
                 console.log(`Update check skipped: GitHub API status ${response.status}`);
                 return;
@@ -311,6 +321,74 @@ function downloadResources(win) {
         return true;
     });
 }
+// Install venv package
+function installVenv() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { stdout, stderr } = yield exec(`${pyCommand} -m pip install --user virtualenv`, { cwd: pythonPath });
+        return { stdout, stderr };
+    });
+}
+// Create venv
+function createVenv() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const envDir = process.platform === "win32" ? "../benv" : "../../benv";
+        const { stdout, stderr } = yield exec(`${pyCommand} -m venv ${envDir}`, {
+            cwd: pythonPath,
+        });
+        return { stdout, stderr };
+    });
+}
+function isExecutable(file) {
+    try {
+        fs.accessSync(file, fs.constants.X_OK);
+        return true;
+    }
+    catch (_a) {
+        return false;
+    }
+}
+// The broken env is renamed rather than deleted so nothing a user installed
+// into it is lost.
+function setAsideEnvironment() {
+    const target = path.join(homeDir, (0, launch_1.brokenEnvName)(new Date()));
+    fs.renameSync(envPath, target);
+    console.log(`Moved the unusable python environment to ${target}`);
+}
+function forgetInstalledRequirements() {
+    const _a = readJsonFile(statePath), { requirementsHash } = _a, state = __rest(_a, ["requirementsHash"]);
+    if (requirementsHash !== undefined) {
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    }
+}
+// Runs before anything invokes the env interpreter. An env whose interpreter
+// is gone is moved aside; when the bundled python is still there the env is
+// recreated from it and the recorded requirements hash is dropped so the
+// packages are installed again, otherwise the fresh install rebuilds both.
+function repairEnvironment(win) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const envDirExists = fs.existsSync(envPath);
+        const envInterpreterResolves = isExecutable(path.join(envPythonPath, pyCommand));
+        const action = (0, launch_1.environmentAction)({
+            pythonExists: isExecutable(path.join(pythonPath, pyCommand)),
+            envDirExists,
+            envInterpreterResolves,
+        });
+        if (action === "ok") {
+            return;
+        }
+        if (envDirExists && !envInterpreterResolves) {
+            win.webContents.send("updateStatus", "Rebuilding Python environment...");
+            setAsideEnvironment();
+            forgetInstalledRequirements();
+        }
+        if (action === "rebuild-env") {
+            const installed = yield installVenv();
+            console.log(installed.stdout);
+            const created = yield createVenv();
+            console.log(created.stdout);
+        }
+    });
+}
 // Creates the venv and installs the dependencies
 function setupEnvironment(win) {
     if (!fs.existsSync(envPath)) {
@@ -340,23 +418,6 @@ function setupEnvironment(win) {
             .catch((error) => {
             console.log("An error occurred during setup:", error);
             win.webContents.send("updateStatus", "An error occurred during setup.");
-        });
-    }
-    // Install venv package
-    function installVenv() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { stdout, stderr } = yield exec(`${pyCommand} -m pip install --user virtualenv`, { cwd: pythonPath });
-            return { stdout, stderr };
-        });
-    }
-    // Create venv
-    function createVenv() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const envDir = process.platform === "win32" ? "../benv" : "../../benv";
-            const { stdout, stderr } = yield exec(`${pyCommand} -m venv ${envDir}`, {
-                cwd: pythonPath,
-            });
-            return { stdout, stderr };
         });
     }
     // Install pip packages
@@ -483,7 +544,8 @@ app.on("ready", () => {
         // Make a directory to house enviornment, settings, etc.yarn
         checkLocalDir();
         // Setup python for running the pipeline
-        setupPython(win)
+        repairEnvironment(win)
+            .then(() => setupPython(win))
             .then((installed) => {
             // If we just installed python, we need to continue the complete
             // setup of the enviornment
@@ -519,16 +581,21 @@ ipcMain.on("getVersion", (event) => {
     event.sender.send("version", getVersion());
 });
 // Handlers
+// Electron opens every dialog in Downloads unless given a defaultPath, so the
+// folder of the last selection is carried over to the next dialog.
+let lastDialogDir;
 // Directories
 ipcMain.on("openDialog", function (event, data) {
     let window = BrowserWindow.getFocusedWindow();
     dialog
         .showOpenDialog(window, {
         properties: ["openDirectory"],
+        defaultPath: lastDialogDir,
     })
         .then((result) => {
         // Check for a valid result
         if (!result.canceled) {
+            lastDialogDir = path.dirname(result.filePaths[0]);
             // console.log(result.filePaths)
             // Send back the dir and whether this is input or output
             event.sender.send("returnPath", [result.filePaths[0], data]);
@@ -544,10 +611,12 @@ ipcMain.on("openFileDialog", function (event, data) {
     dialog
         .showOpenDialog(window, {
         properties: ["openFile"],
+        defaultPath: lastDialogDir,
     })
         .then((result) => {
         // Check for a valid result
         if (!result.canceled) {
+            lastDialogDir = path.dirname(result.filePaths[0]);
             // console.log(result.filePaths)
             // Send back the dir and whether this is input or output
             event.sender.send("returnPath", [result.filePaths[0], data]);
