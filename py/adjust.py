@@ -1,6 +1,6 @@
 import numpy as np
 import argparse
-import os, sys
+import sys
 import pickle
 from pathlib import Path
 from qtpy.QtWidgets import (
@@ -651,7 +651,7 @@ class AnnotationViewer(QMainWindow):
         return super(AnnotationViewer, self).eventFilter(source, event)
 
 
-if __name__ == "__main__":
+def build_parser():
     parser = argparse.ArgumentParser(
         description="Allow adjustment of region alignments"
     )
@@ -672,16 +672,20 @@ if __name__ == "__main__":
         "--structures",
         help="structures map",
     )
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
     print(2, flush=True)
     print("Viewing...", flush=True)
 
     def on_app_exit():
         print("Done!", flush=True)
 
-    images_path = Path(args.images.strip())
-    annotations_path = Path(args.annotations.strip())
-    structure_map_path = Path(args.structures.strip())
+    images_path = Path(args.images)
+    annotations_path = Path(args.annotations)
+    structure_map_path = Path(args.structures)
     structure_map = pickle.load(open(structure_map_path, "rb"))
 
     app = QApplication(sys.argv)

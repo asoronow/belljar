@@ -1,8 +1,7 @@
 import cv2
 import numpy as np
-import pickle
 from pathlib import Path
-from find_neurons import DetectionResult
+from section_pairing import load_detection_result
 import argparse
 
 
@@ -193,9 +192,8 @@ def load_predictions(input_dir):
     predictions = list(input_dir.glob("*.pkl"))
     bboxes = []
     for prediction in predictions:
-        with open(prediction, "rb") as f:
-            fdata = pickle.load(f)
-            bboxes += fdata[0].boxes
+        fdata = load_detection_result(prediction)
+        bboxes += fdata[0].boxes
 
     return bboxes
 
@@ -277,9 +275,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Find all the tifs
-    images_path = Path(args.images_path).expanduser()
-    images = list(images_path.rglob("*.tif"))
     # Load the predictions
     pull_images(args.images_path, args.output_dir)
 

@@ -43,7 +43,7 @@ function checkNumber(value, message) {
 
 run.addEventListener("click", function () {
   var c = 0.5;
-  var e = 0.2;
+  var e = 0.95;
   var a = 200;
   var t = 640;
   var m = "";
@@ -59,17 +59,16 @@ run.addEventListener("click", function () {
         : 0.5;
     }
 
-    if (
-      eccentricity.value &&
-      eccentricity.value < 1 &&
-      eccentricity.value > 0
-    ) {
-      e = checkNumber(
-        eccentricity.value,
-        "Eccentricity should be a float between 0-1, using default."
-      )
-        ? eccentricity.value
-        : 0.5;
+    if (eccentricity.value) {
+      var eccentricityMessage = "Eccentricity should be a float between 0-1.";
+      if (!checkNumber(eccentricity.value, eccentricityMessage)) {
+        return;
+      }
+      if (!(eccentricity.value < 1 && eccentricity.value > 0)) {
+        alert(eccentricityMessage);
+        return;
+      }
+      e = eccentricity.value;
     }
 
     if (area.value && area.value > 0) {
