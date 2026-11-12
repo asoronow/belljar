@@ -74,3 +74,85 @@ class TestResizeNearestNeighbor:
         image = np.zeros((10, 10), dtype=np.uint8)
         result = resize_nearest_neighbor(image, (20, 20))
         assert result.shape == (20, 20)
+
+
+def _blob_image(size: int) -> np.ndarray:
+    """Blurred discs of varying intensity, enough structure to anchor registration."""
+    import cv2
+
+    yy, xx = np.mgrid[0:size, 0:size]
+    image = np.zeros((size, size), dtype=np.float32)
+    scale = size / 128
+    for cx, cy, radius, value in [
+        (64, 64, 30, 200),
+        (50, 60, 8, 60),
+        (78, 70, 6, 120),
+        (64, 40, 5, 250),
+        (40, 80, 7, 180),
+    ]:
+        disc = (xx - cx * scale) ** 2 + (yy - cy * scale) ** 2 < (radius * scale) ** 2
+        image[disc] = value
+    return cv2.GaussianBlur(image, (5, 5), 1.5)
+
+
+def _shift(image: np.ndarray, dx: int, dy: int) -> np.ndarray:
+    shifted = np.zeros_like(image)
+    h, w = image.shape
+    shifted[dy:, dx:] = image[: h - dy, : w - dx]
+    return shifted
+
+
+class TestComputeRegistrationQuality:
+    """Tests for compute_registration_quality."""
+
+    def test_identical_images_score_high(self) -> None:
+        import SimpleITK as sitk
+
+        from belljar.registration.metrics import compute_registration_quality
+
+        image = sitk.GetImageFromArray(_blob_image(64))
+        metrics = compute_registration_quality(image, image)
+
+        assert metrics.mutual_information > 0
+        assert metrics.normalized_cross_correlation == pytest.approx(1.0, abs=1e-6)
+
+    def test_shifted_copy_scores_lower(self) -> None:
+        import SimpleITK as sitk
+
+        from belljar.registration.metrics import compute_registration_quality
+
+        array = _blob_image(64)
+        fixed = sitk.GetImageFromArray(array)
+        shifted = sitk.GetImageFromArray(_shift(array, 10, 0))
+
+        aligned = compute_registration_quality(fixed, fixed)
+        misaligned = compute_registration_quality(fixed, shifted)
+
+        assert misaligned.mutual_information < aligned.mutual_information
+        assert misaligned.normalized_cross_correlation < aligned.normalized_cross_correlation
+
+
+class TestMultimodalRegistrationKnownAnswer:
+    """The rigid stage must recover a known translation."""
+
+    @pytest.mark.parametrize("dx,dy", [(10, 0), (6, -8)])
+    def test_recovers_translation(self, dx: int, dy: int) -> None:
+        import SimpleITK as sitk
+
+        from belljar.config import RegistrationConfig
+        from belljar.registration.classical import multimodal_registration
+
+        array = _blob_image(128)
+        moving = _shift(array, max(dx, 0), max(dy, 0))
+        fixed_array = _shift(array, max(-dx, 0), max(-dy, 0))
+        fixed = sitk.GetImageFromArray(fixed_array)
+        moving_image = sitk.GetImageFromArray(moving)
+
+        config = RegistrationConfig(bspline_iterations=5)
+        composite = multimodal_registration(fixed, moving_image, config)
+
+        rigid = sitk.Euler2DTransform(composite.GetNthTransform(0).Downcast())
+        tx, ty = rigid.GetTranslation()
+        assert tx == pytest.approx(dx, abs=1.0)
+        assert ty == pytest.approx(dy, abs=1.0)
+        assert abs(rigid.GetAngle()) < np.radians(1.0)

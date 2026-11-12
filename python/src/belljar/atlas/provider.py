@@ -14,6 +14,8 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from belljar.atlas.intensity import rescale_reference
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,12 +58,16 @@ class AtlasProvider:
         return self._atlas
 
     @cached_property
-    def reference(self) -> NDArray:
-        """3D reference volume (grayscale atlas image).
+    def reference(self) -> NDArray[np.uint8]:
+        """3D reference volume (grayscale atlas image) rescaled to uint8.
 
         Returns the default (STP) reference or an additional reference
-        (e.g. Nissl) depending on ``self.reference_name``.
+        (e.g. Nissl) depending on ``self.reference_name``. The raw BrainGlobe
+        volume is uint16; it is rescaled on first access and cached.
         """
+        return rescale_reference(self._raw_reference())
+
+    def _raw_reference(self) -> NDArray:
         if self.reference_name == "default":
             return self.atlas.reference
 
@@ -85,8 +91,12 @@ class AtlasProvider:
 
     @property
     def shape(self) -> tuple[int, ...]:
-        """Shape of the atlas volume (Z, Y, X)."""
-        return self.reference.shape
+        """Shape of the atlas volume (Z, Y, X).
+
+        Read from the annotation so shape queries never trigger the
+        reference rescale.
+        """
+        return self.annotation.shape
 
     @property
     def resolution(self) -> tuple[float, ...]:
@@ -133,7 +143,7 @@ class AtlasProvider:
     @property
     def ap_range(self) -> tuple[int, int]:
         """Valid AP position range (0 to z_dim - 1)."""
-        return (0, self.reference.shape[0] - 1)
+        return (0, self.shape[0] - 1)
 
     def get_hemisphere(self, hemisphere: str = "W") -> tuple[NDArray, NDArray]:
         """Get atlas volumes for a specific hemisphere.

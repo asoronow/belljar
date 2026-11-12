@@ -88,10 +88,11 @@ def slice_atlas_and_annotation(
     """Slice both atlas and annotation volumes at the same position/angles.
 
     Uses linear interpolation for the atlas image and nearest-neighbor
-    for the annotation volume to preserve label integrity.
+    for the annotation volume to preserve label integrity. The atlas slice
+    keeps the dtype of ``atlas``.
 
     Args:
-        atlas: 3D atlas reference volume (uint8).
+        atlas: 3D atlas reference volume (uint8, see AtlasProvider.reference).
         annotation: 3D annotation volume (uint32 region IDs).
         z_position: AP position.
         x_angle: X tilt in degrees.
@@ -101,9 +102,7 @@ def slice_atlas_and_annotation(
     Returns:
         Tuple of (atlas_slice, annotation_slice).
     """
-    atlas_slice = slice_3d_volume(
-        atlas, z_position, x_angle, y_angle, z_angle, order=1
-    ).astype(np.uint8)
+    atlas_slice = slice_3d_volume(atlas, z_position, x_angle, y_angle, z_angle, order=1)
 
     annotation_slice = slice_3d_volume(
         annotation, z_position, x_angle, y_angle, z_angle, order=0
