@@ -1,9 +1,11 @@
 import os
+import sys
 import numpy as np
 import cv2
 import pickle
 from pathlib import Path
 from demons import register_to_atlas
+from alignment_io import AlignmentLoadError, load_alignment as load_saved_alignment
 from slice_atlas import slice_3d_volume, add_outlines, mask_slice_by_region
 from model import TissuePredictor
 import nrrd
@@ -252,9 +254,11 @@ class AtlasSlice:
             try:
                 self.image = self.image * self.mask
                 self.label = self.label * self.mask
-            except:
-                self.mask = None
-                print("Bad mask! Reset next alignment.")
+            except ValueError as e:
+                raise ValueError(
+                    f"Mask for section {self.section_name} does not fit the atlas slice "
+                    f"(mask {self.mask.shape}, slice {self.image.shape}): {e}"
+                ) from e
 
         warped_labels, warped_atlas, color_label = register_to_atlas(
             tissue,
@@ -494,40 +498,45 @@ class AlignmentController:
     def load_alignment(self):
         """Check the input path for a saved alignment pkl"""
         try:
-            with open(Path(self.input_path) / "alignment.pkl", "rb") as f:
-                self.atlas_slices = pickle.load(f)
-            self.prior_alignment = True
+            saved_slices = load_saved_alignment(self.input_path)
+        except AlignmentLoadError as e:
+            print(e, flush=True)
+            sys.exit(1)
 
-            # reload slices and refresh class definition
-            for _, atlas_slice in self.atlas_slices.items():
-                # re-init with old values
-                old_name = atlas_slice.section_name
-                old_x = atlas_slice.x_angle
-                old_y = atlas_slice.y_angle
-                old_pos = atlas_slice.ap_position
-                old_region = atlas_slice.region
-                old_mask = atlas_slice.mask
+        if saved_slices is None:
+            print("No prior alignment found...", flush=True)
+            return
 
-                self.atlas_slices[old_name] = AtlasSlice(
-                    old_name,
-                    old_pos,
-                    old_x,
-                    old_y,
-                    region=old_region,
-                )
-                self.atlas_slices[old_name].mask = old_mask
-                self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
+        self.atlas_slices = saved_slices
+        self.prior_alignment = True
 
-            print("Found prior alignment!")
-            # Check if we have any new slices in our input
-            # Compare files names to keys in atlas_slices
-            new_files = set(self.file_list) - set(self.atlas_slices.keys())
-            if new_files:
-                print("New slices found, re-predicting...", flush=True)
-                self.predict_sample_slices()
+        # reload slices and refresh class definition
+        for _, atlas_slice in self.atlas_slices.items():
+            # re-init with old values
+            old_name = atlas_slice.section_name
+            old_x = atlas_slice.x_angle
+            old_y = atlas_slice.y_angle
+            old_pos = atlas_slice.ap_position
+            old_region = atlas_slice.region
+            old_mask = atlas_slice.mask
 
-        except:
-            print("No comptabile alignment found...")
+            self.atlas_slices[old_name] = AtlasSlice(
+                old_name,
+                old_pos,
+                old_x,
+                old_y,
+                region=old_region,
+            )
+            self.atlas_slices[old_name].mask = old_mask
+            self.atlas_slices[old_name].set_slice(self.atlas, self.annotation)
+
+        print("Found prior alignment!")
+        # Check if we have any new slices in our input
+        # Compare files names to keys in atlas_slices
+        new_files = set(self.file_list) - set(self.atlas_slices.keys())
+        if new_files:
+            print("New slices found, re-predicting...", flush=True)
+            self.predict_sample_slices()
 
     def predict_sample_slices(self):
         """Predict the positions of the samples using the tissue predictor"""

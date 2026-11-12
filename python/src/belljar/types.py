@@ -39,6 +39,7 @@ class DetectionResult:
     channel_index: int = 0
     model_name: str = ""
     confidence_threshold: float = 0.0
+    eccentricity_filter_version: int = 0
 
     @property
     def count(self) -> int:

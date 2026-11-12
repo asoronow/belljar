@@ -1,5 +1,6 @@
 from tkinter import filedialog
 import os
+import sys
 import tifffile as tiff
 from skimage.filters import unsharp_mask
 import tkinter as tk
@@ -20,8 +21,8 @@ def process_file(file, outputDirectory, topHat=False, dendrite=False):
         # Save the processed image
         cv2.imwrite(f"{outputDirectory}/{stem}.tif", img)
 
-    except Exception as e:
-        print(f"Failed to process {file}. Error: {e}", flush=True)
+    except (OSError, ValueError, cv2.error) as e:
+        sys.exit(f"Failed to process {file}: {e}")
 
 
 if __name__ == "__main__":
@@ -57,7 +58,7 @@ if __name__ == "__main__":
         outputDirectory = args.output.strip()
 
     os.chdir(inputDirectory)
-    files = os.listdir(".")
+    files = [f for f in os.listdir(".") if f.lower().endswith((".tif", ".tiff"))]
     files.sort()
     if len(files) == 0:
         print(1, flush=True)
